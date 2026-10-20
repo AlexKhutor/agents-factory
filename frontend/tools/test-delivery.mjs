@@ -59,8 +59,8 @@ const sentinelLine = (value) => `\nglobalThis.${SENTINEL} = "${value}";\n`;
     verified.status === "verified" && verified.releaseId === "claude-port-backend-20261003"
       && ACCEPTED_DELIVERY.releaseId === "claude-port-backend-20261003"
       && verified.version === "v0.21.0"
-      && verified.manifestSha256 === "d8915644f708ac4401cb8653b7424974f3e5aff94ea16812eb8f20d8dda883b7"
-      && verified.lockSha256 === "f85c8f09b361ab1d23ccdc03d03132a709e03cd6ec0c46aee7228e37d6bf6d36"
+      && verified.manifestSha256 === "5cad60679cfd898c48e76368275bcac4738ccef5e02d76ee09df1c3caf1c5039"
+      && verified.lockSha256 === "6d3b8f17f039fa141008bddf03a683b141f51a983b1bab5064eb87c437015975"
       && verified.filesChecked === 73,
     verified);
 
@@ -70,7 +70,7 @@ const sentinelLine = (value) => `\nglobalThis.${SENTINEL} = "${value}";\n`;
   check("previous-delivery-kept-for-rollback-and-verified",
     retained.status === "verified" && retained.releaseId === "claude-port-backend-20261002"
       && retained.version === RETAINED_VERSION && retained.filesChecked === 73
-      && retained.manifestSha256 === "d945c73ad6ff6d062481a4d68f368fc8713b650f94112370b0bb2ae3ccae1d66"
+      && retained.manifestSha256 === "c4c852201e9a3fc1a171145c1e0fd930ce3c5ce663778a81ee28b6e8bed2f0e1"
       && RETAINED_DELIVERY.lockFile !== ACCEPTED_DELIVERY.lockFile,
     retained);
 

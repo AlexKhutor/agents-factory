@@ -1,7 +1,7 @@
 # Rules for this folder
 
-This folder is **Atlas**, the desktop app of Agents Factorio (package
-`agents-factorio-atlas`). These rules apply to anyone who changes it: human
+This folder is **Atlas**, the desktop app of Agents Factory (package
+`agents-factory-atlas`). These rules apply to anyone who changes it: human
 contributors and coding agents alike.
 
 > Atlas is the program's own UI. The chat with agents, project files, memory,

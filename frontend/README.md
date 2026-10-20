@@ -1,4 +1,4 @@
-# Agents Factorio Atlas
+# Agents Factory Atlas
 
 > **The program's own UI (since 2026-10-03).** The system no longer works
 > through VS Code: there are no isolated VS Code windows or Codex chat panels
@@ -16,7 +16,7 @@
 > (`AGENTS.md` describes both modes). The live mode (`start-atlas.bat`) is the
 > one this repository uses.
 
-A desktop client for the Application Gateway of the Agents Factorio backend. It
+A desktop client for the Application Gateway of the Agents Factory backend. It
 shows one controller's work as four levels - **World -> Project -> Feature
 (quarter) -> Agent** - and loads only the Application Frontend Kit the backend
 accepted: release `claude-port-backend-20261003`, kit v0.21.0 (the previous

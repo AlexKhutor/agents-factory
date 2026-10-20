@@ -1,6 +1,6 @@
 # Architecture
 
-Agents Factorio has three parts. Each one owns a clear piece of the system,
+Agents Factory has three parts. Each one owns a clear piece of the system,
 and they talk only through versioned contracts.
 
 ```text

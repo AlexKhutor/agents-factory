@@ -44,7 +44,7 @@ const APPLICATION_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url
 export const ACCEPTED_DELIVERY = Object.freeze({
   releaseId: "claude-port-backend-20261003",
   lockFile: "accepted-delivery-claude-port-20261003.v1.json",
-  lockSha256: "f85c8f09b361ab1d23ccdc03d03132a709e03cd6ec0c46aee7228e37d6bf6d36",
+  lockSha256: "6d3b8f17f039fa141008bddf03a683b141f51a983b1bab5064eb87c437015975",
   verifierSha256: "adc66a1e276e74024bb075e3c893977699b8af1901ecb1375da4ea3673371c70",
 });
 
@@ -59,7 +59,7 @@ export const ACCEPTED_DELIVERY = Object.freeze({
 export const RETAINED_DELIVERY = Object.freeze({
   releaseId: "claude-port-backend-20261002",
   lockFile: "accepted-delivery-claude-port-20261002.v1.json",
-  lockSha256: "f460828a4ad27a9cd423494e4b16e78cd2427d35f092997aae83d18299f7efdd",
+  lockSha256: "321c91c31ae090004f168b7a090380da350cfd6865a632b7f2f711daacd1a494",
   verifierSha256: "adc66a1e276e74024bb075e3c893977699b8af1901ecb1375da4ea3673371c70",
 });
 

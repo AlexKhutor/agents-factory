@@ -1,28 +1,30 @@
-# Agents Factorio
+# Agents Factory
 
-**A local-first control room for teams of Claude Code agents.** Agents Factorio
-runs many [Claude Code](https://docs.anthropic.com/en/docs/claude-code) agents
-(through the Claude Agent SDK) side by side on your own machine, gives each one
-a project, a role, a memory and a write zone, and shows the whole team on a
-strategy-game map - **World → Project → Quarter → Agent** - with live chats,
-attention badges and per-turn git history.
+**Built for agents.** Agents Factory is a local-first control room for teams
+of AI coding agents. It runs many agents side by side on your own machine,
+gives each one a project, a role, a memory and a write zone, and shows the
+whole team on a strategy-game map - **World → Project → Quarter → Agent** -
+with live chats, attention badges and per-turn git history.
 
-It is a multi-agent orchestration system for AI coding agents: an Application
-Gateway that hosts the agent sessions, a controller that hands out tasks with
-verifiable, hash-bound contracts, and **Atlas**, an Electron desktop app to
-watch, steer and approve what the agents do.
+It is not tied to one model vendor: today the agents run on Claude through the
+[Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk/overview);
+OpenAI Codex CLI agents and local agent harnesses are next on the
+[roadmap](ROADMAP.md). The system has three parts: an Application Gateway that
+hosts the agent sessions, a controller that hands out tasks with verifiable,
+hash-bound contracts, and **Atlas**, an Electron desktop app to watch, steer
+and approve what the agents do.
 
-If you are looking for a **multi-agent orchestrator for Claude Code**, a
-**desktop app to run several Claude Code agents in parallel**, **persistent
-memory for Claude Code agents**, a way to **limit which files an AI coding
-agent may edit**, or a **local, self-hosted control room built on the Claude
-Agent SDK** - this is what Agents Factorio does.
+If you are looking for a **multi-agent orchestrator for AI coding agents**, a
+**desktop app to run several Claude agents in parallel**, **persistent memory
+for coding agents**, a way to **limit which files an AI coding agent may
+edit**, or a **local, self-hosted control room built on the Claude Agent SDK** -
+this is what Agents Factory does.
 
-> **Status: working alpha, under active development.** It is the tool its
+> **v0.1.0 - working alpha, under active development.** It is the tool its
 > author works with every day, so new features and fixes keep landing here -
-> see the [roadmap](#roadmap) and [CHANGELOG.md](CHANGELOG.md).
-> Windows-first (PowerShell tools); Node.js 20+. Not affiliated with Anthropic
-> or with Wube Software.
+> see the [roadmap](ROADMAP.md) and [CHANGELOG.md](CHANGELOG.md).
+> Windows-first (PowerShell tools); Node.js 20+. Not affiliated with or
+> endorsed by Anthropic.
 
 ![Atlas: the world map with six projects, their quarters, agents and attention badges](docs/screenshots/world-map.png)
 
@@ -34,7 +36,7 @@ Agent SDK** - this is what Agents Factorio does.
 
 ## Useful for
 
-- running a team of Claude Code agents across several repositories at once;
+- running a team of AI coding agents across several repositories at once;
 - giving each AI coding agent a role, a memory and a write zone;
 - watching and steering agents live: chat, thinking, tool calls, questions;
 - reviewing exactly what each agent changed: one git commit per turn;
@@ -44,7 +46,7 @@ Agent SDK** - this is what Agents Factorio does.
 
 One coding agent in a terminal is easy to follow. Five agents across three
 repositories are not: who is working, who is waiting for an answer, who changed
-which files, what each of them was told, and what it may touch. Agents Factorio
+which files, what each of them was told, and what it may touch. Agents Factory
 makes that visible and enforceable:
 
 - **See the team at a glance.** Projects are territories, quarters (features)
@@ -56,16 +58,15 @@ makes that visible and enforceable:
   changed. Agents propose memory as documents; nothing enters memory without
   the person approving the exact text (by its SHA-256).
 - **Keep agents in their lane.** Write zones per agent (`tools/solver/**`),
-  project and quarter leads with matching rights, Claude Code permission modes
-  per agent (manual, accept edits, auto, bypass), and a pre-tool hook that
-  refuses edits outside the zone.
+  project and quarter leads with matching rights, permission modes per agent
+  (manual, accept edits, auto, bypass), and a pre-tool hook that refuses edits
+  outside the zone.
 - **Know what changed.** Every turn that changed files becomes a git commit by
   that agent - only that turn's files, inside its zone - so the history of the
   agents' work is a `git log --author=<agent>` away.
-- **Talk to agents like in Claude Code.** Live chat with thinking blocks,
-  tool calls, questions with options (single and multiple choice), steering a
-  running turn or queueing for its end, model and effort per agent, plan usage
-  (5-hour session, week, per-model limits).
+- **Talk to agents as in a coding-agent chat.** Live chat with thinking
+  blocks, tool calls, questions with options (single and multiple choice),
+  steering a running turn or queueing for its end, model and effort per agent.
 - **Hand out work that can be checked.** Controller tasks are immutable,
   hash-bound packets: accepted, planned, reported and accepted again by code,
   not by the agent saying it is done.
@@ -76,7 +77,7 @@ makes that visible and enforceable:
  Atlas (Electron desktop app)                 your projects' folders
    map · chats · memory · approvals              (git, write zones)
           │  loopback HTTP + event stream                ▲
-          ▼                                              │ Claude Code tools
+          ▼                                              │ agent tools: read, edit, run
  Application Gateway  ── Claude Agent SDK sessions ──────┘
    operations · receipts · attention · usage meter
           │
@@ -86,7 +87,7 @@ makes that visible and enforceable:
 
 - **Application Gateway** (`backend/orchestrator/src`, built into one bundle
   with no runtime npm dependencies): one local process that
-  hosts every agent as a Claude Code session, exposes typed operations (send,
+  hosts every agent as a session of the Claude Agent SDK, exposes typed operations (send,
   steer, interrupt, read the conversation, memory, files, tasks) over a
   loopback-only HTTP API with a bearer token that never leaves the machine, and
   records an operation journal. Every write has an identity and a receipt; an
@@ -102,11 +103,12 @@ makes that visible and enforceable:
 
 Requirements: Windows 10/11, Windows PowerShell 5.1, Node.js 20+ (22
 recommended), Python 3 (its `sqlite3` module holds the memory database), Git,
-and Claude Code signed in on this machine (`claude auth status`).
+and an **Anthropic API key** ([Claude Console](https://platform.claude.com/)).
+The agents' usage is billed to that key.
 
 ```powershell
-git clone https://github.com/AlexKhutor/agents-factorio.git
-cd agents-factorio
+git clone https://github.com/AlexKhutor/agents-factory.git
+cd agents-factory
 
 # 1. Atlas and the Claude Agent SDK it ships.
 cd frontend; npm install; cd ..
@@ -122,8 +124,11 @@ New-Item -ItemType Directory -Force .project-local\application-gateway, .project
 Copy-Item config\claude-provider.example.json .project-local\application-gateway\claude-provider.json
 Copy-Item config\control-cycle.example.json .project-local\orchestration\control-cycle.json
 #    In claude-provider.json set sdkPath to <repo>/frontend/node_modules/@anthropic-ai/claude-agent-sdk
+#    and keep "keepProviderVariables": true, so the agents use your API key.
 
-# 3. Start the Application Gateway (redirect its output to a file, do not pipe it).
+# 3. Start the Application Gateway with your API key in its environment
+#    (this PowerShell session only; redirect the output to a file, do not pipe it).
+$env:ANTHROPIC_API_KEY = Read-Host "Anthropic API key"
 powershell -NoProfile -ExecutionPolicy Bypass -File tools\application_gateway.ps1 `
   -Command Start -RepoRoot C:\agents-control -Provider claude -AsJson > logs\gateway-start.json
 
@@ -135,28 +140,34 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\application_gateway.ps
 
 The controller's own [README](controller/README.md) covers desk agents, the
 coordinator and task contracts; [claude-code-provider.md](backend/orchestrator/docs/claude-code-provider.md)
-covers models, permission modes and the SDK settings.
+covers models, permission modes and the SDK settings. Entering the API key in
+Atlas (kept in the system keychain) and a one-file installer are in progress:
+see [docs/distribution](docs/distribution/README.md).
 
 ## Repository layout
 
 | Path | What |
 | --- | --- |
-| `backend/orchestrator/src` | Application Gateway, memory service, Claude Code session host, write zones, task tools |
+| `backend/orchestrator/src` | Application Gateway, memory service, Claude Agent SDK session host, write zones, task tools |
 | `backend/orchestrator/test` | Backend test suites (`node --test`) |
 | `backend/orchestrator/docs` | Guides: architecture, Claude Code provider, project memory, attention, security |
 | `backend/tools` | PowerShell tools for the Gateway's lifecycle |
 | `controller/` | The controller instance template to copy |
 | `frontend/` | Atlas, the Electron desktop app, and its tests |
+| `docs/distribution` | The plan for the installer, the CLI, MCP and telemetry |
 
 ## Security and privacy
 
 - Everything runs locally. The Gateway listens on loopback only; its bearer
   token stays in the controller's machine-local folder.
-- Atlas never reads Claude credentials; it checks the sign-in with the
-  read-only `claude auth status`.
+- The API key reaches the agents only through the Gateway's environment; Atlas
+  never reads it or any other credential.
 - Irreversible actions (archiving, folder binding, memory writes, "bypass"
   permission mode, git init) go through a confirmation of the trusted host.
 - Agents' commits are local; nothing is pushed anywhere by the system.
+- **No telemetry in v0.1.0.** When telemetry comes, it will be anonymous, used
+  only to improve the product, sent only if you agree, and you can turn it off
+  at any time - see [PRIVACY.md](PRIVACY.md).
 
 See [SECURITY.md](SECURITY.md).
 
@@ -173,15 +184,17 @@ Atlas's suites use fixture data and a fake Gateway.
 
 ## Roadmap
 
-Agents Factorio keeps evolving: it is developed together with the work it is
+Agents Factory keeps evolving: it is developed together with the work it is
 used for, and improvements land here regularly ([CHANGELOG.md](CHANGELOG.md)).
-Next: **Codex CLI agents** next to Claude Code ones, **local agents and
-harnesses** (DeepSeek-based harnesses, Hermes, Qoder and other local
-solutions), desk agents managed from Atlas, and a faster first run. Later: a
+Next: a **one-file installer** for Windows, macOS and Linux with a CLI and MCP
+([plan](docs/distribution/README.md)), **Codex CLI agents** next to Claude
+ones, **local agents and harnesses** (DeepSeek-based harnesses, Hermes, Qoder
+and other local solutions), and a world lead that hands out tasks across
+projects. Later: a
 **VR cockpit** - the agent map and chats in a headset, with a PlayStation VR2
 and SteamVR prototype from earlier research. The full list is in
 [ROADMAP.md](ROADMAP.md); ideas and bug reports are welcome in
-[Issues](https://github.com/AlexKhutor/agents-factorio/issues).
+[Issues](https://github.com/AlexKhutor/agents-factory/issues).
 
 ## License
 

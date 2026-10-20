@@ -192,13 +192,13 @@ const identity = { operationId: "atlas-memory-1", commandId: "atlas-command-1" }
   const missing = core.describeConfiguration({ status: "missing", reasonCode: "local_config_missing" });
   const relative = core.describeConfiguration({ status: "invalid", reasonCode: "controller_root_not_absolute" });
   const loaded = core.describeConfiguration({
-    status: "loaded", expectedWorkspace: { projectId: "Agents_Factorio_Control", workspaceRootSha256: "ab".repeat(32) },
+    status: "loaded", expectedWorkspace: { projectId: "Agents_Factory_Control", workspaceRootSha256: "ab".repeat(32) },
   });
   const fixture = core.describeConfiguration(null);
   check("configuration-error-clear-identity-without-paths",
     missing.tone === "error" && text(missing).includes("config/local.json") && text(missing).includes("local.example.json")
       && relative.tone === "error" && text(relative).includes("absolute")
-      && loaded.tone === "note" && text(loaded).includes("agents_factorio_control") && text(loaded).includes("abababab")
+      && loaded.tone === "note" && text(loaded).includes("agents_factory_control") && text(loaded).includes("abababab")
       && !/[a-z]:\\|\\\\|\/users\//i.test(text(loaded)) && fixture === null,
     { missing, relative, loaded, fixture });
 }

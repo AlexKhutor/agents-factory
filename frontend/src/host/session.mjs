@@ -52,7 +52,7 @@ function unavailableActions(reasonCode) {
 }
 
 async function createDevControllerRoot() {
-  const root = path.join(os.tmpdir(), "agents-factorio-atlas-dev-controller");
+  const root = path.join(os.tmpdir(), "agents-factory-atlas-dev-controller");
   const runtime = path.join(root, ".orchestrator", "runtime");
   await mkdir(runtime, { recursive: true });
   await mkdir(path.join(root, ".project-local"), { recursive: true });

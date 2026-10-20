@@ -13,7 +13,7 @@ import {
   createApplicationProviderInteractionBridge,
 } from "../src/application-provider-interaction-bridge.mjs";
 
-const PROJECT = "agents-factorio-control";
+const PROJECT = "agents-factory-control";
 const SOURCE = "orchestrator-development";
 const THREAD = "01a00a22-bfab-7e01-8978-b1b86ba89361";
 const TURN = "01a0ad2e-a78a-7cb2-ad16-408835cb18b8";

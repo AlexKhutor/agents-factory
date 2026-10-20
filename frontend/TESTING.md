@@ -1,4 +1,4 @@
-# How to test Agents Factorio Atlas
+# How to test Agents Factory Atlas
 
 Two modes. The **fixture** needs nothing but this repository and always works.
 The **controller** mode needs a running Gateway; when this plan was written, no

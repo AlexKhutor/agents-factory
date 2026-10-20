@@ -1,6 +1,6 @@
-# Agents Factorio Controller
+# Agents Factory Controller
 
-This is the controller that Agents Factorio Atlas connects to. It runs the
+This is the controller that Agents Factory Atlas connects to. It runs the
 Application Gateway, which handles desk agents on Claude Code, project
 memory and the attention model. It also runs the controller's task workflow:
 it dispatches a task to a desk agent, collects the agent's report, and has a
@@ -15,8 +15,10 @@ database, task packets, reports and agent sessions.
 - Windows with Windows PowerShell 5.1
 - Node.js 20 or newer
 - Python 3 with its `sqlite3` module
-- Claude Code, signed in. Atlas installs the Claude Agent SDK under
-  `frontend/node_modules/@anthropic-ai/claude-agent-sdk`.
+- An Anthropic API key. The agents run through the Claude Agent SDK, which
+  Atlas installs under `frontend/node_modules/@anthropic-ai/claude-agent-sdk`;
+  `"keepProviderVariables": true` in `claude-provider.json` lets them use
+  `ANTHROPIC_API_KEY` from the Gateway's environment.
 
 ## Set up an instance
 
@@ -32,6 +34,8 @@ Then edit the two copies:
 
 - `claude-provider.json`
   - `sdkPath`: the absolute path of the Claude Agent SDK, with forward slashes.
+  - `keepProviderVariables`: keep `true`, so the agents use the
+    `ANTHROPIC_API_KEY` of the Gateway's environment.
   - `models`: the models and effort levels Atlas offers when you create an
     agent.
 - `control-cycle.json`
@@ -50,10 +54,13 @@ node .orchestrator\runtime\control-cli.mjs report-models --config .project-local
 ## Run the Gateway
 
 ```powershell
+$env:ANTHROPIC_API_KEY = Read-Host "Anthropic API key"   # this session only
 powershell -NoProfile -ExecutionPolicy Bypass -File tools\application_gateway.ps1 -Command Start -RepoRoot <instance> -Provider claude -AsJson > logs\gateway-start.json
 ```
 
-You can also run `tools\start_application_gateway.bat`.
+You can also run `tools\start_application_gateway.bat` from a console where
+`ANTHROPIC_API_KEY` is set. The Gateway does not store the key; it only
+passes it on to the agents' Claude processes.
 
 - Redirect Start's output to a file. If you pipe it into another program, the
   command waits for its child processes.

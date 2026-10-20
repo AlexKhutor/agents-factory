@@ -1,22 +1,30 @@
 # Roadmap
 
-Agents Factorio is under active development: it is the tool its author works
+Agents Factory is under active development: it is the tool its author works
 with every day, and it keeps growing with that work. Shipped changes are in
 [CHANGELOG.md](CHANGELOG.md); ideas and bug reports are welcome in
-[Issues](https://github.com/AlexKhutor/agents-factorio/issues).
+[Issues](https://github.com/AlexKhutor/agents-factory/issues).
 
 ## Next
 
-- **Codex CLI agents.** Run OpenAI Codex CLI agents next to Claude Code ones,
+- **Codex CLI agents.** Run OpenAI Codex CLI agents next to Claude ones,
   on the same map, with the same memory, write zones, permission modes and
   per-turn commits.
 - **Local agents and harnesses.** Connect local and self-hosted agents -
   DeepSeek-based harnesses, Hermes, Qoder and other local solutions - through
   one provider interface, so a team can mix cloud and local agents.
-- **Desk agents from Atlas.** Register desk agents and assign the coordinator
-  role in the app (today: the CLI).
-- **First run in minutes.** Fewer manual steps between `git clone` and the
-  first agent turn, and a step-by-step guide with a demo video.
+- **One-file installer, CLI and MCP.** One installer per OS (Windows first,
+  then macOS and Linux), the `agents-factory` CLI for scripted and headless
+  installs, MCP servers for the agents, and Agents Factory itself as an MCP
+  server for Claude Code, Claude Desktop, Codex CLI and Cursor. The plan:
+  [docs/distribution](docs/distribution/README.md).
+- **API key setup in Atlas.** Enter the Anthropic API key in the app; it is
+  kept in the system keychain (today: an environment variable).
+- **A world lead.** One coordinator above the project leads that hands out
+  tasks across projects; desk agents and roles managed from Atlas (today: the
+  CLI).
+- **First run in minutes.** Fewer manual steps between download and the first
+  agent turn, and a step-by-step guide with a demo video.
 
 ## Later: VR cockpit
 
@@ -29,7 +37,7 @@ always take an explicit click. The cockpit reads the same facts as Atlas and
 never becomes a second source of truth.
 
 Earlier research produced a working prototype on one Windows PC with
-PlayStation VR2 and SteamVR; it is not connected to Agents Factorio yet.
+PlayStation VR2 and SteamVR; it is not connected to Agents Factory yet.
 
 Research done:
 
@@ -54,6 +62,13 @@ Research done:
 Not yet tried in the headset: switching between workspaces, real apps inside
 a workspace, the agent chat. Native Linux (Monado) and hand tracking are
 plans.
+
+## Later: mobile companion
+
+A phone app to get notifications from the agents (questions, finished turns,
+problems) and to send short commands to the coordinator. It needs a secure
+way to reach the Gateway from outside the machine; the Gateway is
+loopback-only today.
 
 ## Under consideration
 

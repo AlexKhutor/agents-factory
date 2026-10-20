@@ -1,6 +1,6 @@
 {
   "formatVersion": 1,
-  "projectName": "Agents_Factorio_Control",
+  "projectName": "Agents_Factory_Control",
   "projectVersion": "v0.42.0",
   "versionPolicy": {
     "major": "Fundamental architecture or compatibility changes.",

@@ -1,6 +1,6 @@
 ---
 name: execute-orchestrated-task
-description: Accept, execute, and report a bounded task delivered by Agents_Factorio_Control through `.orchestrator/tasks/inbox`. Use when a child-project agent (Claude Code or Codex) is asked to process a pending orchestrator task, enforce the project's responsibility boundary, stop and report an unexpected foreign bug, coordinate task-specific subagents, or submit a completion, blocked, or failed report.
+description: Accept, execute, and report a bounded task delivered by Agents_Factory_Control through `.orchestrator/tasks/inbox`. Use when a child-project agent (Claude Code or Codex) is asked to process a pending orchestrator task, enforce the project's responsibility boundary, stop and report an unexpected foreign bug, coordinate task-specific subagents, or submit a completion, blocked, or failed report.
 ---
 
 # Execute Orchestrated Task

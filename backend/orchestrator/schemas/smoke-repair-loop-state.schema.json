@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://local.agents-factorio.dev/schemas/smoke-repair-loop-state-v1.json",
+  "$id": "https://local.agents-factory.dev/schemas/smoke-repair-loop-state-v1.json",
   "title": "Smoke repair loop runtime state",
   "type": "object",
   "additionalProperties": false,

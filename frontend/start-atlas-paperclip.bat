@@ -1,5 +1,5 @@
 @echo off
-REM PROTOTYPE. Opens Agents Factorio Atlas on the local Paperclip server named in
+REM PROTOTYPE. Opens Agents Factory Atlas on the local Paperclip server named in
 REM config\paperclip.json. It does not start Paperclip: if the server is not
 REM running, the window says so. Start it with ..\paperclip-runtime\start-paperclip.bat
 cd /d "%~dp0"

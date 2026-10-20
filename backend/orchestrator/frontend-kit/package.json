@@ -1,7 +1,7 @@
 {
   "name": "@isolate-vscode/application-frontend-kit",
   "version": "0.21.0",
-  "description": "Renderer-neutral contracts and integration assets for the Agents Factorio Application Gateway",
+  "description": "Renderer-neutral contracts and integration assets for the Agents Factory Application Gateway",
   "type": "module",
   "sideEffects": false,
   "types": "./dist/types/index.d.ts",

@@ -1,5 +1,5 @@
 @echo off
-REM PROTOTYPE. Opens Agents Factorio Atlas working with Claude Code directly: no server
+REM PROTOTYPE. Opens Agents Factory Atlas working with Claude Code directly: no server
 REM to start. By default the data lives in direct-data\ and the Claude agent SDK
 REM comes from node_modules (npm ci); config\direct.local.json can name other folders.
 cd /d "%~dp0"

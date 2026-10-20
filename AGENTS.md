@@ -5,7 +5,8 @@ repository. Humans: start with [README.md](README.md).
 
 ## What this is
 
-Agents Factorio is a local-first control room for teams of Claude Code agents.
+Agents Factory is a local-first control room for teams of AI coding agents
+(today they run on Claude through the Claude Agent SDK).
 Three parts, one repository:
 
 | Path | Part | Language |

@@ -1,5 +1,5 @@
 @echo off
-REM Opens Agents Factorio Atlas against the controller named in config\local.json.
+REM Opens Agents Factory Atlas against the controller named in config\local.json.
 REM It starts no gateway: if none is ready, the window says so and why.
 cd /d "%~dp0"
 if not exist "node_modules\electron" (

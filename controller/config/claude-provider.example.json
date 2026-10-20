@@ -1,6 +1,7 @@
 {
   "schemaVersion": 1,
-  "sdkPath": "C:/agents-factorio/frontend/node_modules/@anthropic-ai/claude-agent-sdk",
+  "keepProviderVariables": true,
+  "sdkPath": "C:/agents-factory/frontend/node_modules/@anthropic-ai/claude-agent-sdk",
   "models": [
     { "id": "claude-opus-5-5", "displayName": "Claude Opus 5.5", "efforts": ["default", "low", "medium", "high", "xhigh", "max"], "defaultEffort": "default" },
     { "id": "claude-sonnet-5-5", "displayName": "Claude Sonnet 5.5", "efforts": ["default", "low", "medium", "high", "xhigh", "max"], "defaultEffort": "default" },

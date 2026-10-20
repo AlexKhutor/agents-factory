@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://local.agents-factorio.dev/schemas/smoke-repair-loop-policy-v1.json",
+  "$id": "https://local.agents-factory.dev/schemas/smoke-repair-loop-policy-v1.json",
   "title": "Confirmed smoke repair loop policy",
   "type": "object",
   "additionalProperties": false,

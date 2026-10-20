@@ -1,7 +1,8 @@
 # Notice
 
-Agents Factorio - a local-first control room for teams of Claude Code agents:
-the Application Gateway, the controller template and the Atlas desktop app.
+Agents Factory - built for agents: a local-first control room for teams of AI
+coding agents. The Application Gateway, the controller template and the Atlas
+desktop app.
 
 Copyright (C) 2026 AlexKhutor (https://github.com/AlexKhutor)
 
@@ -43,7 +44,8 @@ people add, unless they grant it too.
 
 ## Trademarks
 
-Claude and Claude Code are trademarks of Anthropic PBC. Factorio is a
-trademark of Wube Software. This project is not affiliated with, endorsed by
-or sponsored by either of them; the name only borrows the idea of a factory
-you watch and steer.
+Claude and Claude Code are trademarks of Anthropic PBC. This project is not
+affiliated with, endorsed by or sponsored by Anthropic; it uses the Claude
+Agent SDK under Anthropic's terms. The project was called Agents Factorio
+before v0.1.0; Factorio is a trademark of Wube Software, and the project has
+no connection to it.

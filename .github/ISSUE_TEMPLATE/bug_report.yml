@@ -1,0 +1,54 @@
+name: Bug report
+description: Something does not work as described.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Please do not paste API keys, tokens, `.project-local` files or private code.
+        Security problems go to **Security → Report a vulnerability**, not here.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The `VERSION` file, or the version shown in Atlas's header.
+      placeholder: 0.1.0
+    validations:
+      required: true
+  - type: dropdown
+    id: part
+    attributes:
+      label: Part
+      options:
+        - Atlas (desktop app)
+        - Application Gateway
+        - Controller template / tools
+        - Docs
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS and version, Node.js version, PowerShell version.
+      placeholder: Windows 11 24H2, Node 22.13, PowerShell 5.1
+  - type: textarea
+    id: steps
+    attributes:
+      label: What you did
+      description: Steps to reproduce, as exact as you can.
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: What happened and what you expected
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or reason codes
+      description: Atlas's readiness panel, `gateway-start.json`, test output. Remove paths and names you do not want to share.
+      render: text

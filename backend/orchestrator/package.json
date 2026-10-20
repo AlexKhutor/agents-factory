@@ -1,8 +1,8 @@
 {
-  "name": "agents-factorio-gateway",
+  "name": "agents-factory-gateway",
   "version": "0.146.0",
   "private": true,
-  "description": "Agents Factorio Application Gateway: hosts Claude Code agents (Claude Agent SDK) with memory, write zones, permission modes and per-turn git commits.",
+  "description": "Agents Factory Application Gateway: hosts Claude Code agents (Claude Agent SDK) with memory, write zones, permission modes and per-turn git commits.",
   "license": "AGPL-3.0-only",
   "type": "module",
   "engines": {

@@ -340,7 +340,7 @@ try {
             schemaVersion          = 1
             contractVersion        = $taskContractVersion
             taskId                 = $taskId
-            coordinatorId          = "agents-factorio-control"
+            coordinatorId          = "agents-factory-control"
             targetId               = $SourceId
             title                  = $title
             intent                 = $intent
@@ -403,7 +403,7 @@ try {
             schemaVersion          = 1
             contractVersion        = "v0.1.0"
             taskId                 = $taskId
-            coordinatorId          = "agents-factorio-control"
+            coordinatorId          = "agents-factory-control"
             targetId               = $SourceId
             title                  = $title
             objective              = $objective

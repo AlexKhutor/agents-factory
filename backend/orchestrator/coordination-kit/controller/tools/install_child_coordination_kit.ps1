@@ -300,7 +300,7 @@ try {
         reportContractVersion = [string]$manifest.reportContractVersion
         taskInbox = [string]$source.taskInbox
         reportOutbox = [string]$source.reportOutbox
-        coordinatorId = "agents-factorio-control"
+        coordinatorId = "agents-factory-control"
     }
     $contractPath = Join-Path $workspaceRoot ".orchestrator\contract.json"
     $childManifestPath = Join-Path $workspaceRoot ".orchestrator\kit-manifest.json"

@@ -172,7 +172,7 @@ function createWindow(mode) {
     minWidth: 1024,
     minHeight: 640,
     backgroundColor: "#181c19",
-    title: mode === "dev-fixture" ? "Agents Factorio Atlas - FIXTURE DATA" : mode === "paperclip" ? "Agents Factorio Atlas - Paperclip" : mode === "direct" ? "Agents Factorio Atlas - Claude Code" : "Agents Factorio Atlas",
+    title: mode === "dev-fixture" ? "Agents Factory Atlas - FIXTURE DATA" : mode === "paperclip" ? "Agents Factory Atlas - Paperclip" : mode === "direct" ? "Agents Factory Atlas - Claude Code" : "Agents Factory Atlas",
     webPreferences: {
       preload: PRELOAD,
       contextIsolation: true,
