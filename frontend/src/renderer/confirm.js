@@ -5,15 +5,16 @@
 
 (function confirmPage() {
   const $ = (id) => document.getElementById(id);
+  document.documentElement.lang = currentLanguage();
 
   window.atlasConfirm.onRequest((request) => {
-    $("title").textContent = request.title || "Confirmation";
+    $("title").textContent = request.title || tx("Confirmation");
     $("message").textContent = request.message || "";
     $("detail").textContent = request.detail || "";
     $("detail").hidden = !request.detail;
-    $("accept").textContent = request.confirmLabel || "Confirm";
-    $("cancel").textContent = request.cancelLabel || "Cancel";
-    document.title = request.title || "Confirmation";
+    $("accept").textContent = request.confirmLabel || tx("Confirm");
+    $("cancel").textContent = request.cancelLabel || tx("Cancel");
+    document.title = request.title || tx("Confirmation");
     // Window height = card height plus the window border (one pixel at the top and bottom).
     const needed = () => Math.ceil($("card").getBoundingClientRect().height) + 2;
     requestAnimationFrame(() => {

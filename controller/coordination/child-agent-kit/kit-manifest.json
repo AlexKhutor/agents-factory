@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "kitVersion": "v0.11.0",
+  "kitVersion": "v0.11.1",
   "taskContractVersion": "v0.3.0",
   "supportedTaskContractVersions": [
     "v0.1.0",
@@ -16,7 +16,7 @@
     "submit_orchestrated_report": "v0.4.1",
     "submit_orchestrated_report_correction": "v0.1.0",
     "signal_orchestrator": "v0.1.0",
-    "child_agent_kit": "v0.11.0",
+    "child_agent_kit": "v0.11.1",
     "child_task_contract": "v0.3.0",
     "child_report_contract": "v0.2.0"
   },

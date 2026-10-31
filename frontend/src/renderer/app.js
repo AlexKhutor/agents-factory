@@ -10,9 +10,14 @@ const atlasState = {
   connection: null,
   operations: [],
   world: null,
-  trusted: { available: false, reasonCode: "not checked" },
+  trusted: { available: false, reasonCode: tx("not checked") },
   log: [],
   drafts: new Map(),
+  // Whether the servers of the agents' models answer (host/model-health.mjs); null until read.
+  modelHealth: null,
+  // The names the person gave projects, quarters and agents ({ projects: { [projectId]: names } }); null until read.
+  names: null,
+  namesAt: 0,
   ui: { attentionOpen: false, logOpen: false, trayOpen: false, watch: true, workspaceFull: false, workspaceWidth: null,
     steer: true },
   clipboard: null,
@@ -28,9 +33,28 @@ const atlasState = {
   layoutTimer: null,
   layoutDirty: false,
   busy: false,
+  // The controller's task board (desk agents and the world lead's tasks): null - not
+  // read yet; { sources, tasks, truncated, failed: false, readAt } or { failed: true, reason, readAt }.
+  taskBoard: null,
+  sheetOwner: null,
+  // The world's projects not on this PC: split - the instance is split (only then
+  // can a project be disconnected), projects - their names.
+  away: { split: false, projects: [] },
 };
 
 const $ = (id) => document.getElementById(id);
+
+// index.html is written in English; data-i18n (its own text) and data-i18n-title name the key, so the
+// page shows it in the window's language (i18n-core.js). Only the element's own text changes, not its
+// children (a count beside a label).
+(function applyPageLocale() {
+  document.documentElement.lang = currentLanguage();
+  for (const node of document.querySelectorAll("[data-i18n]")) {
+    const own = [...node.childNodes].find((child) => child.nodeType === Node.TEXT_NODE && child.textContent.trim() !== "");
+    if (own) own.textContent = own.textContent.replace(own.textContent.trim(), tx(node.dataset.i18n));
+  }
+  for (const node of document.querySelectorAll("[data-i18n-title]")) node.title = tx(node.dataset.i18nTitle);
+}());
 
 function el(tag, className, textContent) {
   const node = document.createElement(tag);
@@ -45,7 +69,7 @@ function infoRow(key, value) {
   const cell = el("div", "value mono");
   if (value === null || value === undefined) {
     cell.classList.add("muted");
-    cell.textContent = "not reported";
+    cell.textContent = tx("not reported");
   } else if (typeof value === "object") cell.textContent = JSON.stringify(value);
   else cell.textContent = String(value);
   row.append(cell);
@@ -63,14 +87,14 @@ const noteBlock = (className, text) => el("div", className, text);
 // rule, instead of a round trip to the host just to get “invalid_input”.
 
 const IDENTIFIER_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/;
-const IDENTIFIER_HINT = "1-160 Latin letters and digits; a dot, underscore, "
-  + "colon and hyphen are allowed; the first character is a letter or digit. No spaces or non-Latin letters.";
+const IDENTIFIER_HINT = tx("1-160 Latin letters and digits; a dot, underscore, ")
+  + tx("colon and hyphen are allowed; the first character is a letter or digit. No spaces or non-Latin letters.");
 
 /** null - matches the format; otherwise the reason as a string. */
 function identifierProblem(value) {
   const trimmed = value.trim();
-  if (trimmed === "") return "The identifier is not entered yet.";
-  if (!IDENTIFIER_PATTERN.test(trimmed)) return `Does not match the format. ${IDENTIFIER_HINT}`;
+  if (trimmed === "") return tx("The identifier is not entered yet.");
+  if (!IDENTIFIER_PATTERN.test(trimmed)) return tx("Does not match the format. {IDENTIFIER_HINT}", { IDENTIFIER_HINT });
   return null;
 }
 
@@ -80,13 +104,13 @@ function identifierProblem(value) {
  * `taken(value)` - what already holds this name, or null; `set(value)` - fill in a value.
  */
 function identifierField(placeholder, { taken = null } = {}) {
-  const input = el("input");
+  const input = el("input", "identifier-input");
   input.placeholder = placeholder;
   const hint = el("div", "identifier-hint muted", IDENTIFIER_HINT);
   const problemOf = () => identifierProblem(input.value) ?? (taken === null ? null : taken(input.value.trim()));
   const paint = () => {
     const problem = problemOf();
-    hint.textContent = input.value.trim() === "" ? IDENTIFIER_HINT : (problem ?? "Matches the format.");
+    hint.textContent = input.value.trim() === "" ? IDENTIFIER_HINT : (problem ?? tx("Matches the format."));
     hint.classList.toggle("bad", problem !== null && input.value.trim() !== "");
   };
   input.addEventListener("input", paint);
@@ -117,8 +141,106 @@ function agentIdTaken(agentId) {
   const found = agentNamed(agentId);
   if (found === null) return null;
   return found.state === "archived"
-    ? `The name is taken by the archived agent ${agentId}: agent names are not reused, its conversation stays under the name.`
-    : `The name is taken: agent ${agentId} already exists (${found.projectId} / ${found.quarterId}).`;
+    ? tx("The name is taken by the archived agent {agentId}: agent names are not reused, its conversation stays under the name.", { agentId })
+    : tx("The name is taken: agent {agentId} already exists ({projectId} / {quarterId}).", { agentId, projectId: found.projectId, quarterId: found.quarterId });
+}
+
+// --- names ---------------------------------------------------------------------
+// The names the person gave projects, quarters and agents (the backend's
+// object-names.mjs). The ID never changes; an object without a name is shown by
+// its ID. Read through the trusted host in the background, no more often than
+// NAMES_TTL_MS, and at once after a rename.
+const NAMES_TTL_MS = 30_000;
+
+/** The name an object is shown by: its own, or its ID. */
+function displayName(kind, projectId, objectId) {
+  const names = atlasState.names?.projects?.[projectId] ?? null;
+  const own = kind === "project" ? names?.project : names?.[`${kind}s`]?.[objectId];
+  return typeof own === "string" && own !== "" ? own : objectId;
+}
+
+/** "Name · ID" where the object has a name of its own; the ID alone where it has none. */
+function nameWithId(kind, projectId, objectId) {
+  const name = displayName(kind, projectId, objectId);
+  return name === objectId ? objectId : `${name} · ${objectId}`;
+}
+
+async function loadNames({ force = false } = {}) {
+  if (typeof window.atlas?.names !== "function" || atlasState.trusted?.available !== true) return;
+  if (!force && atlasState.names !== null && Date.now() - atlasState.namesAt < NAMES_TTL_MS) return;
+  atlasState.namesAt = Date.now();
+  const response = await window.atlas.names();
+  if (response.ok) atlasState.names = response.data;
+}
+
+/**
+ * A create form's name field above its ID field: while the person has not
+ * typed an ID, it follows the name (id-core.js: "Billing" → billing-7f3k, not
+ * one `taken` says is used). `name()` - the trimmed name, "" when none.
+ */
+function nameAndIdFields(idField, placeholder, taken) {
+  const input = el("input");
+  input.placeholder = placeholder;
+  input.maxLength = 120;
+  let typedId = false;
+  idField.input.addEventListener("input", () => { typedId = true; });
+  input.addEventListener("input", () => {
+    if (typedId) return;
+    const name = input.value.trim();
+    if (name !== "") idField.set(newObjectIdOf(name, { taken }) ?? "");
+  });
+  return { input, name: () => input.value.replace(/\s+/gu, " ").trim() };
+}
+
+/** After a creation: the name the person gave, when it is not the ID itself. A failure is said, the object stays. */
+async function nameCreated(result, kind, projectId, objectId, name) {
+  if (name === "" || name === objectId || typeof window.atlas?.rename !== "function") return;
+  const named = await window.atlas.rename({ projectId, kind, objectId, name });
+  if (!named.ok) {
+    const reason = named.error?.reasonCode || named.error?.code || tx("no code");
+    result.append(noteBlock("error", tx("Created, but the name is not saved: {reason}. Rename it from the map.", { reason })));
+    return;
+  }
+  await loadNames({ force: true });
+}
+
+/**
+ * Rename sheet: the name is free text and can change at any time; the ID
+ * stays. Empty brings the ID back as the name. Journaled with an undo
+ * (“History”), so it does not ask.
+ */
+function openRenameSheet(kind, projectId, objectId) {
+  const words = { project: tx("project"), quarter: tx("quarter"), agent: tx("agent") };
+  const body = openSheet(tx("Rename {kind} · {objectId}", { kind: words[kind], objectId }), tx("trusted action"));
+  const input = el("input");
+  input.value = displayName(kind, projectId, objectId) === objectId ? "" : displayName(kind, projectId, objectId);
+  input.placeholder = objectId;
+  input.maxLength = 120;
+  body.append(el("div", "section-title", tx("Name")), input,
+    el("div", "muted", tx("ID: {objectId} — it does not change: agents, folders and history refer to it.", { objectId })));
+  const result = el("div");
+  const save = trustedButton(tx("Save name"), async () => {
+    const name = input.value.replace(/\s+/gu, " ").trim();
+    save.disabled = true;
+    const response = await window.atlas.rename({ projectId, kind, objectId, name: name === "" ? null : name });
+    save.disabled = false;
+    if (!response.ok) {
+      const reason = response.error?.reasonCode || response.error?.code || tx("no code");
+      atlasRecord("bad", tx("rename"), `${objectId}: ${reason}`);
+      result.replaceChildren(noteBlock("error", tx("Not renamed: {reason}.", { reason })));
+      return;
+    }
+    atlasRecord("ok", tx("renamed"), `${objectId} → ${name === "" ? objectId : name}`);
+    await loadNames({ force: true });
+    closeSheet();
+    requestRender();
+    if (scene.selection !== null && !$("inspector").classList.contains("hidden")) atlasOnSelection(scene.selection);
+  }, { primary: true });
+  input.addEventListener("keydown", (event) => { if (event.key === "Enter") save.click(); });
+  const actions = el("div", "actions");
+  actions.append(save);
+  body.append(actions, result);
+  input.focus();
 }
 
 /** The first free name: base, base-2, base-3… */
@@ -153,7 +275,7 @@ function renderLog() {
     list.append(line);
   }
   list.scrollTop = list.scrollHeight;
-  $("activityCount").textContent = `${atlasState.log.length} entries`;
+  $("activityCount").textContent = tx("{length} entries", { length: atlasState.log.length });
 }
 
 const logText = () => atlasState.log
@@ -171,7 +293,7 @@ function actionButton(label, operationId, handler, { primary = false } = {}) {
   if (status === null || status.status !== "available") {
     button.disabled = true;
     button.title = status === null
-      ? `${operationId}: not checked`
+      ? tx("{operationId}: not checked", { operationId })
       : `${operationId}: ${status.status} (${status.reasonCode})`;
   } else {
     button.addEventListener("click", handler);
@@ -183,7 +305,7 @@ function trustedButton(label, handler, { primary = false } = {}) {
   const button = el("button", `small${primary ? " primary" : ""}`, label);
   if (!atlasState.trusted.available) {
     button.disabled = true;
-    button.title = `trusted actions unavailable: ${atlasState.trusted.reasonCode}`;
+    button.title = tx("trusted actions unavailable: {reasonCode}", { reasonCode: atlasState.trusted.reasonCode });
   } else {
     button.addEventListener("click", handler);
   }
@@ -195,21 +317,21 @@ function outcomeMessage(response, successText) {
     const identity = response.data.identity ?? {};
     atlasRecord("ok", successText,
       `${response.data.outcome}${identity.operationId ? ` — ${identity.operationId}` : ""}`);
-    return { kind: "note", text: `${successText} Outcome: ${response.data.outcome}.` };
+    return { kind: "note", text: tx("{successText} Outcome: {outcome}.", { successText, outcome: response.data.outcome }) };
   }
   if (response.error.code === "user_declined") {
-    atlasRecord("info", "confirmation declined", successText);
-    return { kind: "note", text: "Nothing was done: the confirmation was declined." };
+    atlasRecord("info", tx("confirmation declined"), successText);
+    return { kind: "note", text: tx("Nothing was done: the confirmation was declined.") };
   }
   if (response.error.code === "uncertain_outcome") {
-    const operationId = response.identity ? response.identity.operationId : "unknown";
-    atlasRecord("bad", "uncertain outcome", `${successText} operation ${operationId} — not retried`);
+    const operationId = response.identity ? response.identity.operationId : tx("unknown");
+    atlasRecord("bad", tx("uncertain outcome"), tx("{successText} operation {operationId} — not retried", { successText, operationId }));
     return {
       kind: "error",
-      text: `Uncertain outcome of operation ${operationId}. Do not retry: read the receipt.`,
+      text: tx("Uncertain outcome of operation {operationId}. Do not retry: read the receipt.", { operationId }),
     };
   }
-  atlasRecord("bad", "refused", `${successText} ${response.error.code}`);
+  atlasRecord("bad", tx("refused"), `${successText} ${response.error.code}`);
   return {
     kind: "error",
     text: `${response.error.code}${response.error.reasonCode ? ` (${response.error.reasonCode})` : ""}`,
@@ -222,17 +344,29 @@ async function loadLayout() {
   const response = await window.atlas.readLayout();
   if (!response.ok) {
     sceneSetLayout(null, { status: "invalid" });
-    atlasRecord("bad", "layout not read", response.error.reasonCode);
-    showNotice(`Layout not read: ${response.error.reasonCode}`);
+    atlasRecord("bad", tx("layout not read"), response.error.reasonCode);
+    showNotice(tx("Layout not read: {reasonCode}", { reasonCode: response.error.reasonCode }));
     return;
   }
   sceneSetLayout(response.data.layout, { status: response.data.status });
   if (response.data.status === "recovered") {
-    atlasRecord("bad", "layout restored from backup", response.data.reasonCode);
-    showNotice("Layout restored from backup");
+    atlasRecord("bad", tx("layout restored from backup"), response.data.reasonCode);
+    showNotice(tx("Layout restored from backup"));
   } else if (response.data.status === "loaded") {
-    atlasRecord("info", "layout loaded", response.data.environment);
+    atlasRecord("info", tx("layout loaded"), response.data.environment);
   }
+}
+
+/**
+ * Whose agent (agentId -> projectId), by the world as read: a split instance
+ * puts an agent's place in its project's part. World not read - empty, and the store
+ * keeps the agents where they were.
+ */
+function layoutMembership() {
+  const world = atlasState.world;
+  if (world === null || world.status !== "ready") return {};
+  return Object.fromEntries(world.projection.projects.flatMap((project) => project.quarters
+    .flatMap((quarter) => quarter.agents.map((agent) => [agent.agentId, project.projectId]))));
 }
 
 async function writeLayout() {
@@ -240,11 +374,38 @@ async function writeLayout() {
   const layout = sceneGetLayout();
   if (layout === null) return;
   layout.view = sceneCurrentView();
-  const response = await window.atlas.writeLayout({ layout });
+  const response = await window.atlas.writeLayout({ layout, membership: layoutMembership() });
   if (!response.ok) {
-    atlasRecord("bad", "layout not saved", response.error.reasonCode || response.error.code);
-    showNotice(`Layout not saved: ${response.error.reasonCode || response.error.code}`);
+    atlasRecord("bad", tx("layout not saved"), response.error.reasonCode || response.error.code);
+    showNotice(tx("Layout not saved: {code}", { code: response.error.reasonCode || response.error.code }));
+    return;
   }
+  // The project's part on disk is newer than the window (the project was connected): it is kept as
+  // it is, and the window's map is read again to take it.
+  if ((response.data.reloadProjects ?? []).length > 0) {
+    const fresh = await window.atlas.readLayout();
+    if (fresh.ok) {
+      sceneSetLayout(fresh.data.layout, { status: fresh.data.status });
+      atlasRecord("info", tx("layout read again"), tx("project parts: {value}", { value: response.data.reloadProjects.join(", ") }));
+    }
+  }
+}
+
+/**
+ * The map again from disk. "Take" and "Hand over" change its parts under the window (a project's
+ * place that came from another PC): a window holding the old map would overwrite them
+ * on its next write.
+ */
+async function reloadLayoutFromDisk(reason) {
+  if (atlasState.layoutTimer !== null) {
+    clearTimeout(atlasState.layoutTimer);
+    atlasState.layoutTimer = null;
+  }
+  atlasState.layoutDirty = false;
+  const fresh = await window.atlas.readLayout();
+  if (!fresh.ok) return;
+  sceneSetLayout(fresh.data.layout, { status: fresh.data.status });
+  atlasRecord("info", tx("layout read again"), reason);
 }
 
 function scheduleLayoutWrite(delay) {
@@ -291,6 +452,19 @@ function applyUiState() {
 }
 
 /**
+ * The panels on the right (inspector, attention, readiness, sheets) sit below the buttons at the top
+ * right, whatever their height: there are more buttons, the row wraps, a line may appear
+ * above the map. Without this a panel covers the buttons.
+ */
+function placePanelsUnderHud() {
+  const hud = $("stateHud");
+  if (hud.offsetParent === null) return;
+  const bottom = hud.getBoundingClientRect().bottom - $("mapStage").getBoundingClientRect().top;
+  $("mapStage").style.setProperty("--panel-top", `${Math.max(150, Math.ceil(bottom) + 12)}px`);
+}
+new ResizeObserver(placePanelsUnderHud).observe($("stateHud"));
+
+/**
  * Any action outside the current object clears extra information from
  * the screen: the inspector, the attention list, the context menu and forms. The map must
  * stay clean, as in the prototype.
@@ -311,43 +485,63 @@ function atlasDismissPanels({ keepInspector = false } = {}) {
 function atlasShowTooltip(node, pointer) {
   const tooltip = $("tooltip");
   const { project, quarter, agent } = findNode(node);
-  let title = node.projectId;
-  let tag = "project";
-  let foot = node.kind === "agent" ? "Click — details · double-click — workspace · right-click — actions"
-    : "Click — details · double-click — enter · right-click — actions";
+  let title = nameWithId("project", node.projectId, node.projectId);
+  let tag = tx("project");
+  let foot = node.kind === "agent" ? tx("Click — details · double-click — workspace · right-click — actions")
+    : tx("Click — details · double-click — enter · right-click — actions");
   const lines = [];
   if (node.kind === "attention") {
     // An attention badge tells exactly what is behind it, at the level
     // of grouping at which the person is looking at the map right now.
     const items = attentionItemsFor(node);
     title = node.agentId ?? node.quarterId ?? node.projectId;
-    tag = node.scopeKind === "agent" ? "agent · attention"
-      : node.scopeKind === "quarter" ? "quarter · attention" : "project · attention";
-    lines.push(`need attention: ${items.length}`);
+    tag = node.scopeKind === "agent" ? tx("agent · attention")
+      : node.scopeKind === "quarter" ? tx("quarter · attention") : tx("project · attention");
+    lines.push(tx("need attention: {length}", { length: items.length }));
     for (const item of items.slice(0, 5)) {
       lines.push(node.scopeKind === "agent"
         ? attentionLine(item) : `${item.agentId} — ${attentionLine(item)}`);
     }
-    if (items.length > 5) lines.push(`and ${items.length - 5} more`);
-    foot = "Click — list of requests · double-click — go there";
+    if (items.length > 5) lines.push(tx("and {value} more", { value: items.length - 5 }));
+    // What a double-click does (atlasOpenAttentionTarget): a question - the chat; anything else - the list.
+    foot = items.length === 1 && attentionSeverity(items[0]) === 1
+      ? tx("Double-click — answer in the chat") : tx("Double-click — the list of problems");
   } else if (node.kind === "hq") {
-    tag = "HQ";
-    lines.push("Goal, team and decisions of the project");
+    tag = tx("HQ");
+    lines.push(tx("Goal, team and decisions of the project"));
+  } else if (node.kind === "world") {
+    title = tx("World HQ");
+    tag = tx("main base");
+    const lead = worldLeadOf();
+    lines.push(lead === null ? tx("World lead not assigned") : tx("world lead · {agentId} · {value}", { agentId: lead.agentId, value: leadStateWords(lead) }));
+    const board = atlasState.taskBoard ?? null;
+    if (board !== null && !board.failed) {
+      lines.push(tx("desk agents: {length} · tasks: {length2}", { length: board.sources.length, length2: board.tasks.length }));
+    }
+    foot = tx("Click — World HQ · double-click — {value}", { value: lead === null ? tx("app::World HQ") : tx("world lead chat") })
+      + tx(" · Backspace — to the World HQ · right-click — actions");
+  } else if (node.kind === "away") {
+    // Grey frame: the project is not on this PC - only where it is and a summary without texts.
+    const item = awayProjectOf(node.projectId);
+    title = item?.title ? `${node.projectId} · ${item.title}` : node.projectId;
+    tag = tx("not on this PC");
+    lines.push(placeText(item?.location), summaryText(item?.summary));
+    foot = tx("Click — summary and connect · right-click — actions");
   } else if (node.kind === "agent" && agent !== null) {
-    title = agent.agentId;
-    tag = "agent";
-    lines.push(`${agent.state} · delivery ${agent.deliveryState}`);
-    if (agent.problemCode !== null) lines.push(`problem: ${agent.problemCode}`);
+    title = nameWithId("agent", agent.projectId, agent.agentId);
+    tag = tx("agent");
+    lines.push(tx("{state} · delivery {deliveryState}", { state: agent.state, deliveryState: agent.deliveryState }));
+    if (agent.problemCode !== null) lines.push(tx("problem: {value}", { value: problemWords(agent.problemCode) }));
   } else if (node.kind === "quarter" && quarter !== null) {
-    title = quarter.quarterId;
-    tag = "quarter";
-    lines.push(`${countWords(quarter.agents.length, AGENT_FORMS)} · memory rev. ${quarter.memory.revision}`);
+    title = nameWithId("quarter", node.projectId, quarter.quarterId);
+    tag = tx("quarter");
+    lines.push(tx("{value} · memory rev. {revision}", { value: countWords(quarter.agents.length, AGENT_FORMS), revision: quarter.memory.revision }));
   } else if (project !== null) {
-    lines.push(`${countWords(project.quarters.length, QUARTER_FORMS)} · memory rev. ${project.memory.revision}`);
+    lines.push(tx("{value} · memory rev. {revision}", { value: countWords(project.quarters.length, QUARTER_FORMS), revision: project.memory.revision }));
   }
   const annotation = sceneAnnotationOf(node);
-  if (annotation.role) lines.push(`role (yours): ${annotation.role}`);
-  if (annotation.note) lines.push(`note (yours): ${annotation.note.slice(0, 120)}`);
+  if (annotation.role) lines.push(tx("role (yours): {role}", { role: annotation.role }));
+  if (annotation.note) lines.push(tx("note (yours): {value}", { value: annotation.note.slice(0, 120) }));
 
   tooltip.replaceChildren();
   const top = el("div", "tooltip-top");
@@ -389,6 +583,24 @@ function showNotice(text) {
 
 const hideNotice = () => $("dataNotice").classList.add("hidden");
 
+/**
+ * The line above the map. The world was handed over from this PC (block 3): the Gateway does not start here and
+ * the map is empty - the line says why and what to press, not "world not read".
+ * Otherwise - what the data lacks, if anything.
+ */
+function paintDataNotice(incomplete = atlasState.dataIncomplete ?? []) {
+  atlasState.dataIncomplete = incomplete;
+  const sync = atlasState.sync;
+  if (sync?.configured === true && sync.world?.held === false) {
+    const holder = sync.world.remote?.holder ?? null;
+    showNotice(tx("The world was handed over from this PC: the Gateway does not start here, so the map is empty. Nothing was deleted.")
+      + (holder === null ? "" : tx(" The world is now held by {value}.", { value: syncHolderText(sync, holder) }))
+      + tx(" To work here: \"World: handed over\" → \"Take all…\"."));
+    return;
+  }
+  if (incomplete.length > 0) showNotice(tx("Data incomplete: {value}", { value: incomplete.join("; ") })); else hideNotice();
+}
+
 /** A short message about what the person has just done. It disappears by itself. */
 function atlasToast(text) {
   const toast = $("toast");
@@ -415,26 +627,26 @@ const SUBSCRIPTION_WORDS = Object.freeze({ max: "Max", pro: "Pro", team: "Team",
 /** The account line in the header and its tooltip. */
 function accountLine() {
   const account = claudeAccountOf();
-  if (account === null || account.state === "checking") return { text: "Claude · account…", tone: "", title: "" };
+  if (account === null || account.state === "checking") return { text: tx("Claude · account…"), tone: "", title: "" };
   if (account.state === "signed-out") {
-    return { text: "Claude · not signed in", tone: "bad",
-      title: "Claude Code on this machine is not signed in: the agents cannot work." };
+    return { text: tx("Claude · not signed in"), tone: "bad",
+      title: tx("Claude Code on this machine is not signed in: the agents cannot work.") };
   }
   if (account.state !== "known") {
-    return { text: "Claude · account unknown", tone: "bad",
-      title: `Claude Code did not answer the sign-in check${account.reason ? ` (${account.reason})` : ""}.` };
+    return { text: tx("Claude · account unknown"), tone: "bad",
+      title: tx("Claude Code did not answer the sign-in check{value}.", { value: account.reason ? ` (${account.reason})` : "" }) };
   }
   const plan = SUBSCRIPTION_WORDS[account.subscriptionType] ?? account.subscriptionType ?? null;
-  const name = account.email ?? account.organization ?? "signed in without email";
+  const name = account.email ?? account.organization ?? tx("signed in without email");
   return {
     text: plan === null ? `Claude · ${name}` : `Claude · ${name} · ${plan}`,
     tone: "ok",
-    title: ["The Claude Code account the agents work under (checked on this machine).",
-      account.email ? `Email: ${account.email}` : null,
-      account.organization ? `Organization: ${account.organization}` : null,
-      plan ? `Plan: ${plan}` : null,
-      account.authMethod ? `Sign-in: ${account.authMethod}` : null,
-      "Click — plan usage: session, week, model limits."].filter(Boolean).join("\n"),
+    title: [tx("The Claude Code account the agents work under (checked on this machine)."),
+      account.email ? tx("Email: {email}", { email: account.email }) : null,
+      account.organization ? tx("Organization: {organization}", { organization: account.organization }) : null,
+      plan ? tx("Plan: {plan}", { plan }) : null,
+      account.authMethod ? tx("Sign-in: {authMethod}", { authMethod: account.authMethod }) : null,
+      tx("Click — plan usage: session, week, model limits.")].filter(Boolean).join("\n"),
   };
 }
 
@@ -446,7 +658,7 @@ function loadClaudeAccount({ force = false } = {}) {
     atlasState.claudeAccount = response.ok ? response.data : { state: "failed", reason: response.error?.code };
     const account = atlasState.claudeAccount;
     if (account.state === "known" && account.email !== previous) {
-      atlasRecord("ok", "Claude account", [account.email, account.organization].filter(Boolean).join(" · ") || "no email");
+      atlasRecord("ok", tx("Claude account"), [account.email, account.organization].filter(Boolean).join(" · ") || tx("no email"));
     }
     renderHeader();
   });
@@ -462,37 +674,39 @@ function loadClaudeAccount({ force = false } = {}) {
 function resetWords(resetsAtUtc) {
   const ms = Date.parse(resetsAtUtc ?? "") - Date.now();
   if (!Number.isFinite(ms)) return null;
-  if (ms <= 0) return "already reset";
+  if (ms <= 0) return tx("already reset");
   const minutes = Math.max(1, Math.round(ms / 60000));
-  if (minutes < 60) return `resets in ${minutes} min`;
+  if (minutes < 60) return tx("resets in {minutes} min", { minutes });
   const hours = Math.round(minutes / 60);
-  return hours < 48 ? `resets in ${hours} h` : `resets in ${Math.round(hours / 24)} d`;
+  return hours < 48 ? tx("resets in {hours} h", { hours }) : tx("resets in {value} d", { value: Math.round(hours / 24) });
 }
 
-const USAGE_STATUS_WORDS = Object.freeze({ allowed_warning: "close to the limit", rejected: "limit reached" });
+const USAGE_STATUS_WORDS = Object.freeze({ allowed_warning: tx("close to the limit"), rejected: tx("limit reached") });
 
 /** The “Usage” menu: account, plan windows, measurement time. */
 function renderUsageMenu(menu, answer) {
-  menu.replaceChildren(el("div", "usage-title", "Usage"));
+  menu.replaceChildren(el("div", "usage-title", tx("Usage")));
   const account = claudeAccountOf();
   if (account?.state === "known") {
     const plan = SUBSCRIPTION_WORDS[account.subscriptionType] ?? account.subscriptionType ?? null;
     menu.append(el("div", "usage-account", [account.email ?? account.organization, plan].filter(Boolean).join(" · ")));
   }
   if (answer.state === "none") {
-    menu.append(el("div", "usage-foot", "Quotas are not measured yet: the Gateway gets them from Claude Code during an agent turn "
-      + "and keeps them here. No session is opened just to measure them."));
+    menu.append(el("div", "usage-foot", tx("Quotas are not measured yet: the Gateway gets them from Claude Code during an agent turn ")
+      + tx("and keeps them here. No session is opened just to measure them.")));
   } else if (answer.state !== "known") {
-    menu.append(el("div", "usage-foot", `Quotas not read: ${answer.reason ?? "no code"}.`));
+    menu.append(el("div", "usage-foot", tx("Quotas not read: {value}.", { value: answer.reason ?? tx("no code") })));
   } else if (!answer.usage.available && answer.usage.windows.length === 0) {
-    menu.append(el("div", "usage-foot", "The Claude plan reports no quotas: signed in with an API key or through a cloud provider."));
+    menu.append(el("div", "usage-foot", tx("The Claude plan reports no quotas: signed in with an API key or through a cloud provider.")));
   } else {
     for (const window of answer.usage.windows) {
       const tone = window.status === "rejected" || (window.utilization ?? 0) >= 90 ? " bad"
         : window.status === "allowed_warning" || (window.utilization ?? 0) >= 75 ? " warn" : "";
       const row = el("div", `usage-row${tone}`);
       const head = el("div", "usage-row-head");
-      const name = el("span", null, window.label);
+      // The backend's labels are English; a model's own window keeps its name ("Fable · limit").
+      const model = typeof window.id === "string" && window.id.startsWith("model:") ? window.id.slice(6) : null;
+      const name = el("span", null, model !== null ? tx("{name} · limit", { name: model }) : tx(window.label));
       if (window.status && USAGE_STATUS_WORDS[window.status]) {
         name.append(el("span", "usage-status", USAGE_STATUS_WORDS[window.status]));
       }
@@ -507,12 +721,12 @@ function renderUsageMenu(menu, answer) {
       menu.append(row);
     }
     const at = answer.usage.observedAtUtc ?? answer.usage.statusObservedAtUtc;
-    menu.append(el("div", "usage-foot", at === null ? "Measurement time not reported."
-      : `Measured ${new Date(at).toLocaleString("en-GB", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })}`
-        + " — during an agent turn. Updates while agents are working."));
+    menu.append(el("div", "usage-foot", at === null ? tx("Measurement time not reported.")
+      : tx("Measured {value}", { value: new Date(at).toLocaleString(dateLocale(), { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" }) })
+        + tx(" — during an agent turn. Updates while agents are working.")));
   }
   const actions = el("div", "usage-actions");
-  const again = el("button", "small", "Reread");
+  const again = el("button", "small", tx("Reread"));
   again.addEventListener("click", () => loadUsageMenu(menu));
   actions.append(again);
   menu.append(actions);
@@ -538,7 +752,7 @@ function toggleUsageMenu() {
     return;
   }
   menu.classList.remove("hidden");
-  menu.replaceChildren(el("div", "usage-title", "Usage"), el("div", "muted", "Reading…"));
+  menu.replaceChildren(el("div", "usage-title", tx("Usage")), el("div", "muted", tx("Reading…")));
   loadUsageMenu(menu);
   clearInterval(usageMenuTimer);
   usageMenuTimer = setInterval(() => {
@@ -554,12 +768,12 @@ function toggleUsageMenu() {
 function renderHeader() {
   const info = atlasState.info;
   $("appVersion").textContent = info
-    ? `v${info.appVersion} · kit ${info.kit ? info.kit.version : "not accepted"}` : "loading";
+    ? tx("v{appVersion} · kit {value}", { appVersion: info.appVersion, value: info.kit ? info.kit.version : tx("not accepted") }) : tx("loading");
   const fixture = Boolean(info && info.fixture);
   // The mode badge is shown only where Atlas works without the controller.
   const badge = $("modeBadge");
-  const modeWord = fixture ? "fixture" : info?.mode === "paperclip" ? "paperclip"
-    : info?.mode === "direct" ? "direct mode" : null;
+  const modeWord = fixture ? tx("fixture") : info?.mode === "paperclip" ? "paperclip"
+    : info?.mode === "direct" ? tx("direct mode") : null;
   badge.textContent = modeWord ?? "";
   badge.className = `badge ${fixture ? "fixture" : "live"}${modeWord === null ? " hidden" : ""}`;
   const account = accountLine();
@@ -575,9 +789,9 @@ function renderHeader() {
   const rejected = delivery !== null && delivery.status !== "verified";
   $("deliveryBanner").classList.toggle("hidden", !rejected);
   if (rejected) {
-    $("deliveryBanner").textContent = `The kit delivery failed its check (${delivery.reasonCode}). `
-      + "The connection and all changes are disabled. The kit files are not repaired automatically, and no other version "
-      + `is loaded: the accepted delivery ${delivery.releaseId} is required.`;
+    $("deliveryBanner").textContent = tx("The kit delivery failed its check ({reasonCode}). ", { reasonCode: delivery.reasonCode })
+      + tx("The connection and all changes are disabled. The kit files are not repaired automatically, and no other version ")
+      + tx("is loaded: the accepted delivery {releaseId} is required.", { releaseId: delivery.releaseId });
   }
 
   // The connection is an indicator: a dot and one word; details are in the tooltip and in “Readiness”.
@@ -585,46 +799,54 @@ function renderHeader() {
   const connection = atlasState.connection;
   if (connection && connection.available) {
     const remaining = Date.parse(connection.validUntilUtc) - Date.now();
-    chip.textContent = "connected";
-    chip.title = [`Controller Gateway ${connection.projectId}, generation ${connection.generation}.`,
-      remaining > 0 ? `The connection key is valid for ${Math.floor(remaining / 60000)} more min and renews itself.`
-        : "The connection key has expired: refresh."].join("\n");
+    chip.textContent = tx("connected");
+    chip.title = [tx("Controller Gateway {projectId}, generation {generation}.", { projectId: connection.projectId, generation: connection.generation }),
+      remaining > 0 ? tx("The connection key is valid for {value} more min and renews itself.", { value: Math.floor(remaining / 60000) })
+        : tx("The connection key has expired: refresh.")].join("\n");
     chip.className = "chip status ok";
   } else {
     const runtime = atlasState.runtime || {};
     const reason = (connection && connection.error && (connection.error.reasonCode || connection.error.code))
-      || runtime.reasonCode || runtime.lifecycle || "unavailable";
+      || runtime.reasonCode || runtime.lifecycle || tx("unavailable");
     // A wrong controller setup is described in words, not only by a code.
     const configuration = describeConfiguration(info?.configuration ?? null);
     const misconfigured = configuration !== null && configuration.tone !== "note";
-    chip.textContent = misconfigured ? "not configured" : "unavailable";
+    chip.textContent = misconfigured ? tx("not configured") : tx("unavailable");
     chip.title = misconfigured ? [configuration.title, ...configuration.details].join("\n")
-      : `The controller Gateway is unavailable: ${reason}.`;
+      : tx("The controller Gateway is unavailable: {reason}.", { reason });
     chip.className = "chip status bad";
   }
 
   $("kitLine").textContent = !info ? ""
     : info.kit
-      ? `release ${info.kit.releaseId} · kit ${info.kit.version} · client ${info.kit.clientVersion} · contract ${info.kit.contractVersion}`
-      : `kit not accepted: ${info.delivery?.reasonCode ?? "unknown"}`;
+      ? tx("release {releaseId} · kit {version} · client {clientVersion} · contract {contractVersion}", { releaseId: info.kit.releaseId, version: info.kit.version, clientVersion: info.kit.clientVersion, contractVersion: info.kit.contractVersion })
+      : tx("kit not accepted: {value}", { value: info.delivery?.reasonCode ?? tx("app::unknown") });
   const available = atlasState.operations.filter((entry) => entry.status === "available").length;
   $("operationsLine").textContent = atlasState.operations.length > 0
-    ? `operations: ${available}/${atlasState.operations.length}` : "";
+    ? tx("operations: {available}/{length}", { available, length: atlasState.operations.length }) : "";
 }
 
 const LEVEL_TITLES = Object.freeze({
-  4: "04 / STRATEGIC WORLD",
-  3: "03 / PROJECT TERRITORY",
-  2: "02 / FEATURE QUARTER",
-  1: "01 / WORKSPACE",
+  4: tx("04 / STRATEGIC WORLD"),
+  3: tx("03 / PROJECT TERRITORY"),
+  2: tx("02 / FEATURE QUARTER"),
+  1: tx("01 / WORKSPACE"),
 });
 
 const LEVEL_HINTS = Object.freeze({
-  4: "Wheel — zoom · drag the background — pan · double-click a project — go inside.",
-  3: "Move quarters around: the project grows to fit them. The HQ in the top left corner holds the goal, team and decisions; quarters do not overlap it.",
-  2: "Move agents around inside the quarter. Double-click an agent — workspace.",
-  1: "The agent workspace is open over the map. Esc — back to the map.",
+  4: tx("Wheel — zoom · drag the background — pan · double-click a project — go inside. ")
+    + tx("The World HQ is left of the projects — the world lead and its tasks."),
+  3: tx("Move quarters around: the project grows to fit them. The HQ in the top left corner holds the goal, team and decisions; quarters do not overlap it."),
+  2: tx("Move agents around inside the quarter. Double-click an agent — workspace."),
+  1: tx("The agent workspace is open over the map. Esc — back to the map."),
 });
+
+/** The world without the service world project: it is not counted as a project in the counters and the navigator. */
+function projectsOnly(world) {
+  if (world === null || world === undefined || world.status !== "ready") return world;
+  return { ...world, projection: { ...world.projection,
+    projects: world.projection.projects.filter((project) => project.projectId !== WORLD_PROJECT) } };
+}
 
 function atlasOnHudChanged() {
   const level = sceneLevel();
@@ -636,12 +858,12 @@ function atlasOnHudChanged() {
     : project.quarters.find((item) => item.quarterId === scope.quarterId) ?? null;
 
   $("scopeEyebrow").textContent = LEVEL_TITLES[level] ?? LEVEL_TITLES[4];
-  $("scopeName").textContent = level >= 4 ? "Project map"
-    : level === 3 ? (project?.projectId ?? "No project selected")
-      : (quarter?.quarterId ?? project?.projectId ?? "No quarter selected");
+  $("scopeName").textContent = level >= 4 ? tx("Project map")
+    : level === 3 ? (project?.projectId ?? tx("No project selected"))
+      : (quarter?.quarterId ?? project?.projectId ?? tx("No quarter selected"));
 
   $("scopeMeta").textContent = level >= 4
-    ? worldCountLine(world)
+    ? worldCountLine(projectsOnly(world))
     : level === 3 && project !== null
       ? `${countWords(project.quarters.length, QUARTER_FORMS)} · ${countWords(project.quarters.reduce((sum, q) => sum + q.agents.length, 0), AGENT_FORMS)}`
       : quarter !== null ? countWords(quarter.agents.length, AGENT_FORMS) : "";
@@ -653,10 +875,10 @@ function atlasOnHudChanged() {
   // The minimap title names the place the person has entered: the project name must not
   // disappear from it when going inside.
   $("minimapScope").textContent = level >= 4 || project === null
-    ? "WORLD" : (quarter !== null && level <= 2 ? `${project.projectId} / ${quarter.quarterId}` : project.projectId);
-  $("mapHint").innerHTML = "Wheel or + and − — zoom · drag the background or Space — pan · right-click — actions<br>"
-    + "1–4 — levels · F — fit the selection · corner of the selected quarter, HQ or agent — size · "
-    + "Ctrl+C / Ctrl+V — blueprint · Esc — back";
+    ? tx("WORLD") : (quarter !== null && level <= 2 ? `${project.projectId} / ${quarter.quarterId}` : project.projectId);
+  $("mapHint").innerHTML = tx("Wheel or + and − — zoom · drag the background or Space — pan · right-click — actions<br>")
+    + tx("1–4 — levels · F — fit the selection · Backspace — World HQ · corner of the selected quarter, HQ or agent — size · ")
+    + tx("Ctrl+C / Ctrl+V — blueprint · Esc — back");
   renderCrumbs(level, project, quarter);
   renderNavigator();
 }
@@ -669,7 +891,7 @@ function renderCrumbs(level, project, quarter) {
     button.addEventListener("click", handler);
     return button;
   };
-  bar.append(crumb("World", () => goLevel(LEVEL.world), level >= 4));
+  bar.append(crumb(tx("World"), () => goLevel(LEVEL.world), level >= 4));
   if (project !== null) {
     bar.append(crumb(project.projectId, () => goProject(project.projectId), level === 3));
   }
@@ -688,7 +910,7 @@ function atlasOnHistoryChanged() {
   if (history === null) return;
   $("mapUndo").disabled = !history.canUndo;
   $("mapRedo").disabled = !history.canRedo;
-  $("mapUndo").title = history.undoLabel ?? "Nothing to undo";
+  $("mapUndo").title = history.undoLabel ?? tx("Nothing to undo");
 }
 
 // --- world navigator --------------------------------------------------------------
@@ -696,20 +918,35 @@ function atlasOnHistoryChanged() {
 function renderNavigator() {
   const list = $("worldNavList");
   if (list === null) return;
-  const world = atlasState.world !== null && atlasState.world.status === "ready" ? atlasState.world : null;
-  const attention = aggregateAttention(world);
+  const raw = atlasState.world !== null && atlasState.world.status === "ready" ? atlasState.world : null;
+  const world = projectsOnly(raw);
+  const attention = aggregateAttention(raw);
   const scope = sceneScope();
   list.replaceChildren();
   if (world === null) {
-    list.append(el("div", "empty", "World not read."));
+    list.append(el("div", "empty", tx("World not read.")));
     $("worldNavSummary").textContent = "";
     return;
   }
+  // World HQ first, above the projects: the main base is always at hand.
+  const lead = worldLeadOf();
+  const hq = el("button", `nav-project world${scene.selection?.kind === "world" ? " active" : ""}`);
+  hq.append(el("span", "nav-symbol", "★"));
+  hq.append(el("span", "nav-name", tx("World HQ")));
+  const leadSignal = lead === null ? undefined : attention.byAgent.get(lead.agentId);
+  if (leadSignal !== undefined) hq.append(el("span", `nav-badge severity-${leadSignal.severity}`, `! ${leadSignal.count}`));
+  else hq.append(el("span", "nav-sub", lead === null ? tx("no lead") : leadStateWords(lead)));
+  hq.title = tx("World HQ — Backspace");
+  hq.addEventListener("click", () => {
+    selectNode(worldHqNode(), { focus: true });
+    if (leadSignal !== undefined) atlasOpenAttention({ projectId: lead.projectId, quarterId: lead.quarterId, agentId: lead.agentId });
+  });
+  list.append(hq);
   const agents = world.projection.projects
     .reduce((sum, item) => sum + item.quarters.reduce((inner, q) => inner + q.agents.length, 0), 0);
   $("worldNavSummary").textContent = `${countWords(world.projection.projects.length, PROJECT_FORMS)} · ${countWords(agents, AGENT_FORMS)}`;
   if (world.projection.projects.length === 0) {
-    list.append(el("div", "empty", "No projects. Right-click the map → create a project."));
+    list.append(el("div", "empty", tx("No projects. Right-click the map → create a project.")));
     return;
   }
   for (const project of world.projection.projects) {
@@ -721,7 +958,11 @@ function renderNavigator() {
     const signal = attention.byProject.get(project.projectId);
     if (signal === undefined) button.append(el("span", "nav-sub", "—"));
     else button.append(el("span", `nav-badge severity-${signal.severity}`, `! ${signal.count}`));
-    button.addEventListener("click", () => goProject(project.projectId));
+    button.addEventListener("click", () => {
+      goProject(project.projectId);
+      // A project where something waits for the person also opens its list at once.
+      if (signal !== undefined) atlasOpenAttention({ projectId: project.projectId, quarterId: null, agentId: null });
+    });
     list.append(button);
   }
 }
@@ -730,9 +971,9 @@ function renderNavigator() {
 
 /** One line about what exactly the person is expected to do. */
 const TURN_FINISHED_WORDS = Object.freeze({
-  completed: "turn finished — the answer is waiting for you",
-  interrupted: "turn stopped — waiting for you",
-  failed: "turn failed",
+  completed: tx("turn finished — the answer is waiting for you"),
+  interrupted: tx("turn stopped — waiting for you"),
+  failed: tx("turn failed"),
 });
 
 /**
@@ -751,23 +992,28 @@ function atlasMarkTurnSeen(agentId) {
   requestRender();
 }
 
-const attentionLine = (item) => (item.kind === "interaction"
-  ? `question: ${item.title || item.interactionId}${item.state ? ` (${item.state})` : ""}`
-  : item.kind === "turn-finished" ? TURN_FINISHED_WORDS[item.outcome] ?? "turn finished"
-  : item.kind === "asks-you" ? `waiting for your answer: “${item.question}”`
-  : item.kind === "problem" ? `problem: ${item.problemCode}`
-    : item.kind === "recovery" ? `recovery needed: ${item.count} (according to the catalog)`
-      : item.kind === "captured-pending"
-        ? `catalog: questions ${item.questions}, approvals ${item.approvals}; pending ones read: ${item.visible}`
-        : `state: ${item.field} — ${item.value}`);
-
-const ATTENTION_KIND_WORDS = Object.freeze({
-  interaction: "question", problem: "problem", state: "state",
-  recovery: "recovery", "captured-pending": "awaiting answer", "turn-finished": "answer",
-  "asks-you": "question in the answer",
+/** A problem code in words where the person can act on it; any other code as it is. */
+const PROBLEM_WORDS = Object.freeze({
+  model_unreachable: tx("the agent's model does not answer — its server is off or unreachable; clears after the first successful turn"),
+  claude_signed_out: tx("Claude signed out of the account — sign in again (claude-login.bat in the instance folder) and press \"Refresh\"; ")
+    + tx("clears after the first successful turn"),
 });
+const problemWords = (code) => PROBLEM_WORDS[code] ?? code;
+
+const attentionLine = (item) => (item.kind === "interaction"
+  ? tx("question: {interactionId}{value}", { interactionId: item.title || item.interactionId, value: item.state ? ` (${item.state})` : "" })
+  : item.kind === "turn-finished" ? TURN_FINISHED_WORDS[item.outcome] ?? tx("turn finished")
+  : item.kind === "asks-you" ? tx("waiting for your answer: “{question}”", { question: item.question })
+  : item.kind === "refused" ? tx("action refused{value} — the agent waits for what to do", { value: item.count > 1 ? ` (${item.count})` : "" })
+  : item.kind === "problem" ? tx("problem: {value}", { value: problemWords(item.problemCode) })
+    : item.kind === "recovery" ? tx("recovery needed: {count} (according to the catalog)", { count: item.count })
+      : item.kind === "captured-pending"
+        ? tx("catalog: questions {questions}, approvals {approvals}; pending ones read: {visible}", { questions: item.questions, approvals: item.approvals, visible: item.visible })
+        : tx("state: {field} — {value}", { field: item.field, value: item.value }));
+
 const attentionSeverity = (item) => (item.kind === "problem" ? 3
-  : item.kind === "state" || item.kind === "recovery" ? 2 : 1);
+  : item.kind === "state" || item.kind === "recovery" || item.kind === "refused"
+    || (item.kind === "turn-finished" && item.outcome === "failed") ? 2 : 1);
 
 /**
  * Attention signals that belong to a scope: an agent, a quarter or a whole
@@ -787,9 +1033,9 @@ function attentionItemsFor(scope) {
   return items;
 }
 
-const scopeTitle = (scope) => (scope === null || scope === undefined ? "across all projects"
-  : scope.agentId ? `agent ${scope.agentId}`
-    : scope.quarterId ? `quarter ${scope.quarterId}` : `project ${scope.projectId}`);
+const scopeTitle = (scope) => (scope === null || scope === undefined ? tx("across all projects")
+  : scope.agentId ? tx("agent {agentId}", { agentId: scope.agentId })
+    : scope.quarterId ? tx("quarter {quarterId}", { quarterId: scope.quarterId }) : tx("project {projectId}", { projectId: scope.projectId }));
 
 /** Open the attention list, narrowed to what was clicked on the map. */
 function atlasOpenAttention(scope = null) {
@@ -818,76 +1064,99 @@ function renderAttention() {
   counter.classList.toggle("calm", items.length === 0);
   $("attentionToggle").classList.toggle("quiet", items.length === 0);
   $("attentionTitle").textContent = items.length > 0
-    ? `Need attention · ${items.length}` : "No attention requests";
+    ? tx("Need attention · {length}", { length: items.length }) : tx("No attention requests");
   $("attentionSubtitle").textContent = items.length > 0
-    ? "Open the list for all projects" : "Open the list and check the conditions";
+    ? tx("Open the list for all projects") : tx("Open the list and check the conditions");
   $("attentionSummary").textContent = scope === null
-    ? `${items.length} total` : `${shown.length} of ${items.length}`;
+    ? tx("{length} total", { length: items.length }) : tx("{length} of {length2}", { length: shown.length, length2: items.length });
 
   const incomplete = [];
   if (ready) {
-    if (world.projection.truncated) incomplete.push("memory catalog truncated");
+    if (world.projection.truncated) incomplete.push(tx("memory catalog truncated"));
     if (world.interactions && world.interactions.status === "partial") {
-      incomplete.push("some questions not read");
+      incomplete.push(tx("some questions not read"));
     }
-  } else if (world !== null) incomplete.push("world not read");
-  if (incomplete.length > 0) showNotice(`Data incomplete: ${incomplete.join("; ")}`); else hideNotice();
+  } else if (world !== null) incomplete.push(tx("world not read"));
+  paintDataNotice(incomplete);
 
   list.replaceChildren();
   if (scope !== null) {
     // The list is narrowed by a click on a map badge — this is visible, and there is a way out of it.
     const row = el("div", "attention-scope");
-    row.append(el("span", null, `showing: ${scopeTitle(scope)}`));
-    const all = el("button", "small", "All projects");
+    row.append(el("span", null, tx("showing: {value}", { value: scopeTitle(scope) })));
+    const all = el("button", "small", tx("All projects"));
     all.addEventListener("click", () => atlasOpenAttention(null));
     row.append(all);
     list.append(row);
   }
   if (shown.length === 0) {
     list.append(el("div", "empty", scope === null
-      ? "Nothing observed that needs a person."
-      : "Nothing here is waiting for a person. For other scopes — “All projects”."));
+      ? tx("Nothing observed that needs a person.")
+      : tx("Nothing here is waiting for a person. For other scopes — “All projects”.")));
     return;
   }
-  const groups = new Map();
-  for (const item of shown) {
-    // The project lead lives in the HQ's service quarter: the group is named that way.
-    const key = item.quarterId === HEADQUARTERS_QUARTER ? `${item.projectId} / HQ`
-      : `${item.projectId} / ${item.quarterId}`;
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(item);
+  // In brief: one line per agent - project · quarter · agent, what happened, and the chat.
+  for (const entry of attentionByAgent(shown)) {
+    const box = el("div", `attention-item attention-brief severity-${entry.severity}`);
+    box.append(el("div", "attention-kind", attentionPlace(entry.first)));
+    box.append(el("div", null, entry.first.agentId));
+    box.append(el("div", "muted", entry.what));
+    const open = el("button", "small primary", tx("Open chat"));
+    open.addEventListener("click", () => atlasOpenAttentionChat(entry.first));
+    const actions = el("div", "actions");
+    actions.append(open);
+    box.append(actions);
+    list.append(box);
   }
-  for (const [key, group] of groups) {
-    list.append(el("div", "attention-group", `${key} · ${group.length}`));
-    for (const item of group) {
-      const box = el("div", `attention-item severity-${attentionSeverity(item)}`);
-      box.append(el("div", "attention-kind", ATTENTION_KIND_WORDS[item.kind] ?? item.kind));
-      box.append(el("div", null, item.agentId));
-      box.append(el("div", "muted", attentionLine(item)));
-      if (item.kind === "interaction" && item.deadlineAtUtc) {
-        box.append(el("div", "muted", `due ${item.deadlineAtUtc}`));
-      }
-      // A row does not take you off the map by itself: going there is a separate decision of the person.
-      const node = {
-        kind: "agent", projectId: item.projectId, quarterId: item.quarterId, agentId: item.agentId,
-      };
-      // A lead's chat opens where the camera is; on the map the project
-      // lead is the HQ building.
-      const role = findNode(node).agent?.settings?.role ?? null;
-      const lead = role === "project-lead" || role === "quarter-lead";
-      const onMap = item.quarterId === HEADQUARTERS_QUARTER
-        ? { kind: "hq", projectId: item.projectId, quarterId: null, agentId: null } : node;
-      const actions = el("div", "actions");
-      const work = el("button", "small primary", item.kind === "turn-finished" || item.kind === "asks-you"
-        ? "Open answer" : "Workspace");
-      work.addEventListener("click", () => atlasOpenWorkspace(node, lead ? { camera: false } : undefined));
-      const show = el("button", "small", "Find on map");
-      show.addEventListener("click", () => selectNode(onMap, { focus: true }));
-      actions.append(work, show);
-      box.append(actions);
-      list.append(box);
-    }
+}
+
+// What happened - in two or three words (details are in the agent's chat).
+const ATTENTION_BRIEF = Object.freeze({
+  interaction: tx("waiting for your decision"), "captured-pending": tx("waiting for your decision"), "asks-you": tx("asked a question"),
+  refused: tx("action refused"), problem: tx("problem"), state: tx("failed"), recovery: tx("recovery needed"),
+});
+
+/** the signal's "project · quarter"; leads are in the HQ. */
+const attentionPlace = (item) => (item.projectId === WORLD_PROJECT ? tx("World HQ")
+  : item.quarterId === HEADQUARTERS_QUARTER ? tx("{projectId} · HQ", { projectId: item.projectId })
+    : `${item.projectId} · ${item.quarterId}`);
+
+/** The signals, gathered by agent, in the order they first appeared. */
+function attentionByAgent(items) {
+  const byAgent = new Map();
+  for (const item of items) {
+    const entry = byAgent.get(item.agentId) ?? { first: item, severity: 0, words: [] };
+    entry.severity = Math.max(entry.severity, attentionSeverity(item));
+    const word = item.kind === "turn-finished" ? TURN_FINISHED_WORDS[item.outcome] ?? tx("turn finished")
+      : ATTENTION_BRIEF[item.kind] ?? item.kind;
+    if (!entry.words.includes(word)) entry.words.push(word);
+    byAgent.set(item.agentId, entry);
   }
+  return [...byAgent.values()].map((entry) => ({ ...entry, what: entry.words.join(", ") }));
+}
+
+/** Open the chat of the agent the signal is about. */
+function atlasOpenAttentionChat(item) {
+  const node = { kind: "agent", projectId: item.projectId, quarterId: item.quarterId, agentId: item.agentId };
+  // A lead's chat opens where the camera is: on the map a lead is the HQ building.
+  const role = findNode(node).agent?.settings?.role ?? null;
+  const lead = role === "project-lead" || role === "quarter-lead" || role === "coordinator";
+  if (atlasState.ui.attentionOpen) setPanel("attentionOpen", false);
+  atlasOpenWorkspace(node, lead ? { camera: false } : undefined);
+}
+
+/**
+ * Double-click on an attention badge. A “?” - one question waiting for the
+ * person - opens that agent's chat, where it is answered. A number or a “!” -
+ * problems, refusals, several signals - opens the list of what is behind the
+ * badge, even when it is one agent: the person sees the problems first.
+ */
+function atlasOpenAttentionTarget(scope) {
+  const items = attentionItemsFor(scope);
+  const agents = attentionByAgent(items);
+  const question = items.length === 1 && attentionSeverity(items[0]) === 1;
+  if (agents.length === 1 && question) atlasOpenAttentionChat(agents[0].first);
+  else atlasOpenAttention(scope);
 }
 
 function atlasOnTrayChanged(tray) {
@@ -897,13 +1166,13 @@ function atlasOnTrayChanged(tray) {
   if (list === null) return;
   list.replaceChildren();
   if (tray.length === 0) {
-    list.append(el("div", "empty", "Empty: everything the backend returned is placed on the map."));
+    list.append(el("div", "empty", tx("Empty: everything the backend returned is placed on the map.")));
     return;
   }
   for (const item of tray) {
     const row = el("div", "tray-item");
     row.append(el("div", "tray-kind",
-      item.kind === "agent" ? "agent" : item.kind === "quarter" ? "quarter" : "project"));
+      item.kind === "agent" ? tx("agent") : item.kind === "quarter" ? tx("quarter") : tx("project")));
     row.append(el("div", null, item.id));
     row.append(el("div", "muted", item.reason));
     list.append(row);
@@ -942,9 +1211,15 @@ function atlasOnSelection(node) {
   panel.classList.remove("hidden");
   const head = el("div", "float-head");
   const heading = el("div");
-  heading.append(el("div", "kind", node.kind === "agent" ? "agent"
-    : node.kind === "quarter" ? "quarter" : "project"));
-  heading.append(el("h3", null, node.agentId ?? node.quarterId ?? node.projectId));
+  heading.append(el("div", "kind", node.kind === "agent" ? tx("agent")
+    : node.kind === "quarter" ? tx("quarter") : node.kind === "world" ? tx("app::World HQ") : tx("project")));
+  // The name the person gave (the ID under it, small, where they differ).
+  const kind = node.kind === "agent" ? "agent" : node.kind === "quarter" ? "quarter" : "project";
+  const objectId = node.agentId ?? node.quarterId ?? node.projectId;
+  heading.append(el("h3", null, node.kind === "world" ? tx("World") : displayName(kind, node.projectId, objectId)));
+  if (node.kind !== "world" && displayName(kind, node.projectId, objectId) !== objectId) {
+    heading.append(el("div", "muted", tx("ID {objectId}", { objectId })));
+  }
   head.append(heading);
   head.append(el("div", "spacer"));
   const close = el("button", "icon-btn flat", "×");
@@ -954,10 +1229,11 @@ function atlasOnSelection(node) {
   const body = el("div");
   panel.append(body);
   const { project, quarter, agent } = findNode(node);
-  if (node.kind === "project" && project !== null) renderProjectInspector(body, project);
+  if (node.kind === "world") renderWorldInspector(body);
+  else if (node.kind === "project" && project !== null) renderProjectInspector(body, project);
   else if (node.kind === "quarter" && quarter !== null) renderQuarterInspector(body, project, quarter);
   else if (node.kind === "agent" && agent !== null) renderAgentInspector(body, project, quarter, agent);
-  else body.append(noteBlock("error", "This object is no longer in the catalog."));
+  else body.append(noteBlock("error", tx("This object is no longer in the catalog.")));
   renderAnnotations(body, node);
 }
 
@@ -968,147 +1244,150 @@ function updateSelectionBar(node) {
     return;
   }
   bar.classList.remove("hidden");
-  $("selectionCount").textContent = node.agentId ?? node.quarterId ?? node.projectId;
+  $("selectionCount").textContent = node.kind === "world" ? tx("World HQ") : node.agentId ?? node.quarterId ?? node.projectId;
 }
 
 function renderAnnotations(container, node) {
-  container.append(el("div", "section-title", "Your annotations"));
+  container.append(el("div", "section-title", tx("Your annotations")));
   const current = sceneAnnotationOf(node);
   const role = el("input");
   role.value = current.role;
   role.maxLength = 64;
-  role.placeholder = "Role";
+  role.placeholder = tx("Role");
   role.addEventListener("change", () => sceneSetAnnotation(node, { role: role.value }));
   const note = el("textarea");
   note.rows = 3;
   note.value = current.note;
-  note.placeholder = "Note";
+  note.placeholder = tx("Note");
   note.addEventListener("change", () => sceneSetAnnotation(node, { note: note.value }));
   container.append(role, note);
   container.append(noteBlock("local",
-    "Role, note, position, symbol and color are your local data. The backend does not know them."));
+    tx("Role, note, position, symbol and color are your local data. The backend does not know them.")));
 }
 
 function renderProjectInspector(body, project) {
-  body.append(infoRow("memory, rev.", project.memory.revision));
-  body.append(infoRow("quarters", project.quarters.length));
-  body.append(infoRow("agents", project.quarters.reduce((sum, q) => sum + q.agents.length, 0)));
+  body.append(infoRow(tx("memory, rev."), project.memory.revision));
+  body.append(infoRow(tx("quarters"), project.quarters.length));
+  body.append(infoRow(tx("agents"), project.quarters.reduce((sum, q) => sum + q.agents.length, 0)));
 
   const actions = el("div", "actions");
-  const hq = el("button", "small primary", "Project HQ");
+  const hq = el("button", "small primary", tx("Project HQ"));
   hq.addEventListener("click", () => atlasOpenHeadquarters(project.projectId));
   actions.append(hq);
-  actions.append(actionButton("Memory", "query.memory.scope.read",
-    () => openMemorySheet(project.memory.scopeId, `Project memory · ${project.projectId}`)));
-  actions.append(actionButton("Create quarter…", "mutation.memory.scope.create",
+  actions.append(actionButton(tx("Memory"), "query.memory.scope.read",
+    () => openMemorySheet(project.memory.scopeId, tx("Project memory · {projectId}", { projectId: project.projectId }))));
+  actions.append(actionButton(tx("Create quarter…"), "mutation.memory.scope.create",
     () => openCreateScopeSheet("quarter", project.projectId)));
   body.append(actions);
   projectFolderSection(body, project.projectId);
 
-  body.append(el("div", "section-title", "Appearance"));
+  body.append(el("div", "section-title", tx("Appearance")));
   const symbol = el("input");
   symbol.maxLength = 3;
-  symbol.placeholder = "Symbol, up to 3 characters";
+  symbol.placeholder = tx("Symbol, up to 3 characters");
   symbol.value = sceneGetLayout()?.projects[project.projectId]?.symbol ?? "";
   symbol.addEventListener("change", () => {
     sceneSetAppearance(project.projectId, { symbol: symbol.value });
     renderNavigator();
   });
   body.append(symbol);
-  const compact = el("button", "small", "Fit bounds");
+  const compact = el("button", "small", tx("Fit bounds"));
   compact.addEventListener("click", () => sceneCompactProject(project.projectId));
   body.append(compact);
 }
 
 function renderQuarterInspector(body, project, quarter) {
-  body.append(infoRow("project", project.projectId));
-  body.append(infoRow("memory, rev.", quarter.memory.revision));
-  body.append(infoRow("agents", quarter.agents.length));
+  body.append(infoRow(tx("project"), project.projectId));
+  body.append(infoRow(tx("memory, rev."), quarter.memory.revision));
+  body.append(infoRow(tx("agents"), quarter.agents.length));
   const actions = el("div", "actions");
-  actions.append(actionButton("Memory", "query.memory.scope.read",
-    () => openMemorySheet(quarter.memory.scopeId, `Quarter memory · ${quarter.quarterId}`)));
-  actions.append(actionButton("Create agent…", "mutation.memory.agent.create",
+  actions.append(actionButton(tx("Memory"), "query.memory.scope.read",
+    () => openMemorySheet(quarter.memory.scopeId, tx("Quarter memory · {quarterId}", { quarterId: quarter.quarterId }))));
+  actions.append(actionButton(tx("Create agent…"), "mutation.memory.agent.create",
     () => openCreateAgentSheet(project.projectId, quarter.quarterId), { primary: true }));
   body.append(actions);
 }
 
 function renderAgentInspector(body, project, quarter, agent) {
-  body.append(infoRow("state", agent.state));
-  body.append(infoRow("memory content", agent.contentState));
-  body.append(infoRow("delivery", agent.deliveryState));
-  body.append(infoRow("problem code", agent.problemCode));
-  body.append(infoRow("current operation", agent.currentOperationId));
-  body.append(infoRow("task progress", agent.taskProgress));
+  if (agent.settings?.role === "coordinator") body.append(infoRow(tx("role"), tx("world lead")));
+  body.append(infoRow(tx("state"), agent.state));
+  body.append(infoRow(tx("memory content"), agent.contentState));
+  body.append(infoRow(tx("delivery"), agent.deliveryState));
+  body.append(infoRow(tx("problem code"), agent.problemCode));
+  body.append(infoRow(tx("current operation"), agent.currentOperationId));
+  body.append(infoRow(tx("task progress"), agent.taskProgress));
   body.append(noteBlock("note",
-    "The backend does not report progress or the attention flag — the fields stay empty until an exact join exists."));
+    tx("The backend does not report progress or the attention flag — the fields stay empty until an exact join exists.")));
 
   const result = el("div");
   const actions = el("div", "actions");
   const node = {
     kind: "agent", projectId: project.projectId, quarterId: quarter.quarterId, agentId: agent.agentId,
   };
-  const open = el("button", "small primary", "Workspace");
+  const open = el("button", "small primary", tx("Workspace"));
   open.addEventListener("click", () => atlasOpenWorkspace(node));
   actions.append(open);
-  const skills = el("button", "small", `Skills · ${sceneSkillsOf(node).length}`);
+  const skills = el("button", "small", tx("Skills · {length}", { length: sceneSkillsOf(node).length }));
   skills.addEventListener("click", () => atlasOpenSkills(node));
   actions.append(skills);
 
-  const stop = actionButton("Stop turn", "mutation.agent-control.interrupt", async () => {
+  const stop = actionButton(tx("Stop turn"), "mutation.agent-control.interrupt", async () => {
     const response = await window.atlas.interrupt({
       agentId: agent.agentId, operationId: agent.currentOperationId,
     });
-    const shown = outcomeMessage(response, "Stop requested: accepted does not mean finished.");
+    const shown = outcomeMessage(response, tx("Stop requested: accepted does not mean finished."));
     result.replaceChildren(noteBlock(shown.kind === "error" ? "error" : "note", shown.text));
     await refresh();
   });
   if (agent.currentOperationId === null) {
     stop.disabled = true;
-    stop.title = "The agent has no current operation";
+    stop.title = tx("The agent has no current operation");
   }
   actions.append(stop);
 
-  const close = actionButton("Archive agent", "mutation.memory.agent.close", async () => {
+  const close = actionButton(tx("Archive agent"), "mutation.memory.agent.close", async () => {
     const response = await window.atlas.closeAgent({ agentId: agent.agentId });
-    const shown = outcomeMessage(response, "The agent is archived: its conversation stays available for reading.");
+    const shown = outcomeMessage(response, tx("The agent is archived: its conversation stays available for reading."));
     result.replaceChildren(noteBlock(shown.kind === "error" ? "error" : "note", shown.text));
     await refresh();
     refreshArchiveCount();
   });
   if (agent.state === "archived") {
     close.disabled = true;
-    close.title = "Already archived";
+    close.title = tx("Already archived");
   }
   actions.append(close);
   body.append(actions, result);
+  // Whether the agent takes controller tasks is a permanent state, always visible here.
+  deskAgentSection(body, agent);
 }
 
 // --- readiness ----------------------------------------------------------------------
 
 const OPERATION_TITLES = Object.freeze({
-  "query.memory.scopes.list": "Memory list",
-  "query.memory.scope.read": "Memory read",
-  "query.memory.agents.list": "Agent list",
-  "query.memory.agent.read": "Agent details",
-  "query.memory.agent.context": "Agent memory",
-  "query.memory.agent.archive": "Archived conversation",
-  "query.agent-control.interactions": "Agent questions",
-  "query.agent-conversation.resolve": "Agent-to-conversation binding",
-  "query.agent-conversation.read": "Live conversation (read)",
-  "query.project-workspace.list": "Project folders",
-  "query.project-workspace.read": "Project files (read)",
-  "query.agent-artifacts.list": "Agent artifacts",
-  "query.agent-artifacts.read": "Artifact read",
-  "query.agent-events.read": "Agent events",
-  "mutation.project-workspace.save": "Project file save",
-  "mutation.memory.project.copy": "Project copy with memory",
-  "receipt.memory.agent.send": "Send receipt",
-  "mutation.memory.scope.create": "Project and quarter creation",
-  "mutation.memory.agent.create": "Agent creation",
-  "mutation.memory.agent.send": "Sending to an agent",
-  "mutation.memory.agent.close": "Agent closing",
-  "approval.agent-control.respond": "Answer to a question",
-  "mutation.agent-control.interrupt": "Turn stop",
+  "query.memory.scopes.list": tx("Memory list"),
+  "query.memory.scope.read": tx("Memory read"),
+  "query.memory.agents.list": tx("Agent list"),
+  "query.memory.agent.read": tx("Agent details"),
+  "query.memory.agent.context": tx("Agent memory"),
+  "query.memory.agent.archive": tx("Archived conversation"),
+  "query.agent-control.interactions": tx("Agent questions"),
+  "query.agent-conversation.resolve": tx("Agent-to-conversation binding"),
+  "query.agent-conversation.read": tx("Live conversation (read)"),
+  "query.project-workspace.list": tx("Project folders"),
+  "query.project-workspace.read": tx("Project files (read)"),
+  "query.agent-artifacts.list": tx("Agent artifacts"),
+  "query.agent-artifacts.read": tx("Artifact read"),
+  "query.agent-events.read": tx("Agent events"),
+  "mutation.project-workspace.save": tx("Project file save"),
+  "mutation.memory.project.copy": tx("Project copy with memory"),
+  "receipt.memory.agent.send": tx("Send receipt"),
+  "mutation.memory.scope.create": tx("Project and quarter creation"),
+  "mutation.memory.agent.create": tx("Agent creation"),
+  "mutation.memory.agent.send": tx("Sending to an agent"),
+  "mutation.memory.agent.close": tx("Agent closing"),
+  "approval.agent-control.respond": tx("Answer to a question"),
+  "mutation.agent-control.interrupt": tx("Turn stop"),
 });
 
 /**
@@ -1117,12 +1396,12 @@ const OPERATION_TITLES = Object.freeze({
  * guesses neither the field name nor the stream identifier.
  */
 const EXPECTED_TITLES = Object.freeze({
-  "several-sources": ["Several agents at once",
-    "Right now the Gateway starts for one source, and switching to another needs a restart. Without this, live chat works for only one agent."],
-  "owner-chat": ["Write to the agent thread directly",
-    "The desktop already reads the live conversation by the agent binding, but still writes through agent memory."],
-  "provider-interactions": ["Provider questions and approvals",
-    "Provider requests, separate from the questions that now come through agent memory."],
+  "several-sources": [tx("Several agents at once"),
+    tx("Right now the Gateway starts for one source, and switching to another needs a restart. Without this, live chat works for only one agent.")],
+  "owner-chat": [tx("Write to the agent thread directly"),
+    tx("The desktop already reads the live conversation by the agent binding, but still writes through agent memory.")],
+  "provider-interactions": [tx("Provider questions and approvals"),
+    tx("Provider requests, separate from the questions that now come through agent memory.")],
 });
 
 async function loadExpected() {
@@ -1145,123 +1424,241 @@ function readinessRow(title, detail, state, stateLabel, hint = null) {
   return row;
 }
 
+// --- whether the agents' models answer (host/model-health.mjs) ---------------------------------------
+
+const MODEL_STATE_WORDS = Object.freeze({
+  answers: tx("answers"), "not-answering": tx("not answering"), error: tx("server error"), "not-checked": tx("not checked"),
+});
+const MODEL_HEALTH_EVERY_MS = 60_000;
+
+/** The last check of a model by its id, or null when it is not one the host checks. */
+function modelCheck(modelId) {
+  const models = atlasState.modelHealth?.state === "known" ? atlasState.modelHealth.models : [];
+  return models.find((item) => item.id === modelId) ?? null;
+}
+
+/** " — not answering" after a model's name in a list while its server is known to be off. */
+function modelStateSuffix(modelId) {
+  const state = modelCheck(modelId)?.state;
+  return state === "not-answering" || state === "error" ? ` — ${MODEL_STATE_WORDS[state]}` : "";
+}
+
+/** The model of an agent whose server is known not to answer now, or null. */
+function modelDown(agent) {
+  const check = agent?.profile?.model ? modelCheck(agent.profile.model) : null;
+  return check !== null && (check.state === "not-answering" || check.state === "error") ? check : null;
+}
+
+/** The line under an open chat's field: the agent's model does not answer now. */
+function atlasPaintModelNote() {
+  const note = $("chatModelNote");
+  if (note === null) return;
+  const down = modelDown(agentOf());
+  note.classList.toggle("bad", down !== null);
+  note.textContent = down === null ? "" : tx("The model {name} is not answering now (checked at {time}): a message may end as \"the model does not answer\".",
+    { name: down.name, time: clockOf(down.checkedAtUtc) });
+}
+
+const clockOf = (atUtc) => (atUtc ? new Date(atUtc).toLocaleTimeString(dateLocale(), { hour: "2-digit", minute: "2-digit" }) : "?");
+
+async function refreshModelHealth({ force = false } = {}) {
+  const answer = typeof window.atlas.modelHealth === "function" ? await window.atlas.modelHealth({ force }) : null;
+  atlasState.modelHealth = answer?.ok ? answer.data : null;
+  if (!$("readinessPanel").classList.contains("hidden")) renderReadiness();
+  atlasPaintModelNote();
+}
+
+/** "Readiness" → "Models": each checked model server, its state and when it was asked; "Check now". */
+function modelHealthRows(body) {
+  const health = atlasState.modelHealth;
+  if (health?.state !== "known" || health.models.length === 0) return;
+  body.append(el("div", "section-title", tx("Models")));
+  for (const model of health.models) {
+    const detail = model.state === "not-checked"
+      ? tx("No address to check: give this model \"check\" in acp-provider.json.")
+      : tx("{address} · checked at {time}", { address: model.address ?? "?", time: clockOf(model.checkedAtUtc) })
+        + (model.httpStatus === null ? "" : ` · HTTP ${model.httpStatus}`);
+    body.append(readinessRow(model.name, detail, model.state === "answers" ? "ok" : model.state === "not-checked" ? "wait" : "bad",
+      MODEL_STATE_WORDS[model.state] ?? model.state));
+  }
+  const again = el("button", "small", tx("Check now"));
+  again.id = "modelHealthCheck";
+  again.addEventListener("click", () => refreshModelHealth({ force: true }));
+  body.append(again);
+}
+
+/** A language's own name, capitalized ("English"; Russian in Russian), from the system, not from a list here. */
+function languageName(code) {
+  try {
+    const name = new Intl.DisplayNames([code], { type: "language" }).of(code);
+    return name.charAt(0).toLocaleUpperCase(code) + name.slice(1);
+  } catch {
+    return code;
+  }
+}
+
+/**
+ * The window's language (i18n-core.js): the languages with a locale file, the current one chosen. The choice is
+ * this PC's window setting (ui-state.json); the window then reloads in it, after writing what it has pending.
+ */
+function languageRow() {
+  const row = el("div", "ready-row");
+  const text = el("div", "ready-text");
+  text.append(el("div", "ready-title", tx("Language")),
+    el("div", "ready-detail", tx("The window's language on this PC. Another language is a locale file in frontend/locales.")));
+  const select = el("select", "language-select");
+  select.id = "languageSelect";
+  for (const code of window.atlas?.locale?.available ?? ["en"]) {
+    const option = el("option", null, languageName(code));
+    option.value = code;
+    option.selected = code === currentLanguage();
+    select.append(option);
+  }
+  select.addEventListener("change", async () => {
+    atlasState.ui.language = select.value;
+    await window.atlas.writeUiState(atlasState.ui);
+    await flushPending();
+    location.reload();
+  });
+  row.append(text, select);
+  return row;
+}
+
 const GATEWAY_STATE_WORDS = Object.freeze({
-  ready: "ready", expired: "session expired", stale: "descriptor stale", uncertain: "state unknown",
-  stopped: "stopped", starting: "starting", unknown: "not reported",
+  ready: tx("ready"), expired: tx("session expired"), stale: tx("descriptor stale"), uncertain: tx("state unknown"),
+  stopped: tx("stopped"), starting: tx("starting"), unknown: tx("app::not reported"),
 });
 
 function renderReadiness() {
   const body = $("readinessBody");
   if (body === null) return;
-  body.replaceChildren();
+  // The Gateway panel (gateway-panel.js) comes first and is not rebuilt: someone
+  // may be typing an API key in it.
+  for (const child of [...body.children]) if (child.id !== "gatewayPanel") child.remove();
   const connection = atlasState.connection;
   const connected = Boolean(connection && connection.available);
 
+  body.append(languageRow());
+  modelHealthRows(body);
+
   // The delivery is checked first: without an accepted kit nothing else starts.
-  body.append(el("div", "section-title", "Delivery"));
+  body.append(el("div", "section-title", tx("Delivery")));
   const delivery = atlasState.info?.delivery ?? null;
   if (delivery !== null && delivery.status === "verified") {
-    body.append(readinessRow(`Kit ${delivery.version} · release ${delivery.releaseId}`,
-      `manifest ${delivery.manifestSha256.slice(0, 16)}… · files checked: ${delivery.filesChecked}. `
-        + "These are only the kit files: the check says nothing about the Gateway readiness.",
-      "ok", "accepted"));
+    body.append(readinessRow(tx("Kit {version} · release {releaseId}", { version: delivery.version, releaseId: delivery.releaseId }),
+      tx("manifest {value}… · files checked: {filesChecked}. ", { value: delivery.manifestSha256.slice(0, 16), filesChecked: delivery.filesChecked })
+        + tx("These are only the kit files: the check says nothing about the Gateway readiness."),
+      "ok", tx("accepted")));
   } else {
-    body.append(readinessRow("Kit", delivery === null ? "Delivery state not read."
-      : "The connection and changes are disabled until a delivery is accepted.",
-    "bad", delivery === null ? "unknown" : delivery.reasonCode));
+    body.append(readinessRow(tx("Kit"), delivery === null ? tx("Delivery state not read.")
+      : tx("The connection and changes are disabled until a delivery is accepted."),
+    "bad", delivery === null ? tx("app::unknown") : delivery.reasonCode));
   }
 
-  body.append(el("div", "section-title", "Controller"));
+  body.append(el("div", "section-title", tx("Controller")));
   const configuration = describeConfiguration(atlasState.info?.configuration ?? null);
   if (configuration === null) {
-    body.append(readinessRow("Fixture", "The controller is not used: the data is synthetic.", "wait", "fixture"));
+    body.append(readinessRow(tx("Fixture"), tx("The controller is not used: the data is synthetic."), "wait", tx("fixture")));
   } else {
     body.append(readinessRow(configuration.title, configuration.details.join(" "),
-      configuration.tone === "note" ? "ok" : "bad", configuration.tone === "note" ? "configured" : "setup error"));
+      configuration.tone === "note" ? "ok" : "bad", configuration.tone === "note" ? tx("configured") : tx("setup error")));
+  }
+  // The instance's mode (plan 5.1): everything on this PC, or the world and projects between PCs.
+  const sync = atlasState.sync;
+  if (sync?.mode === "synced" && sync.configured === true) {
+    const pc = sync.machine?.title ?? sync.machine?.machineId ?? null;
+    body.append(readinessRow(tx("Mode: synced"),
+      tx("The world and projects move between PCs: \"Take\" and \"Hand over\" are in the \"World\" chip.") + " "
+        + (pc === null ? tx("This PC has no name: agents-factory machine set.") : tx("This PC — \"{pc}\".", { pc }))
+        + (sync.world?.held ? tx(" The world is here.") : tx(" The world is handed over.")),
+      pc === null ? "bad" : "ok", sync.world?.held ? tx("world here") : tx("world handed over")));
+  } else if (sync?.mode === "local") {
+    body.append(readinessRow(tx("Mode: local"),
+      tx("Everything on this PC, no repositories. To work on several PCs: agents-factory instance mode --set synced."), "ok", tx("local")));
   }
 
   if (atlasState.info?.mode === "direct") {
     body.append(el("div", "section-title", "Claude Code"));
     const account = claudeAccountOf();
     if (account === null || account.state === "checking") {
-      body.append(readinessRow("Account", "Claude Code is asked when the desktop opens, with no message and no usage.", "wait", "checking"));
+      body.append(readinessRow(tx("Account"), tx("Claude Code is asked when the desktop opens, with no message and no usage."), "wait", tx("checking")));
     } else if (account.state === "signed-out") {
-      body.append(readinessRow("Account: not signed in",
-        "Claude Code on this computer is not signed in to an account: the agents cannot work. Sign in from a terminal: claude auth login — then click “Refresh”.",
-        "bad", "not signed in"));
+      body.append(readinessRow(tx("Account: not signed in"),
+        tx("Claude Code on this computer is not signed in to an account: the agents cannot work. Sign in from a terminal: claude auth login — then click “Refresh”."),
+        "bad", tx("not signed in")));
     } else if (account.state === "known") {
       const byKey = account.authMethod !== null && /api.?key/iu.test(account.authMethod);
-      body.append(readinessRow(`Account: ${account.email ?? "no email"}`,
-        [account.organization === null ? null : `organization ${account.organization}`,
-          account.subscriptionType === null ? null : `subscription ${account.subscriptionType}`,
-          byKey ? `billed by API key (${account.authMethod})` : `sign-in: ${account.authMethod ?? "Claude account"}`]
+      body.append(readinessRow(tx("Account: {value}", { value: account.email ?? tx("no email") }),
+        [account.organization === null ? null : tx("organization {organization}", { organization: account.organization }),
+          account.subscriptionType === null ? null : tx("subscription {subscriptionType}", { subscriptionType: account.subscriptionType }),
+          byKey ? tx("billed by API key ({authMethod})", { authMethod: account.authMethod }) : tx("sign-in: {value}", { value: account.authMethod ?? tx("app::Claude account") })]
           .filter((part) => part !== null).join(" · ")
-          + ". The agents work under it and use up its limits.",
-        byKey ? "wait" : "ok", byKey ? "API key" : "signed in"));
+          + tx(". The agents work under it and use up its limits."),
+        byKey ? "wait" : "ok", byKey ? tx("API key") : tx("signed in")));
     } else {
-      body.append(readinessRow("Account", `Could not ask Claude Code: ${account.reason ?? "no reason given"}.`, "bad", "unknown"));
+      body.append(readinessRow(tx("Account"), tx("Could not ask Claude Code: {value}.", { value: account.reason ?? tx("no reason given") }), "bad", tx("app2::unknown")));
     }
   }
 
-  body.append(el("div", "section-title", "Connection"));
+  body.append(el("div", "section-title", tx("Connection")));
   // The Gateway state comes only from the host summary and the connection result.
   const gateway = gatewayState({ runtime: atlasState.runtime, connection });
   const runtime = atlasState.runtime ?? {};
-  body.append(readinessRow(`Gateway: ${GATEWAY_STATE_WORDS[gateway] ?? gateway}`,
-    `lifecycle ${runtime.lifecycle ?? "not reported"} · monitor ${runtime.monitorState ?? "not reported"} · `
-      + `heartbeat ${runtime.heartbeatAtUtc ?? "not reported"}. Renewing the descriptor of the same instance is not a restart.`,
+  body.append(readinessRow(tx("Gateway: {value}", { value: GATEWAY_STATE_WORDS[gateway] ?? gateway }),
+    tx("lifecycle {value} · monitor {value2} · ", { value: runtime.lifecycle ?? tx("app2::not reported"), value2: runtime.monitorState ?? tx("app2::not reported") })
+      + tx("heartbeat {value}. Renewing the descriptor of the same instance is not a restart.", { value: runtime.heartbeatAtUtc ?? tx("app2::not reported") }),
     gateway === "ready" ? "ok" : gateway === "unknown" ? "wait" : "bad", gateway));
   if (connected) {
     const remaining = Date.parse(connection.validUntilUtc) - Date.now();
-    body.append(readinessRow(`Gateway · ${connection.projectId}`,
-      `generation ${connection.generation} · ${remaining > 0 ? `connection key valid for ${Math.floor(remaining / 60000)} more min, renews itself` : "connection key expired"}`,
-      "ok", "connected"));
+    body.append(readinessRow(tx("Gateway · {projectId}", { projectId: connection.projectId }),
+      tx("generation {generation} · {value}", { generation: connection.generation, value: remaining > 0 ? tx("connection key for {value} more min, renews itself", { value: Math.floor(remaining / 60000) }) : tx("connection key expired") }),
+      "ok", tx("connected")));
   } else {
     const reason = (connection?.error && (connection.error.reasonCode || connection.error.code))
-      || atlasState.runtime?.reasonCode || "unknown";
-    body.append(readinessRow("Gateway", "Without a connection nothing listed below works.", "bad", reason));
+      || atlasState.runtime?.reasonCode || tx("app::unknown");
+    body.append(readinessRow(tx("app::Gateway"), tx("Without a connection nothing listed below works."), "bad", reason));
   }
 
   const operations = atlasState.operations;
   const available = operations.filter((entry) => entry.status === "available").length;
-  body.append(el("div", "section-title", `Desktop operations · ${available} of ${operations.length}`));
-  if (operations.length === 0) body.append(el("div", "empty", "Gateway not read — the operation status is unknown."));
+  body.append(el("div", "section-title", tx("Desktop operations · {available} of {length}", { available, length: operations.length })));
+  if (operations.length === 0) body.append(el("div", "empty", tx("Gateway not read — the operation status is unknown.")));
   for (const entry of operations) {
     const ok = entry.status === "available";
     body.append(readinessRow(OPERATION_TITLES[entry.operationId] ?? entry.operationId, entry.operationId,
-      ok ? "ok" : "bad", ok ? "available" : (entry.reasonCode ?? entry.status)));
+      ok ? "ok" : "bad", ok ? tx("available") : (entry.reasonCode ?? entry.status)));
   }
 
-  body.append(el("div", "section-title", "Trusted actions"));
+  body.append(el("div", "section-title", tx("Trusted actions")));
   const trusted = atlasState.trusted;
-  body.append(readinessRow("Folder binding and memory saving",
-    trusted.acl === "not-hardened" ? `directory permissions not hardened: ${trusted.aclReasonCode ?? ""}` : null,
-    trusted.available ? "ok" : "bad", trusted.available ? "available" : (trusted.reasonCode ?? "unavailable")));
+  body.append(readinessRow(tx("Folder binding and memory saving"),
+    trusted.acl === "not-hardened" ? tx("directory permissions not hardened: {value}", { value: trusted.aclReasonCode ?? "" }) : null,
+    trusted.available ? "ok" : "bad", trusted.available ? tx("app::available") : (trusted.reasonCode ?? tx("app::unavailable"))));
 
-  body.append(el("div", "section-title", "Expected from the backend"));
+  body.append(el("div", "section-title", tx("Expected from the backend")));
   for (const [capabilityId, [title, detail]] of Object.entries(EXPECTED_TITLES)) {
     const found = expectedOf(capabilityId);
     let state = "wait";
-    let label = "expected";
-    let hint = "The contract does not say yet how to detect this.";
+    let label = tx("expected");
+    let hint = tx("The contract does not say yet how to detect this.");
     if (found !== null && found.detectable) {
       hint = found.operations.map((entry) => `${entry.operationId}: ${entry.status}`
         + (entry.reasonCode ? ` (${entry.reasonCode})` : "")).join("\n");
       if (found.advertised) {
         state = "ok";
-        label = "advertised";
+        label = tx("advertised");
       } else {
-        label = "not advertised";
+        label = tx("not advertised");
       }
     } else if (found === null && connected) {
-      label = "not read";
-      hint = "The status of the expected capabilities is not read.";
+      label = tx("not read");
+      hint = tx("The status of the expected capabilities is not read.");
     }
     body.append(readinessRow(title, detail, state, label, hint));
   }
   const route = chatRouteFor(null);
-  body.append(noteBlock("note", `The conversation currently works like this: ${route.title}. ${route.reason}`));
-  $("readinessSummary").textContent = connected ? `${available} of ${operations.length} operations` : "no connection";
+  body.append(noteBlock("note", tx("The conversation currently works like this: {title}. {reason}", { title: route.title, reason: route.reason })));
+  $("readinessSummary").textContent = connected ? tx("{available} of {length} operations", { available, length: operations.length }) : tx("no connection");
 }
 
 /**
@@ -1274,13 +1671,15 @@ function chatRouteFor(agent) {
   const liveRead = ["query.agent-conversation.resolve", "query.agent-conversation.read"]
     .every((operationId) => operationStatus(operationId)?.status === "available");
   if (!liveRead) {
-    return { kind: "memory", title: "sending via agent memory and the captured archive",
-      reason: "The Gateway has not advertised reading the live conversation by the agent binding." };
+    const via = tx("agent memory and the captured archive");
+    return { kind: "memory", via, title: tx("sending via {via}", { via }),
+      reason: tx("The Gateway has not advertised reading the live conversation by the agent binding.") };
   }
-  return { kind: "memory-live", title: "sending via agent memory, reading the live conversation by binding",
+  const via = tx("agent memory, reading the live conversation by binding");
+  return { kind: "memory-live", via, title: tx("sending via {via}", { via }),
     reason: agent === null || agent === undefined
-      ? "The agent binding in the backend decides which thread to read; an archived agent is read from the archive."
-      : "The agent binding in the backend sets the thread; the desktop does not guess it." };
+      ? tx("The agent binding in the backend decides which thread to read; an archived agent is read from the archive.")
+      : tx("The agent binding in the backend sets the thread; the desktop does not guess it.") };
 }
 
 function atlasOpenReadiness() {
@@ -1288,6 +1687,7 @@ function atlasOpenReadiness() {
   if (atlasState.ui.attentionOpen) setPanel("attentionOpen", false);
   $("readinessPanel").classList.remove("hidden");
   renderReadiness();
+  atlasGatewayPanelOpen();
   loadExpected().then(renderReadiness);
 }
 
@@ -1303,17 +1703,17 @@ const closeReadiness = () => $("readinessPanel").classList.add("hidden");
  */
 function renderSkillsInto(body, node, redraw) {
   const skills = sceneSkillsOf(node);
-  body.append(el("div", "section-title", `Installed · ${skills.length}`));
-  if (skills.length === 0) body.append(el("div", "empty", "No skills yet."));
+  body.append(el("div", "section-title", tx("Installed · {length}", { length: skills.length })));
+  if (skills.length === 0) body.append(el("div", "empty", tx("No skills yet.")));
   skills.forEach((name, index) => {
     const row = el("div", "skill-row");
     row.append(el("span", "skill-name", name));
-    const remove = el("button", "small", "Remove");
+    const remove = el("button", "small", tx("Remove"));
     remove.addEventListener("click", () => {
       const next = skills.slice();
       next.splice(index, 1);
       sceneSetSkills(node, next);
-      atlasRecord("info", "skill removed from the list", `${node.agentId}: ${name}`);
+      atlasRecord("info", tx("skill removed from the list"), `${node.agentId}: ${name}`);
       redraw();
     });
     row.append(remove);
@@ -1323,17 +1723,17 @@ function renderSkillsInto(body, node, redraw) {
   const add = el("div", "skill-add");
   const field = el("input");
   field.maxLength = 64;
-  field.placeholder = "Skill name";
-  const submit = el("button", "small primary", "Add");
+  field.placeholder = tx("Skill name");
+  const submit = el("button", "small primary", tx("Add"));
   const commit = () => {
     const value = field.value.trim();
     if (value === "") return;
     if (skills.length >= 32) {
-      body.append(noteBlock("error", "The list already has 32 skills — that is the limit."));
+      body.append(noteBlock("error", tx("The list already has 32 skills — that is the limit.")));
       return;
     }
     sceneSetSkills(node, skills.concat(value));
-    atlasRecord("info", "skill added to the list", `${node.agentId}: ${value}`);
+    atlasRecord("info", tx("skill added to the list"), `${node.agentId}: ${value}`);
     redraw();
   };
   submit.addEventListener("click", commit);
@@ -1343,8 +1743,8 @@ function renderSkillsInto(body, node, redraw) {
   add.append(field, submit);
   body.append(add);
   body.append(noteBlock("local",
-    "This is your list. The backend does not report skills yet and does nothing with them: "
-    + "the library of installed skills will appear in its next version."));
+    tx("This is your list. The backend does not report skills yet and does nothing with them: ")
+    + tx("the library of installed skills will appear in its next version.")));
 }
 
 /** Agent skills open as a tab of its workspace. */
@@ -1364,20 +1764,24 @@ function blueprintCount(blueprint) {
   return { quarters, agents };
 }
 
-const KIND_NAMES = Object.freeze({ project: "project", quarter: "quarter", agent: "agent" });
+const KIND_NAMES = Object.freeze({ project: tx("project"), quarter: tx("quarter"), agent: tx("agent") });
 
 function atlasCopyBlueprint() {
+  if (scene.selection?.kind === "world") {
+    atlasToast(tx("The World HQ is not copied: there is only one for the whole world."));
+    return;
+  }
   const blueprint = sceneCopyBlueprint(scene.selection);
   if (blueprint === null) {
-    atlasToast("Nothing to copy: first select an object on the map.");
+    atlasToast(tx("Nothing to copy: first select an object on the map."));
     return;
   }
   atlasState.clipboard = blueprint;
   const { quarters, agents } = blueprintCount(blueprint);
   const inside = blueprint.kind === "agent" ? ""
-    : ` (quarters: ${quarters}, agents: ${agents})`;
-  atlasRecord("info", "blueprint copied", `${KIND_NAMES[blueprint.kind]} ${blueprint.root.sourceId}${inside}`);
-  atlasToast(`Blueprint taken: ${KIND_NAMES[blueprint.kind]} ${blueprint.root.sourceId}${inside}. Ctrl+V — show what will be created.`);
+    : tx(" (quarters: {quarters}, agents: {agents})", { quarters, agents });
+  atlasRecord("info", tx("blueprint copied"), `${KIND_NAMES[blueprint.kind]} ${blueprint.root.sourceId}${inside}`);
+  atlasToast(tx("Blueprint taken: {value} {sourceId}{inside}. Ctrl+V — show what will be created.", { value: KIND_NAMES[blueprint.kind], sourceId: blueprint.root.sourceId, inside }));
 }
 
 function knownIdentifiers() {
@@ -1405,48 +1809,48 @@ function knownIdentifiers() {
 const pastePlanFor = (blueprint, rootId = null) => buildPastePlan(blueprint, scenePasteTarget(), knownIdentifiers(), { rootId });
 
 const PASTE_MODE_WORDS = Object.freeze({
-  "structure-only": "Structure only",
-  "structure-and-memory": "Structure and memory",
+  "structure-only": tx("Structure only"),
+  "structure-and-memory": tx("Structure and memory"),
 });
 
 function atlasPasteBlueprint() {
   const blueprint = atlasState.clipboard;
   if (blueprint === null || blueprint === undefined) {
-    atlasToast("No blueprint: select an object and press Ctrl+C.");
+    atlasToast(tx("No blueprint: select an object and press Ctrl+C."));
     return;
   }
-  const body = openSheet(`Paste blueprint · ${KIND_NAMES[blueprint.kind]}`, "backend operations");
+  const body = openSheet(tx("Paste blueprint · {value}", { value: KIND_NAMES[blueprint.kind] }), tx("backend operations"));
   if (blueprint.kind === "agent") {
     // An agent is not copied: a new agent has its own conversation and its own provider
     // session, and the contract forbids carrying them or the binding over.
     body.append(noteBlock("error",
-      "Agents are not copied: neither the conversation, nor the folder binding, nor the provider session is carried over. "
-      + "Create a new agent in the quarter you need (right-click the quarter)."));
+      tx("Agents are not copied: neither the conversation, nor the folder binding, nor the provider session is carried over. ")
+      + tx("Create a new agent in the quarter you need (right-click the quarter).")));
     return;
   }
   let plan = pastePlanFor(blueprint);
   if (plan.into === null) {
-    body.append(noteBlock("error", "Nowhere to paste: point at a project or enter it."));
+    body.append(noteBlock("error", tx("Nowhere to paste: point at a project or enter it.")));
     return;
   }
 
-  body.append(infoRow("from", `${KIND_NAMES[blueprint.kind]} ${blueprint.root.sourceId}`));
-  body.append(infoRow("to", plan.into));
+  body.append(infoRow(tx("from"), `${KIND_NAMES[blueprint.kind]} ${blueprint.root.sourceId}`));
+  body.append(infoRow(tx("to"), plan.into));
   const skippedAgents = plan.steps.filter((step) => step.kind === "agent").length;
   if (skippedAgents > 0) {
     body.append(noteBlock("note",
-      `Agents in the blueprint: ${skippedAgents}. They are not copied — they are created anew if needed.`));
+      tx("Agents in the blueprint: {skippedAgents}. They are not copied — they are created anew if needed.", { skippedAgents })));
   }
 
   // ID of the new copy (U07). The auto suffix is only a suggestion: the person sees it and
   // can replace it before confirming. An empty, invalid, source-equal
   // or taken ID is refused here, before any write; the last
   // guard against a race is the backend.
-  const rootWord = blueprint.kind === "project" ? "projects" : "quarters";
+  const rootWord = blueprint.kind === "project" ? tx("projects") : tx("app::quarters");
   const validate = (value) => validateCopyTarget({
     value, kind: blueprint.kind, sourceId: blueprint.root.sourceId, projectId: plan.projectId, taken: knownIdentifiers(),
   });
-  body.append(el("div", "section-title", `ID of the new copy (unique among ${rootWord})`));
+  body.append(el("div", "section-title", tx("ID of the new copy (unique among {rootWord})", { rootWord })));
   const field = el("input", "paste-target");
   field.value = plan.suggestedRootId;
   field.maxLength = 160;
@@ -1459,9 +1863,9 @@ function atlasPasteBlueprint() {
   // with its quarters and their memory. A quarter has no such operation: structure only.
   const copyStatus = operationStatus("mutation.memory.project.copy");
   const memoryBlocked = blueprint.kind !== "project"
-    ? "the contract has no atomic memory copy for a quarter — structure only"
+    ? tx("the contract has no atomic memory copy for a quarter — structure only")
     : copyStatus?.status !== "available"
-      ? `atomic copy unavailable (${copyStatus ? copyStatus.reasonCode ?? copyStatus.status : "not checked"})` : null;
+      ? tx("atomic copy unavailable ({value})", { value: copyStatus ? copyStatus.reasonCode ?? copyStatus.status : tx("not checked") }) : null;
   const quarterIds = blueprint.kind === "project" ? blueprint.root.children.map((part) => part.sourceId) : [];
 
   // The mode is named explicitly, and none is chosen by default: until the person
@@ -1470,38 +1874,38 @@ function atlasPasteBlueprint() {
   const modes = el("div", "paste-modes");
   const list = el("div");
   const summary = el("div", "paste-summary");
-  const run = el("button", "small primary", "Create with confirmation");
+  const run = el("button", "small primary", tx("Create with confirmation"));
   const paintTarget = () => {
     targetNote.textContent = target.ok
       ? (target.id === plan.suggestedRootId
-        ? `Suggestion: ${plan.suggestedRootId}. You can replace it before confirming.`
-        : `Free: the copy ${target.id} will be created.`)
+        ? tx("Suggestion: {suggestedRootId}. You can replace it before confirming.", { suggestedRootId: plan.suggestedRootId })
+        : tx("Free: the copy {id} will be created.", { id: target.id }))
       : target.text;
     targetNote.classList.toggle("error-text", !target.ok);
   };
   const paintSummary = () => {
-    summary.textContent = `Source: ${KIND_NAMES[blueprint.kind]} ${blueprint.root.sourceId} → new copy: `
-      + `${target.ok ? target.id : "not set"} · mode: ${mode === null ? "not chosen" : PASTE_MODE_WORDS[mode]}`;
+    summary.textContent = tx("Source: {value} {sourceId} → new copy: ", { value: KIND_NAMES[blueprint.kind], sourceId: blueprint.root.sourceId })
+      + tx("{value} · mode: {value2}", { value: target.ok ? target.id : tx("app::not set"), value2: mode === null ? tx("not chosen") : PASTE_MODE_WORDS[mode] });
   };
   const drawSteps = () => {
     list.replaceChildren();
     if (!target.ok) {
-      list.append(el("div", "empty", "Enter a valid ID for the new copy."));
+      list.append(el("div", "empty", tx("Enter a valid ID for the new copy.")));
       return;
     }
     if (mode === "structure-and-memory") {
       list.append(el("div", "entry-text",
-        `project ${target.id}: the project, quarters ${quarterIds.join(", ") || "—"} and their memory — in one operation, all or nothing`));
+        tx("project {id}: the project, quarters {value} and their memory — in one operation, all or nothing", { id: target.id, value: quarterIds.join(", ") || "—" })));
       return;
     }
     const steps = pasteSteps(plan.steps, { mode });
     if (steps === null) {
-      list.append(el("div", "empty", "Choose what to copy."));
+      list.append(el("div", "empty", tx("Choose what to copy.")));
       return;
     }
-    for (const step of steps) list.append(el("div", "entry-text", `${step.label} — pending`));
+    for (const step of steps) list.append(el("div", "entry-text", tx("{label} — pending", { label: step.label })));
   };
-  body.append(el("div", "section-title", "What to copy"));
+  body.append(el("div", "section-title", tx("What to copy")));
   for (const [value, label] of Object.entries(PASTE_MODE_WORDS)) {
     const option = el("label", "paste-mode");
     const radio = el("input");
@@ -1522,19 +1926,19 @@ function atlasPasteBlueprint() {
     modes.append(option);
   }
   body.append(modes);
-  if (memoryBlocked !== null) body.append(el("div", "muted", `“Structure and memory”: ${memoryBlocked}.`));
+  if (memoryBlocked !== null) body.append(el("div", "muted", tx("“Structure and memory”: {memoryBlocked}.", { memoryBlocked })));
   body.append(summary);
-  body.append(el("div", "section-title", "Steps"));
+  body.append(el("div", "section-title", tx("Steps")));
   body.append(list);
 
   const result = el("div");
   const actions = el("div", "actions");
   const scopeStatus = operationStatus("mutation.memory.scope.create");
   const structureBlocked = scopeStatus?.status !== "available"
-    ? `scope creation unavailable (${scopeStatus ? scopeStatus.reasonCode : "not checked"})` : null;
+    ? tx("scope creation unavailable ({value})", { value: scopeStatus ? scopeStatus.reasonCode : tx("not checked") }) : null;
   const paintRun = () => {
     const blocked = !target.ok ? target.text
-      : mode === null ? "First choose what to copy"
+      : mode === null ? tx("First choose what to copy")
         : mode === "structure-and-memory" ? memoryBlocked : structureBlocked;
     run.disabled = blocked !== null;
     run.title = blocked ?? "";
@@ -1551,7 +1955,7 @@ function atlasPasteBlueprint() {
   drawSteps();
   paintSummary();
   paintRun();
-  if (structureBlocked !== null) body.append(noteBlock("error", `Structure only: ${structureBlocked}.`));
+  if (structureBlocked !== null) body.append(noteBlock("error", tx("Structure only: {structureBlocked}.", { structureBlocked })));
   run.addEventListener("click", async () => {
     if (run.disabled || mode === null) return;
     // The world may have changed after the input: the target is checked again on fresh data.
@@ -1568,7 +1972,7 @@ function atlasPasteBlueprint() {
     field.disabled = true;
     for (const radio of modes.querySelectorAll("input")) radio.disabled = true;
     plan = pastePlanFor(blueprint, fresh.id);
-    atlasRecord("info", "paste: target chosen",
+    atlasRecord("info", tx("paste: target chosen"),
       `${KIND_NAMES[blueprint.kind]} ${blueprint.root.sourceId} → ${fresh.id} (${PASTE_MODE_WORDS[mode]})`);
     if (mode === "structure-and-memory") await runAtomicCopy(blueprint, fresh.id, list, result);
     else await runPastePlan({ ...plan, steps: pasteSteps(plan.steps, { mode }), mode }, list, result);
@@ -1576,11 +1980,11 @@ function atlasPasteBlueprint() {
   actions.append(run);
   body.append(actions, result);
   body.append(noteBlock("note",
-    "“Structure only” creates projects and quarters step by step, with empty memory; a refusal at a step keeps "
-    + "what was created and is visible per step. “Structure and memory” copies the project, all its quarters and their memory in one "
-    + "atomic operation: on refusal nothing is created. Agents, conversations, the folder binding and the provider "
-    + "session are never copied; existing objects are not renamed; nothing is deleted "
-    + "by itself or retried blindly."));
+    tx("“Structure only” creates projects and quarters step by step, with empty memory; a refusal at a step keeps ")
+    + tx("what was created and is visible per step. “Structure and memory” copies the project, all its quarters and their memory in one ")
+    + tx("atomic operation: on refusal nothing is created. Agents, conversations, the folder binding and the provider ")
+    + tx("session are never copied; existing objects are not renamed; nothing is deleted ")
+    + tx("by itself or retried blindly.")));
 }
 
 /**
@@ -1590,17 +1994,17 @@ function atlasPasteBlueprint() {
  * identifier.
  */
 async function runAtomicCopy(blueprint, targetProjectId, list, result) {
-  list.replaceChildren(el("div", "entry-text", `project copy ${targetProjectId} — running…`));
+  list.replaceChildren(el("div", "entry-text", tx("project copy {targetProjectId} — running…", { targetProjectId })));
   const show = async (response) => {
     const described = describeCopyOutcome(response);
-    list.replaceChildren(el("div", "entry-text", `project copy ${targetProjectId} — ${
-      described.outcome === "complete" ? "done" : described.outcome === "uncertain" ? "outcome unknown" : "not done"}`));
+    list.replaceChildren(el("div", "entry-text", tx("project copy {targetProjectId} — {outcome}", { targetProjectId,
+      outcome: described.outcome === "complete" ? tx("done") : described.outcome === "uncertain" ? tx("outcome unknown") : tx("not done") })));
     result.replaceChildren(outcomeBlock({ tone: described.outcome === "complete" ? "note" : "error",
       title: described.title, details: described.details }));
-    atlasRecord(described.outcome === "complete" ? "ok" : "bad", "project copy with memory",
+    atlasRecord(described.outcome === "complete" ? "ok" : "bad", tx("project copy with memory"),
       `${blueprint.root.sourceId} → ${targetProjectId}: ${described.title}`);
     if (described.reconcile && response.identity?.operationId) {
-      const again = el("button", "small", "Reconcile with the same request");
+      const again = el("button", "small", tx("Reconcile with the same request"));
       again.addEventListener("click", async () => {
         again.disabled = true;
         await show(await window.atlas.reconcileProjectCopy({ operationId: response.identity.operationId }));
@@ -1629,10 +2033,10 @@ async function runAtomicCopy(blueprint, targetProjectId, list, result) {
 function receiptLine(step, verdict, response) {
   const identity = response?.ok ? response.data?.identity : response?.identity;
   const parts = [`${step.label}: ${verdict.state}`];
-  if (identity?.operationId) parts.push(`operation ${identity.operationId}`);
-  if (identity?.commandId) parts.push(`command ${identity.commandId}`);
+  if (identity?.operationId) parts.push(tx("operation {operationId}", { operationId: identity.operationId }));
+  if (identity?.commandId) parts.push(tx("command {commandId}", { commandId: identity.commandId }));
   const revision = response?.ok ? response.data?.response?.revision : null;
-  if (revision !== null && revision !== undefined) parts.push(`revision ${revision}`);
+  if (revision !== null && revision !== undefined) parts.push(tx("revision {revision}", { revision }));
   return parts.join(" · ");
 }
 
@@ -1660,7 +2064,7 @@ async function runPastePlan(plan, list, result) {
   const createdScopes = new Map();
   const receipts = [];
   const lines = plan.steps.map((step) => {
-    const line = el("div", "entry-text", `${step.label} — pending`);
+    const line = el("div", "entry-text", tx("{label} — pending", { label: step.label }));
     list.append(line);
     return line;
   });
@@ -1669,7 +2073,7 @@ async function runPastePlan(plan, list, result) {
     if (summary) result.append(outcomeBlock({ tone: summary.outcome === "complete" ? "note" : "error",
       title: summary.title, details: summary.details }));
     const box = el("div", "paste-receipts");
-    box.append(el("div", "section-title", `Receipts · mode “${PASTE_MODE_WORDS[plan.mode]}”`));
+    box.append(el("div", "section-title", tx("Receipts · mode “{value}”", { value: PASTE_MODE_WORDS[plan.mode] })));
     for (const line of receipts) box.append(el("div", "entry-text", line));
     result.append(box);
   };
@@ -1689,19 +2093,19 @@ async function runPastePlan(plan, list, result) {
     const pin = pinSources(plan.steps, reads);
     if (!pin.ok) {
       const named = pin.problems.map((problem) => `${problem.scopeId} (${problem.code})`).join(", ");
-      result.replaceChildren(noteBlock("error", `Sources not read: ${named}. Nothing was created or written.`));
-      atlasRecord("bad", "paste not started", named);
+      result.replaceChildren(noteBlock("error", tx("Sources not read: {named}. Nothing was created or written.", { named })));
+      atlasRecord("bad", tx("paste not started"), named);
       return;
     }
     pinned = pin.pinned;
     for (const [scopeId, source] of pinned) {
-      receipts.push(`source ${scopeId}: revision ${source.revision} pinned, entries ${source.entries.length}`);
+      receipts.push(tx("source {scopeId}: revision {revision} pinned, entries {length}", { scopeId, revision: source.revision, length: source.entries.length }));
     }
   }
 
   for (const [index, step] of plan.steps.entries()) {
     const line = lines[index];
-    line.textContent = `${step.label} — ${step.kind === "memory" ? "copying…" : "creating…"}`;
+    line.textContent = tx("{label} — {value}", { label: step.label, value: step.kind === "memory" ? tx("copying…") : tx("creating…") });
     let response;
     if (step.kind === "memory") {
       response = await copyMemoryStep(step, createdScopes, pinned);
@@ -1715,15 +2119,15 @@ async function runPastePlan(plan, list, result) {
     const verdict = pasteStepVerdict(step, response);
     line.textContent = `${step.label} — ${verdict.state}`;
     receipts.push(receiptLine(step, verdict, response));
-    atlasRecord(verdict.proceed ? "ok" : "bad", "paste", receiptLine(step, verdict, response));
+    atlasRecord(verdict.proceed ? "ok" : "bad", tx("paste"), receiptLine(step, verdict, response));
     if (!verdict.proceed) {
       const why = step.kind === "memory" && (response.error?.code?.startsWith("cli_") || response.error?.code === "user_declined")
         ? describeSaveFailure(response.error, response.identity ?? null).title
-        : outcomeMessage(response, `Paste: ${step.label}.`).text;
+        : outcomeMessage(response, tx("Paste: {label}.", { label: step.label })).text;
       const stoppedAt = index;
       const done = plan.steps.slice(0, stoppedAt).length;
       const uncertain = response?.error?.code === "uncertain_outcome" || response?.error?.uncertain === true;
-      showReceipts("error", `${why} The remaining steps were not run.`,
+      showReceipts("error", tx("{why} The remaining steps were not run.", { why }),
         pasteSummary(plan.steps, { done, stoppedAt, uncertain }));
       await finishPaste(created);
       return;
@@ -1733,7 +2137,7 @@ async function runPastePlan(plan, list, result) {
       created.push(step);
     }
   }
-  showReceipts("note", `Objects created: ${created.length}. Placement and annotations carried over.`,
+  showReceipts("note", tx("Objects created: {length}. Placement and annotations carried over.", { length: created.length }),
     pasteSummary(plan.steps, { done: plan.steps.length, stoppedAt: null, uncertain: false }));
   await finishPaste(created);
 }
@@ -1752,6 +2156,9 @@ function openSheet(title, kind) {
   $("inspector").classList.add("hidden");
   if (atlasState.ui.attentionOpen) setPanel("attentionOpen", false);
   closeReadiness();
+  // Whose sheet this is: the World HQ marks itself so that a task board that finishes reading
+  // repaints it, not a sheet opened after it.
+  atlasState.sheetOwner = null;
   $("sheetTitle").textContent = title;
   $("sheetKind").textContent = kind;
   $("sheet").classList.remove("hidden");
@@ -1775,8 +2182,8 @@ function outcomeBlock(described) {
  * an unknown outcome: it is not written, only shown alongside.
  */
 async function openMemorySheet(scopeId, title, { notice = null, draft = null } = {}) {
-  const body = openSheet(title, "memory");
-  body.append(el("div", "empty", "Reading…"));
+  const body = openSheet(title, tx("memory"));
+  body.append(el("div", "empty", tx("app::Reading…")));
   const response = await window.atlas.readScope({ scopeId });
   body.replaceChildren();
   if (notice !== null) body.append(outcomeBlock(notice));
@@ -1788,17 +2195,17 @@ async function openMemorySheet(scopeId, title, { notice = null, draft = null } =
   };
   if (!response.ok || response.result.outcome !== "succeeded") {
     const failure = response.ok ? response.result.error : response.error;
-    body.append(noteBlock("error", `Memory not read: ${failure ? failure.code : "unknown"}`));
+    body.append(noteBlock("error", tx("Memory not read: {value}", { value: failure ? failure.code : tx("app::unknown") })));
     return;
   }
   const output = response.result.output;
   const entries = (output.entries ?? []).map((entry) => ({
     id: entry.id, title: entry.title, text: entry.text,
   }));
-  body.append(infoRow("revision", output.revision));
+  body.append(infoRow(tx("revision"), output.revision));
   if (draft !== null) {
-    const kept = noteBlock("local", "Your earlier edit - not written, for comparison:");
-    for (const entry of draft) kept.append(el("div", "outcome-line", `${entry.title || "(untitled)"}: ${entry.text}`));
+    const kept = noteBlock("local", tx("Your earlier edit - not written, for comparison:"));
+    for (const entry of draft) kept.append(el("div", "outcome-line", tx("{value}: {text}", { value: entry.title || tx("(untitled)"), text: entry.text })));
     body.append(kept);
   }
 
@@ -1810,14 +2217,14 @@ async function openMemorySheet(scopeId, title, { notice = null, draft = null } =
       const heading = el("input");
       heading.value = entry.title;
       heading.maxLength = 512;
-      heading.placeholder = "Title";
+      heading.placeholder = tx("Title");
       heading.addEventListener("input", () => { entry.title = heading.value; touched(); });
       const text = el("textarea");
       text.rows = 4;
       text.value = entry.text;
-      text.placeholder = "Text";
+      text.placeholder = tx("Text");
       text.addEventListener("input", () => { entry.text = text.value; touched(); });
-      const remove = el("button", "small", "Delete entry");
+      const remove = el("button", "small", tx("Delete entry"));
       remove.addEventListener("click", () => {
         entries.splice(index, 1);
         touched();
@@ -1826,14 +2233,14 @@ async function openMemorySheet(scopeId, title, { notice = null, draft = null } =
       box.append(heading, text, remove);
       list.append(box);
     });
-    if (entries.length === 0) list.append(el("div", "empty", "Empty. An empty memory is allowed."));
+    if (entries.length === 0) list.append(el("div", "empty", tx("Empty. An empty memory is allowed.")));
   };
   draw();
   body.append(list);
 
   const result = el("div");
   const actions = el("div", "actions");
-  const add = el("button", "small", "Add entry");
+  const add = el("button", "small", tx("Add entry"));
   add.addEventListener("click", () => {
     if (entries.length >= 64) return;
     entries.push({ id: `entry-${window.crypto.randomUUID()}`, title: "", text: "" });
@@ -1843,34 +2250,34 @@ async function openMemorySheet(scopeId, title, { notice = null, draft = null } =
   // Leaving without saving. Memory edits live only in this sheet until they are
   // confirmed, so closing writes nothing — but it also does not silently close what
   // the person has already typed.
-  const discard = el("button", "small", "Close without saving");
+  const discard = el("button", "small", tx("Close without saving"));
   let armed = false;
   disarm = () => {
     if (!armed) return;
     armed = false;
-    discard.textContent = "Close without saving";
+    discard.textContent = tx("Close without saving");
     discard.classList.remove("danger");
   };
   discard.addEventListener("click", () => {
     if (!dirty || armed) {
-      atlasRecord("info", "memory closed without saving", `${scopeId}${dirty ? " — edits discarded" : ""}`);
+      atlasRecord("info", tx("memory closed without saving"), tx("{scopeId}{value}", { scopeId, value: dirty ? tx(" — edits discarded") : "" }));
       closeSheet();
       return;
     }
     armed = true;
-    discard.textContent = "Close anyway? The edits will be lost";
+    discard.textContent = tx("Close anyway? The edits will be lost");
     discard.classList.add("danger");
     result.replaceChildren(noteBlock("note",
-      "Your edits to this memory are not saved. Click again to discard them, "
-      + "or “Save with confirmation” to write them."));
+      tx("Your edits to this memory are not saved. Click again to discard them, ")
+      + tx("or “Save with confirmation” to write them.")));
   });
-  const save = trustedButton("Save with confirmation", async () => {
+  const save = trustedButton(tx("Save with confirmation"), async () => {
     // An entry that cannot be sent is named before the write - with its number and
     // the reason; the host checks the same thing again.
     const problems = entryProblems(entries);
     if (problems.length > 0) {
       result.replaceChildren(outcomeBlock({
-        tone: "error", title: "Not sent: fix the entries.", details: problems.map(describeProblem),
+        tone: "error", title: tx("Not sent: fix the entries."), details: problems.map(describeProblem),
       }));
       return;
     }
@@ -1880,8 +2287,8 @@ async function openMemorySheet(scopeId, title, { notice = null, draft = null } =
       const receipt = saved.data.response ?? {};
       dirty = false;
       disarm();
-      atlasRecord("ok", "memory saved",
-        `${scopeId} rev. ${receipt.revision ?? "?"} · ${saved.data.identity?.operationId ?? "?"}`);
+      atlasRecord("ok", tx("memory saved"),
+        tx("{scopeId} rev. {value} · {value2}", { scopeId, value: receipt.revision ?? "?", value2: saved.data.identity?.operationId ?? "?" }));
       await refresh();
       // The sheet reopens from a fresh read: otherwise the next edit would go out
       // with the old revision and run into a conflict.
@@ -1889,11 +2296,11 @@ async function openMemorySheet(scopeId, title, { notice = null, draft = null } =
       return;
     }
     const described = describeSaveFailure(saved.error, saved.identity ?? null);
-    atlasRecord(described.tone === "note" ? "info" : "bad", "memory not saved",
+    atlasRecord(described.tone === "note" ? "info" : "bad", tx("memory not saved"),
       `${scopeId}: ${saved.error.code} ${saved.error.reasonCode ?? ""}`.trim());
     result.replaceChildren(outcomeBlock(described));
     if (described.tone === "conflict" || described.tone === "uncertain") {
-      const reread = el("button", "small", "Reread");
+      const reread = el("button", "small", tx("Reread"));
       const pending = entries.map((entry) => ({ ...entry }));
       reread.addEventListener("click", () => openMemorySheet(scopeId, title, { notice: described, draft: pending }));
       result.append(reread);
@@ -1903,8 +2310,8 @@ async function openMemorySheet(scopeId, title, { notice = null, draft = null } =
   actions.append(add, save, discard);
   body.append(actions, result);
   body.append(noteBlock("note",
-    "Saving opens an operating system confirmation: your answer there is the permission to write. "
-    + "Until you save, the edits live only in this window — closing it discards them."));
+    tx("Saving opens an operating system confirmation: your answer there is the permission to write. ")
+    + tx("Until you save, the edits live only in this window — closing it discards them.")));
 }
 
 // --- leads -------------------------------------------------------------------------
@@ -1953,11 +2360,11 @@ async function atlasCreateProjectLead(projectId) {
   if (project === null) return;
   if (!project.quarters.some((quarter) => quarter.quarterId === HEADQUARTERS_QUARTER)) {
     const response = await window.atlas.createScope({ kind: "quarter", projectId, quarterId: HEADQUARTERS_QUARTER,
-      title: "HQ" });
+      title: tx("app::HQ") });
     if (!response.ok) {
-      atlasRecord("bad", "HQ quarter not created", response.error?.reasonCode || response.error?.code || "");
-      const body = openSheet(`Project lead · ${projectId}`, "backend operation");
-      body.append(noteBlock("error", `The HQ service quarter was not created: ${response.error?.code ?? "error"}.`));
+      atlasRecord("bad", tx("HQ quarter not created"), response.error?.reasonCode || response.error?.code || "");
+      const body = openSheet(tx("Project lead · {projectId}", { projectId }), tx("backend operation"));
+      body.append(noteBlock("error", tx("The HQ service quarter was not created: {value}.", { value: response.error?.code ?? tx("error") })));
       return;
     }
     await refresh();
@@ -1972,10 +2379,10 @@ function leadSection(body, projectId, quarterId) {
   body.append(el("div", "section-title", words.title));
   const actions = el("div", "actions");
   if (lead !== null) {
-    body.append(infoRow("agent", lead.agentId));
-    body.append(infoRow("model", lead.lastOperation?.observedModel ?? lead.profile?.model ?? "not reported"));
-    body.append(infoRow("state", lead.currentOperationId ? "working" : lead.state));
-    const open = el("button", "small primary", "Open chat");
+    body.append(infoRow(tx("agent"), lead.agentId));
+    body.append(infoRow(tx("model"), lead.lastOperation?.observedModel ?? lead.profile?.model ?? tx("app3::not reported")));
+    body.append(infoRow(tx("state"), lead.currentOperationId ? tx("working") : lead.state));
+    const open = el("button", "small primary", tx("Open chat"));
     open.addEventListener("click", () => {
       closeSheet();
       atlasOpenWorkspace(leadNode(lead), { camera: false });
@@ -1983,7 +2390,7 @@ function leadSection(body, projectId, quarterId) {
     actions.append(open);
   } else {
     body.append(el("div", "muted", words.hint));
-    actions.append(actionButton(`Create ${quarterId === null ? "project" : "quarter"} lead…`,
+    actions.append(actionButton(tx("Create {value} lead…", { value: quarterId === null ? tx("app::project") : tx("app::quarter") }),
       "mutation.memory.agent.create", () => (quarterId === null ? atlasCreateProjectLead(projectId)
         : openCreateAgentSheet(projectId, quarterId, { role: "quarter-lead" }))));
   }
@@ -1994,24 +2401,24 @@ function leadSection(body, projectId, quarterId) {
 function atlasOpenQuarterSheet(projectId, quarterId) {
   const { quarter } = findNode({ kind: "quarter", projectId, quarterId, agentId: null });
   if (quarter === null) return;
-  const body = openSheet(`Quarter · ${quarterId}`, projectId);
+  const body = openSheet(tx("Quarter · {quarterId}", { quarterId }), projectId);
   leadSection(body, projectId, quarterId);
-  body.append(el("div", "section-title", "Quarter"));
-  body.append(infoRow("quarter memory", quarter.memory.scopeId));
+  body.append(el("div", "section-title", tx("Quarter")));
+  body.append(infoRow(tx("quarter memory"), quarter.memory.scopeId));
   const actions = el("div", "actions");
-  actions.append(actionButton("Open memory", "query.memory.scope.read",
-    () => openMemorySheet(quarter.memory.scopeId, `Quarter memory · ${quarterId}`)));
-  actions.append(actionButton("Create agent…", "mutation.memory.agent.create",
+  actions.append(actionButton(tx("Open memory"), "query.memory.scope.read",
+    () => openMemorySheet(quarter.memory.scopeId, tx("Quarter memory · {quarterId}", { quarterId }))));
+  actions.append(actionButton(tx("Create agent…"), "mutation.memory.agent.create",
     () => openCreateAgentSheet(projectId, quarterId)));
   body.append(actions);
-  body.append(el("div", "section-title", `Agents · ${quarter.agents.length}`));
-  if (quarter.agents.length === 0) body.append(el("div", "empty", "The quarter has no agents yet."));
+  body.append(el("div", "section-title", tx("Agents · {length}", { length: quarter.agents.length })));
+  if (quarter.agents.length === 0) body.append(el("div", "empty", tx("The quarter has no agents yet.")));
   for (const agent of quarter.agents) {
     const row = el("div", "entry");
     row.append(el("div", "entry-title", agent.agentId));
-    row.append(el("div", "entry-text", [agent.settings?.role === "quarter-lead" ? "lead" : null,
-      agent.profile?.model ?? null, agent.currentOperationId ? "working" : agent.state].filter(Boolean).join(" · ")));
-    const open = el("button", "small", "Chat");
+    row.append(el("div", "entry-text", [agent.settings?.role === "quarter-lead" ? tx("lead") : null,
+      agent.profile?.model ?? null, agent.currentOperationId ? tx("working") : agent.state].filter(Boolean).join(" · ")));
+    const open = el("button", "small", tx("Chat"));
     open.addEventListener("click", () => {
       closeSheet();
       atlasOpenWorkspace({ kind: "agent", projectId, quarterId, agentId: agent.agentId });
@@ -2026,38 +2433,43 @@ function atlasOpenHeadquarters(projectId) {
   if (world === null || world.status !== "ready") return;
   const project = world.projection.projects.find((item) => item.projectId === projectId) ?? null;
   if (project === null) return;
-  const body = openSheet(`HQ · ${projectId}`, "goal, team, decisions");
+  const body = openSheet(tx("HQ · {projectId}", { projectId }), tx("goal, team, decisions"));
   leadSection(body, projectId, null);
 
-  body.append(el("div", "section-title", "Goal"));
-  body.append(infoRow("project memory", project.memory.scopeId));
-  body.append(infoRow("revision", project.memory.revision));
-  projectFolderSection(body, projectId, { changed: () => atlasOpenHeadquarters(projectId) });
+  body.append(el("div", "section-title", tx("Goal")));
+  body.append(infoRow(tx("project memory"), project.memory.scopeId));
+  body.append(infoRow(tx("revision"), project.memory.revision));
+  projectFolderSection(body, projectId);
   const goal = el("div", "actions");
-  goal.append(actionButton("Open memory", "query.memory.scope.read",
-    () => openMemorySheet(project.memory.scopeId, `Project memory · ${projectId}`)));
-  goal.append(actionButton("Create quarter…", "mutation.memory.scope.create",
+  goal.append(actionButton(tx("Open memory"), "query.memory.scope.read",
+    () => openMemorySheet(project.memory.scopeId, tx("Project memory · {projectId}", { projectId }))));
+  goal.append(actionButton(tx("Create quarter…"), "mutation.memory.scope.create",
     () => openCreateScopeSheet("quarter", projectId)));
-  goal.append(trustedButton("Archive project…", () => atlasArchiveProject(projectId)));
+  goal.append(trustedButton(tx("Archive project…"), () => atlasArchiveProject(projectId)));
+  // A project can be disconnected only in a split instance (each project has its own store).
+  if (atlasState.away.split === true && projectId !== WORLD_PROJECT) {
+    goal.append(trustedButton(tx("Disconnect from this PC…"), () => atlasUnmountProject(projectId)));
+  }
   body.append(goal);
+  projectPlaceSection(body, projectId);
 
-  body.append(el("div", "section-title", "Team"));
+  body.append(el("div", "section-title", tx("Team")));
   const mapQuarters = project.quarters.filter((quarter) => quarter.quarterId !== HEADQUARTERS_QUARTER);
-  body.append(infoRow("quarters", mapQuarters.length));
-  body.append(infoRow("agents", project.quarters.reduce((sum, item) => sum + item.agents.length, 0)));
+  body.append(infoRow(tx("quarters"), mapQuarters.length));
+  body.append(infoRow(tx("agents"), project.quarters.reduce((sum, item) => sum + item.agents.length, 0)));
   for (const quarter of mapQuarters) {
     const lead = leadOf(projectId, quarter.quarterId);
-    body.append(infoRow(quarter.quarterId, `agents: ${quarter.agents.length}${lead ? ` · lead ${lead.agentId}` : ""}`));
+    body.append(infoRow(quarter.quarterId, tx("agents: {length}{value}", { length: quarter.agents.length, value: lead ? tx(" · lead {agentId}", { agentId: lead.agentId }) : "" })));
   }
 
-  body.append(el("div", "section-title", "Decisions"));
+  body.append(el("div", "section-title", tx("Decisions")));
   const pending = (world.attention ?? []).filter((item) => item.projectId === projectId);
-  if (pending.length === 0) body.append(el("div", "empty", "No decisions are waiting for a person."));
+  if (pending.length === 0) body.append(el("div", "empty", tx("No decisions are waiting for a person.")));
   for (const item of pending) {
     const box = el("div", "entry");
     box.append(el("div", "entry-title", item.agentId));
     box.append(el("div", "entry-text", attentionLine(item)));
-    const go = el("button", "small", "Go to agent");
+    const go = el("button", "small", tx("Go to agent"));
     go.addEventListener("click", () => selectNode({
       kind: "agent", projectId: item.projectId, quarterId: item.quarterId, agentId: item.agentId,
     }, { focus: true }));
@@ -2065,7 +2477,498 @@ function atlasOpenHeadquarters(projectId) {
     body.append(box);
   }
   body.append(noteBlock("note",
-    "The HQ is the way into the goal, team and decisions of the project, and into a conversation with its lead."));
+    tx("The HQ is the way into the goal, team and decisions of the project, and into a conversation with its lead.")));
+}
+
+// --- world lead and desk agents -------------------------------------------------------
+//
+// One controller - one world. World lead - the only coordinator
+// of the controller (the coordinator role in the backend): it sees all projects and gives tasks
+// to project leads and desk agents under the task contract (task package → plan →
+// progress → report → acceptance by code). It lives in the service world project
+// (WORLD_PROJECT, bound to the controller folder), in the HQ quarter; on the map it
+// is replaced by the World HQ building. Its chat, like the chat of any lead, opens
+// where the camera is. A desk agent is an agent recorded as a task source of the
+// controller; the backend has no way to undo this entry, so it is permanent.
+
+/** World lead: an open agent with the coordinator role, wherever it lives; null - there is none. */
+function worldLeadOf() {
+  const world = atlasState.world;
+  if (world === null || world.status !== "ready") return null;
+  for (const project of world.projection.projects) {
+    for (const quarter of project.quarters) {
+      const found = quarter.agents.find((agent) => agent.settings?.role === "coordinator" && agent.state !== "archived");
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+/** Open agents of the World HQ without the lead role: this happens if the role was not assigned. */
+function worldHeadquartersAgents() {
+  const world = atlasState.world;
+  if (world === null || world.status !== "ready") return [];
+  const project = world.projection.projects.find((item) => item.projectId === WORLD_PROJECT) ?? null;
+  return (project?.quarters ?? []).filter((quarter) => quarter.quarterId === HEADQUARTERS_QUARTER)
+    .flatMap((quarter) => quarter.agents)
+    .filter((agent) => agent.state !== "archived" && agent.settings?.role !== "coordinator");
+}
+
+/** Entering the world (double-click on the World HQ): the world lead chat where the camera is, or the HQ sheet. */
+function atlasEnterWorld() {
+  const lead = worldLeadOf();
+  if (lead !== null) atlasOpenWorkspace(leadNode(lead), { camera: false });
+  else atlasOpenWorldHeadquarters();
+}
+
+const WORLD_LEAD_HINT = tx("World lead — one coordinator over all projects. It sees every project, its ")
+  + tx("lead and agents, and gives tasks to project leads and desk agents under the task contract: task package → ")
+  + tx("plan → progress → report → acceptance by code. It does not do the agents' work itself and changes files only in ")
+  + tx("coordination/drafts/. It works in the controller folder: the world project “world” is bound to it.");
+
+// Task board: which agents take controller tasks and where each task is.
+// Read by the trusted host (memory CLI read-task-board) - no more than once per
+// TASK_BOARD_TTL_MS; on the “Refresh tasks” button and after a registration - at once.
+const TASK_BOARD_TTL_MS = 30_000;
+let taskBoardLoading = null;
+
+const BOARD_FAILURE_WORDS = Object.freeze({
+  task_board_not_supported: tx("in this mode the controller has no tasks for desk agents"),
+  cli_missing: tx("controller's Gateway CLI not found"),
+  cli_not_a_file: tx("controller's Gateway CLI not found"),
+  timeout: tx("controller did not answer in time"),
+  spawn_failed: tx("controller's Gateway CLI did not start"),
+  unsupported_command: tx("the installed controller Gateway CLI has no task board yet — it needs a controller patch that adds it"),
+});
+
+/** Why the board was not read - in words. */
+function boardFailureText(error) {
+  const reason = error?.reasonCode || error?.code || null;
+  return BOARD_FAILURE_WORDS[reason] ?? tx("controller did not answer ({value})", { value: reason ?? tx("no code") });
+}
+
+/** Task board: from the cache if it is fresh, otherwise read again. Never returns null. */
+async function loadTaskBoard({ force = false } = {}) {
+  const board = atlasState.taskBoard ?? null;
+  if (!force && board !== null && Date.now() - board.readAt < TASK_BOARD_TTL_MS) return board;
+  if (taskBoardLoading !== null) return taskBoardLoading;
+  if (typeof window.atlas?.taskBoard !== "function" || atlasState.trusted?.available !== true) {
+    atlasState.taskBoard = { failed: true, reason: tx("trusted actions unavailable"), readAt: Date.now() };
+    return atlasState.taskBoard;
+  }
+  taskBoardLoading = window.atlas.taskBoard({}).then((response) => {
+    atlasState.taskBoard = response.ok ? { ...response.data, failed: false, readAt: Date.now() }
+      : { failed: true, reason: boardFailureText(response.error), readAt: Date.now() };
+    return atlasState.taskBoard;
+  }).finally(() => { taskBoardLoading = null; });
+  return taskBoardLoading;
+}
+
+/** The board in the shape that deskRegistrationState (outcome-core.js) understands. */
+const boardForState = () => {
+  const board = atlasState.taskBoard ?? null;
+  return board === null ? null : board.failed ? { failed: true, reason: board.reason } : board;
+};
+
+/** One task: the contract steps, where it is now, and the way to the agent. */
+function taskEntry(task, { showAgent = true } = {}) {
+  const box = el("div", "entry task-entry");
+  const title = el("div", "entry-title");
+  title.append(el("span", null, task.title ?? task.taskId), el("span", "task-id", task.taskId));
+  box.append(title);
+  const steps = el("div", "task-steps");
+  for (const step of taskStageSteps(task)) steps.append(el("span", `task-step ${step.state}`, step.label));
+  box.append(steps);
+  box.append(el("div", "entry-text", taskStateLine(task)));
+  const facts = [showAgent ? tx("agent {agentId}", { agentId: task.agentId }) : null,
+    task.dispatchedAtUtc ? tx("dispatched {value}", { value: task.dispatchedAtUtc.slice(0, 16).replace("T", " ") }) : null,
+    task.start?.coordinatorAgentId ? tx("started by {coordinatorAgentId}", { coordinatorAgentId: task.start.coordinatorAgentId }) : null,
+    task.start?.reportOperation ? tx("on report: {reportOperation}", { reportOperation: task.start.reportOperation }) : null].filter(Boolean);
+  if (facts.length > 0) box.append(el("div", "muted", facts.join(" · ")));
+  if (!task.verified) {
+    box.append(noteBlock("error", tx("The agent's task package does not match what the controller dispatched: ")
+      + tx("this needs to be sorted out before the task can be trusted.")));
+  }
+  if (showAgent) {
+    const found = agentNamed(task.agentId);
+    const actions = el("div", "actions");
+    const open = el("button", "small", tx("Agent chat"));
+    open.disabled = found === null;
+    if (found === null) open.title = tx("Agent not in the catalog");
+    open.addEventListener("click", () => {
+      closeSheet();
+      const role = found.settings?.role ?? null;
+      const lead = role === "project-lead" || role === "quarter-lead" || role === "coordinator";
+      atlasOpenWorkspace(leadNode(found), lead ? { camera: false } : undefined);
+    });
+    actions.append(open);
+    box.append(actions);
+  }
+  return box;
+}
+
+/**
+ * The board's task list in a container: all tasks (for the world lead) or those of one
+ * agent. Rereads the board by TTL and on the button; while reading, it says so.
+ */
+function taskBoardList(container, { agentId = null, showAgent = true, empty }) {
+  const list = el("div");
+  const paint = () => {
+    const board = atlasState.taskBoard ?? null;
+    list.replaceChildren();
+    if (board === null) {
+      list.append(el("div", "muted", tx("Reading tasks…")));
+      return;
+    }
+    if (board.failed) {
+      list.append(noteBlock("error", tx("Tasks not read: {reason}.", { reason: board.reason })));
+      return;
+    }
+    const tasks = board.tasks.filter((task) => agentId === null || task.agentId === agentId);
+    if (tasks.length === 0) list.append(el("div", "empty", empty));
+    for (const task of tasks) list.append(taskEntry(task, { showAgent }));
+    if (board.truncated) list.append(noteBlock("note", tx("Not all tasks are shown: the controller returned only the latest ones.")));
+  };
+  const actions = el("div", "actions");
+  const reread = el("button", "small", tx("Refresh tasks"));
+  reread.addEventListener("click", async () => {
+    reread.disabled = true;
+    await loadTaskBoard({ force: true });
+    reread.disabled = false;
+    paint();
+  });
+  actions.append(reread);
+  container.append(actions, list);
+  paint();
+  loadTaskBoard().then(paint);
+  return paint;
+}
+
+/**
+ * Whether the agent takes controller tasks is a permanent state, in plain view; and
+ * “Take tasks (desk agent)…” while it applies.
+ */
+function deskAgentSection(body, agent) {
+  body.append(el("div", "section-title", tx("Controller tasks")));
+  const box = el("div");
+  body.append(box);
+  const paint = () => {
+    const state = deskRegistrationState(agent, boardForState());
+    box.replaceChildren(infoRow(tx("takes tasks"), state.text));
+    if (state.kind === "registered" || state.kind === "invalid") {
+      box.append(noteBlock("note", tx("The registration is permanent: Atlas cannot remove it — the backend has no way to cancel a ")
+        + tx("registration. The world lead gives the agent its tasks.")));
+    }
+    if (state.offer) {
+      const actions = el("div", "actions");
+      actions.append(trustedButton(tx("Take tasks (desk agent)…"), () => openDeskAgentSheet(agent)));
+      box.append(actions);
+    }
+  };
+  paint();
+  loadTaskBoard().then(paint);
+}
+
+/** The “agent takes tasks” sheet: what it means, its current state and the confirmed action. */
+function openDeskAgentSheet(agent) {
+  const body = openSheet(tx("Desk agent · {agentId}", { agentId: agent.agentId }), tx("trusted action"));
+  body.append(infoRow(tx("agent"), `${agent.agentId} · ${agent.projectId} / ${agent.quarterId}`));
+  const state = el("div");
+  body.append(state);
+  body.append(noteBlock("note", tx("A desk agent takes controller tasks: the world lead dispatches to it an immutable ")
+    + tx("task package, the agent publishes a plan and waits for your confirmation in its chat, works in its zone, ")
+    + tx("reports progress and hands in a report, and the controller accepts it by code. The controller creates a coordination ")
+    + tx("folder with a task set for the agent and records the agent as a task source. This entry cannot be removed from Atlas: ")
+    + tx("the backend has no way to cancel a registration.")));
+  const result = el("div");
+  const actions = el("div", "actions");
+  body.append(actions, result);
+  const paint = () => {
+    const current = deskRegistrationState(agent, boardForState());
+    state.replaceChildren(infoRow(tx("takes tasks"), current.text));
+    actions.replaceChildren();
+    if (!current.offer) return;
+    actions.append(trustedButton(tx("Take tasks — with confirmation"), async () => {
+      result.replaceChildren(el("div", "muted", tx("Registering: the controller is setting up a task set for the agent…")));
+      const response = await window.atlas.registerDeskAgent({ agentId: agent.agentId });
+      const described = describeDeskRegistration(response);
+      if (response.ok) atlasRecord("ok", tx("desk agent"), tx("{agentId} · {value}", { agentId: agent.agentId, value: response.data.sourceId ?? tx("source not reported") }));
+      else if (response.error?.code !== "user_declined") {
+        atlasRecord("bad", tx("desk agent not registered"), `${agent.agentId} · ${described.text}`);
+      }
+      result.replaceChildren(noteBlock(described.tone === "note" ? "note" : "error", described.text));
+      await loadTaskBoard({ force: true });
+      paint();
+    }, { primary: true }));
+  };
+  paint();
+  loadTaskBoard().then(paint);
+}
+
+/** The lead's state line: what it is doing, according to the catalog. */
+function leadStateWords(agent) {
+  if (agent.currentOperationId) return tx("working");
+  const activity = agent.activity?.state ?? null;
+  return activity === "waiting-for-person" ? tx("waiting for you") : activity === "idle" ? tx("idle") : agent.state;
+}
+
+/** The World HQ sheet: the world lead, the tasks it dispatched, and the desk agents. */
+function atlasOpenWorldHeadquarters() {
+  const world = atlasState.world;
+  if (world === null || world.status !== "ready") return;
+  const body = openSheet(tx("World HQ"), tx("world lead · tasks · desk agents"));
+  atlasState.sheetOwner = "world";
+  const lead = worldLeadOf();
+  body.append(el("div", "section-title", tx("World lead")));
+  const actions = el("div", "actions");
+  if (lead !== null) {
+    body.append(infoRow(tx("agent"), lead.agentId));
+    body.append(infoRow(tx("model"), lead.lastOperation?.observedModel ?? lead.profile?.model ?? tx("app3::not reported")));
+    body.append(infoRow(tx("state"), leadStateWords(lead)));
+    if (lead.projectId !== WORLD_PROJECT) {
+      body.append(noteBlock("note", tx("World lead lives in project {projectId}, not in the World HQ: it was ", { projectId: lead.projectId })
+        + tx("assigned before the World HQ existed. It works the same way.")));
+    }
+    const open = el("button", "small primary", tx("Open chat"));
+    open.addEventListener("click", () => {
+      closeSheet();
+      atlasOpenWorkspace(leadNode(lead), { camera: false });
+    });
+    actions.append(open);
+    body.append(actions);
+  } else {
+    body.append(el("div", "muted", WORLD_LEAD_HINT));
+    const waiting = worldHeadquartersAgents();
+    if (waiting.length > 0) {
+      body.append(noteBlock("note", tx("The World HQ has an agent without the lead role: it was created, but the role was not ")
+        + tx("assigned. It can be made the world lead.")));
+      for (const agent of waiting) {
+        const row = el("div", "entry");
+        row.append(el("div", "entry-title", agent.agentId));
+        row.append(el("div", "entry-text", [agent.profile?.model ?? null, agent.state].filter(Boolean).join(" · ")));
+        const result = el("div");
+        const appoint = trustedButton(tx("Make world lead…"), () => appointWorldLead(agent, result));
+        row.append(appoint, result);
+        body.append(row);
+      }
+    }
+    const create = actionButton(tx("Create world lead…"), "mutation.memory.agent.create",
+      () => openCreateWorldLeadSheet(), { primary: true });
+    if (atlasState.trusted.available !== true) {
+      create.disabled = true;
+      create.title = tx("trusted actions unavailable: {reasonCode}", { reasonCode: atlasState.trusted.reasonCode });
+    }
+    actions.append(create);
+    body.append(actions);
+  }
+
+  body.append(el("div", "section-title", tx("Tasks")));
+  const tasksBox = el("div");
+  body.append(tasksBox);
+  taskBoardList(tasksBox, { empty: tx("No tasks have been given out to desk agents yet.") });
+
+  body.append(el("div", "section-title", tx("Desk agents")));
+  const sourcesBox = el("div");
+  body.append(sourcesBox);
+  const paintSources = () => {
+    const board = atlasState.taskBoard ?? null;
+    sourcesBox.replaceChildren();
+    if (board === null) sourcesBox.append(el("div", "muted", tx("Reading…")));
+    else if (board.failed) sourcesBox.append(noteBlock("error", tx("Not read: {reason}.", { reason: board.reason })));
+    else if (board.sources.length === 0) {
+      sourcesBox.append(el("div", "empty", tx("No agent takes controller tasks yet.")));
+    }
+    for (const source of board?.failed ? [] : board?.sources ?? []) {
+      const row = el("div", "entry");
+      const found = agentNamed(source.agentId);
+      row.append(el("div", "entry-title", source.agentId));
+      row.append(el("div", "entry-text", [found === null ? tx("not in the catalog") : `${found.projectId} / ${found.quarterId}`,
+        tx("source {sourceId}", { sourceId: source.sourceId }), source.valid ? tx("takes tasks")
+          : tx("coordination folder fails the check")].join(" · ")));
+      sourcesBox.append(row);
+    }
+    sourcesBox.append(noteBlock("note", tx("An agent is made a desk agent from its card (the inspector or the “Tasks” tab ")
+      + tx("of the workspace): “Take tasks (desk agent)…”. The registration is permanent.")));
+  };
+  paintSources();
+  loadTaskBoard().then(() => {
+    if (atlasState.sheetOwner === "world" && !$("sheet").classList.contains("hidden")) paintSources();
+  });
+}
+
+/** A new world lead: a name and a model, and everything else with one confirmation. */
+async function openCreateWorldLeadSheet() {
+  const body = openSheet(tx("World lead"), tx("one confirmation"));
+  body.append(noteBlock("note", WORLD_LEAD_HINT));
+  const agentId = identifierField(tx("world lead identifier"), { taken: agentIdTaken });
+  agentId.set(freeAgentId("world-lead"));
+  body.append(el("div", "section-title", tx("Identifier")), agentId.input, agentId.hint);
+  const profileBox = el("div");
+  profileBox.append(el("div", "muted", tx("Reading the model list from the backend…")));
+  body.append(profileBox);
+  const steps = el("div");
+  body.append(el("div", "section-title", tx("What will be done")), steps);
+  const result = el("div");
+  const actions = el("div", "actions");
+  body.append(actions, result);
+  const catalog = await window.atlas.models();
+  const readProfile = catalog.ok
+    ? renderProfileLists(profileBox, catalog.data)
+    : renderProfileFields(profileBox, catalog.error);
+  const { project } = findNode({ kind: "project", projectId: WORLD_PROJECT, quarterId: null, agentId: null });
+  const hq = project?.quarters.find((quarter) => quarter.quarterId === HEADQUARTERS_QUARTER) ?? null;
+  const folder = el("div");
+  steps.append(infoRow(tx("world project"), project === null ? tx("{WORLD_PROJECT} · will be created", { WORLD_PROJECT }) : tx("{WORLD_PROJECT} · exists", { WORLD_PROJECT })),
+    folder,
+    infoRow(tx("app::World HQ"), hq === null ? tx("will be created") : tx("exists")),
+    infoRow(tx("agent"), tx("will be created in the World HQ")),
+    infoRow(tx("role"), tx("world lead (the controller's coordinator)")));
+  folder.append(infoRow(tx("world project folder"), tx("checking…")));
+  window.atlas.projectFolder({ projectId: WORLD_PROJECT }).then((response) => {
+    folder.replaceChildren(infoRow(tx("world project folder"), !response.ok
+      ? tx("not checked: {value}", { value: boardFailureText(response.error) })
+      : response.data.configured ? tx("{workspacePath} · already bound", { workspacePath: response.data.workspacePath })
+        : tx("controller folder · will be bound permanently")));
+  });
+  steps.append(noteBlock("note", tx("There is one confirmation — in an Atlas window: it names the controller folder, the agent and the role. ")
+    + tx("The world project, its HQ and the agent are created without separate questions, like any project, quarter and agent.")));
+  const create = actionButton(tx("Create with confirmation"), "mutation.memory.agent.create", async () => {
+    const problem = agentId.problem();
+    if (problem !== null) {
+      result.replaceChildren(noteBlock("error", problem));
+      return;
+    }
+    create.disabled = true;
+    await createWorldLead({ agentId: agentId.input.value.trim(), profile: readProfile(), result });
+    create.disabled = false;
+  }, { primary: true });
+  if (atlasState.trusted.available !== true) {
+    create.disabled = true;
+    create.title = tx("trusted actions unavailable: {reasonCode}", { reasonCode: atlasState.trusted.reasonCode });
+  }
+  actions.append(create);
+}
+
+/**
+ * World lead in one confirmed flow: the confirmation and the binding
+ * of the world project to the controller folder (host), the world project and its HQ if they
+ * do not exist, the agent, its role (host, only with this flow's confirmation) - and its chat
+ * where the camera is. Every refusal is named in words; what is already done stays.
+ */
+async function createWorldLead({ agentId, profile, result }) {
+  const say = (kind, text) => result.replaceChildren(noteBlock(kind, text));
+  say("note", tx("Waiting for confirmation…"));
+  const prepared = await window.atlas.prepareWorldLead({ agentId, model: profile.model || null });
+  if (!prepared.ok) {
+    const text = describeWorldLeadRefusal(prepared.error);
+    if (prepared.error?.code !== "user_declined") atlasRecord("bad", tx("world lead not created"), text);
+    say(prepared.error?.code === "user_declined" ? "note" : "error", text);
+    return false;
+  }
+  const scopeStep = async (kind, quarterId, title) => {
+    const { project, quarter } = findNode({ kind, projectId: WORLD_PROJECT, quarterId, agentId: null });
+    if ((kind === "project" ? project : quarter) !== null) return true;
+    const created = await window.atlas.createScope(kind === "project"
+      ? { kind: "project", projectId: WORLD_PROJECT, title }
+      : { kind: "quarter", projectId: WORLD_PROJECT, quarterId, title });
+    const described = describeCreateOutcome(kind, kind === "project" ? WORLD_PROJECT : quarterId, created);
+    if (described.reread) await refresh();
+    if (!created.ok) {
+      result.replaceChildren(outcomeBlock(described));
+      return false;
+    }
+    return true;
+  };
+  say("note", tx("Controller folder bound. Creating the world project and the World HQ…"));
+  if (!await scopeStep("project", null, tx("World"))) return false;
+  if (!await scopeStep("quarter", HEADQUARTERS_QUARTER, tx("World HQ"))) return false;
+  say("note", tx("Creating agent {agentId}…", { agentId }));
+  const created = await window.atlas.createAgent({ agentId, projectId: WORLD_PROJECT, quarterId: HEADQUARTERS_QUARTER,
+    profile });
+  const described = describeCreateOutcome("agent", agentId, created);
+  if (described.reread) await refresh();
+  if (!created.ok) {
+    result.replaceChildren(outcomeBlock(described));
+    atlasRecord("bad", tx("world lead not created"), [described.title, ...described.details].join(" "));
+    return false;
+  }
+  const assigned = await window.atlas.assignWorldLead({ agentId, flowId: prepared.data.flowId, expectedRevision: 0 });
+  await refresh();
+  if (!assigned.ok) {
+    const text = tx("Agent {agentId} was created in the World HQ, but did not get the world lead role: ", { agentId })
+      + `${describeWorldLeadRefusal(assigned.error)}`;
+    atlasRecord("bad", tx("world lead role not assigned"), text);
+    say("error", text);
+    return false;
+  }
+  atlasRecord("ok", tx("world lead"), tx("{agentId} · project {WORLD_PROJECT} in the controller folder", { agentId, WORLD_PROJECT }));
+  closeSheet();
+  atlasOpenWorkspace({ kind: "agent", projectId: WORLD_PROJECT, quarterId: HEADQUARTERS_QUARTER, agentId },
+    { camera: false });
+  return true;
+}
+
+/** An agent of the World HQ without a role becomes the world lead: the same one confirmation, then the role. */
+async function appointWorldLead(agent, result) {
+  const say = (kind, text) => result.replaceChildren(noteBlock(kind, text));
+  const prepared = await window.atlas.prepareWorldLead({ agentId: agent.agentId, model: agent.profile?.model ?? null });
+  if (!prepared.ok) {
+    say(prepared.error?.code === "user_declined" ? "note" : "error", describeWorldLeadRefusal(prepared.error));
+    return;
+  }
+  const assigned = await window.atlas.assignWorldLead({ agentId: agent.agentId, flowId: prepared.data.flowId,
+    expectedRevision: agent.settings?.revision ?? 0 });
+  await refresh();
+  if (!assigned.ok) {
+    say("error", describeWorldLeadRefusal(assigned.error));
+    return;
+  }
+  atlasRecord("ok", tx("world lead"), agent.agentId);
+  closeSheet();
+  atlasOpenWorkspace(leadNode(agent), { camera: false });
+}
+
+/** The World HQ inspector: the lead, a summary of tasks and desk agents, the way into the sheet and the chat. */
+function renderWorldInspector(body) {
+  const lead = worldLeadOf();
+  body.append(infoRow(tx("world lead"), lead === null ? tx("not assigned") : lead.agentId));
+  if (lead !== null) {
+    body.append(infoRow(tx("model"), lead.lastOperation?.observedModel ?? lead.profile?.model ?? tx("app3::not reported")));
+    body.append(infoRow(tx("state"), leadStateWords(lead)));
+  }
+  const summary = el("div");
+  body.append(summary);
+  const paint = () => {
+    const board = atlasState.taskBoard ?? null;
+    if (board === null) {
+      summary.replaceChildren(infoRow(tx("tasks"), tx("checking…")));
+      return;
+    }
+    if (board.failed) {
+      summary.replaceChildren(infoRow(tx("tasks"), tx("not read: {reason}", { reason: board.reason })));
+      return;
+    }
+    const count = (stages) => board.tasks.filter((task) => stages.includes(task.stage)).length;
+    summary.replaceChildren(
+      infoRow(tx("desk agents"), board.sources.length),
+      infoRow(tx("app::tasks"), tx("{length}: in progress {value}, ", { length: board.tasks.length, value: count(["started", "accepted", "planned", "in-progress"]) })
+        + tx("reported {value}, accepted by code {value}, declined {value}", { value: count(["reported"]) })),
+    );
+  };
+  paint();
+  loadTaskBoard().then(paint);
+  const actions = el("div", "actions");
+  const sheet = el("button", "small primary", tx("World HQ"));
+  sheet.addEventListener("click", () => atlasOpenWorldHeadquarters());
+  actions.append(sheet);
+  if (lead !== null) {
+    const chat = el("button", "small", tx("World lead chat"));
+    chat.addEventListener("click", () => atlasOpenWorkspace(leadNode(lead), { camera: false }));
+    actions.append(chat);
+  } else {
+    actions.append(trustedButton(tx("Create world lead…"), () => openCreateWorldLeadSheet()));
+  }
+  body.append(actions);
 }
 
 /**
@@ -2076,24 +2979,24 @@ function atlasOpenHeadquarters(projectId) {
 async function atlasArchiveProject(projectId) {
   const response = await window.atlas.archiveProject({ projectId });
   if (response.ok) {
-    atlasRecord("ok", "project archived", `${projectId} · can be restored from the “Project archive”`);
-    atlasToast(`Project “${projectId}” is archived. You can bring it back with the “Archive” button at the top right.`);
+    atlasRecord("ok", tx("project archived"), tx("{projectId} · can be restored from the “Project archive”", { projectId }));
+    atlasToast(tx("Project “{projectId}” is archived. You can bring it back with the “Archive” button at the top right.", { projectId }));
     refreshArchiveCount();
     closeSheet();
     await refresh();
     return;
   }
   if (response.error?.code === "user_declined") return;
-  const reason = response.error?.reasonCode || response.error?.code || "no code";
+  const reason = response.error?.reasonCode || response.error?.code || tx("no code");
   if (reason === "memory_project_has_agents") {
-    const text = `Project ${projectId} has open agents. Archive them, then the project: the agent history is kept.`;
-    atlasRecord("bad", "project archiving", text);
+    const text = tx("Project {projectId} has open agents. Archive them, then the project: the agent history is kept.", { projectId });
+    atlasRecord("bad", tx("project archiving"), text);
     archiveBlockedSheet(projectId, null, text);
     return;
   }
-  const text = `Project ${projectId} not archived: ${reason}.`;
-  atlasRecord("bad", "project archiving", text);
-  const body = openSheet(`Archiving · ${projectId}`, "trusted action");
+  const text = tx("Project {projectId} not archived: {reason}.", { projectId, reason });
+  atlasRecord("bad", tx("project archiving"), text);
+  const body = openSheet(tx("Archiving · {projectId}", { projectId }), tx("trusted action"));
   body.append(noteBlock("error", text));
 }
 
@@ -2111,16 +3014,16 @@ function openAgentsOf(projectId, quarterId = null) {
  * archived (with confirmation), and when none are left - the project or the quarter itself.
  */
 function archiveBlockedSheet(projectId, quarterId, text) {
-  const body = openSheet(`Archiving · ${quarterId ?? projectId}`, "trusted action");
+  const body = openSheet(tx("Archiving · {value}", { value: quarterId ?? projectId }), tx("trusted action"));
   body.append(noteBlock("error", text));
   const list = el("div");
   body.append(list);
   const render = () => {
     const agents = openAgentsOf(projectId, quarterId);
-    list.replaceChildren(el("div", "section-title", `Open agents · ${agents.length}`));
+    list.replaceChildren(el("div", "section-title", tx("Open agents · {length}", { length: agents.length })));
     if (agents.length === 0) {
-      list.append(el("div", "muted", "No open agents are left."));
-      const again = el("button", "small primary", quarterId === null ? "Archive project…" : "Archive quarter…");
+      list.append(el("div", "muted", tx("No open agents are left.")));
+      const again = el("button", "small primary", quarterId === null ? tx("Archive project…") : tx("Archive quarter…"));
       again.addEventListener("click", () => (quarterId === null ? atlasArchiveProject(projectId)
         : atlasArchiveQuarter(projectId, quarterId)));
       list.append(again);
@@ -2129,9 +3032,9 @@ function archiveBlockedSheet(projectId, quarterId, text) {
     for (const agent of agents) {
       const row = el("div", "entry");
       row.append(el("div", "entry-title", agent.agentId));
-      row.append(el("div", "entry-text", [agent.quarterId === HEADQUARTERS_QUARTER ? "project lead" : agent.quarterId,
-        agent.currentOperationId ? "working" : agent.state].join(" · ")));
-      const archive = el("button", "small", "Archive…");
+      row.append(el("div", "entry-text", [agent.quarterId === HEADQUARTERS_QUARTER ? tx("project lead") : agent.quarterId,
+        agent.currentOperationId ? tx("working") : agent.state].join(" · ")));
+      const archive = el("button", "small", tx("Archive…"));
       archive.addEventListener("click", async () => {
         await atlasArchiveAgent(agent.agentId);
         render();
@@ -2147,31 +3050,31 @@ function archiveBlockedSheet(projectId, quarterId, text) {
 async function atlasArchiveQuarter(projectId, quarterId) {
   const response = await window.atlas.archiveQuarter({ projectId, quarterId });
   if (response.ok) {
-    atlasRecord("ok", "quarter archived", `${projectId}/${quarterId} · can be restored from the “Archive”`);
-    atlasToast(`Quarter “${quarterId}” is archived. You can bring it back with the “Archive” button at the top right.`);
+    atlasRecord("ok", tx("quarter archived"), tx("{projectId}/{quarterId} · can be restored from the “Archive”", { projectId, quarterId }));
+    atlasToast(tx("Quarter “{quarterId}” is archived. You can bring it back with the “Archive” button at the top right.", { quarterId }));
     refreshArchiveCount();
     closeSheet();
     await refresh();
     return;
   }
   if (response.error?.code === "user_declined") return;
-  const reason = response.error?.reasonCode || response.error?.code || "no code";
+  const reason = response.error?.reasonCode || response.error?.code || tx("no code");
   if (reason === "memory_quarter_has_agents") {
-    const text = `Quarter ${quarterId} has open agents. Archive them, then the quarter: the agent history is kept.`;
-    atlasRecord("bad", "quarter archiving", text);
+    const text = tx("Quarter {quarterId} has open agents. Archive them, then the quarter: the agent history is kept.", { quarterId });
+    atlasRecord("bad", tx("quarter archiving"), text);
     archiveBlockedSheet(projectId, quarterId, text);
     return;
   }
-  const text = `Quarter ${quarterId} not archived: ${reason}.`;
-  atlasRecord("bad", "quarter archiving", text);
-  openSheet(`Archiving · ${quarterId}`, "trusted action").append(noteBlock("error", text));
+  const text = tx("Quarter {quarterId} not archived: {reason}.", { quarterId, reason });
+  atlasRecord("bad", tx("quarter archiving"), text);
+  openSheet(tx("Archiving · {quarterId}", { quarterId }), tx("trusted action")).append(noteBlock("error", text));
 }
 
 /** An agent goes to the archive (closing) after confirmation. Its conversation stays readable. */
 async function atlasArchiveAgent(agentId) {
   const response = await window.atlas.closeAgent({ agentId });
   if (response.ok) {
-    atlasRecord("ok", "agent archived", agentId);
+    atlasRecord("ok", tx("agent archived"), agentId);
     // The agent leaves the map: the selection moves to its quarter, the “Archive” counter grows.
     const selected = scene.selection;
     if (selected?.kind === "agent" && selected.agentId === agentId) {
@@ -2182,15 +3085,15 @@ async function atlasArchiveAgent(agentId) {
     return;
   }
   if (response.error?.code === "user_declined") return;
-  const reason = response.error?.reasonCode || response.error?.code || "no code";
+  const reason = response.error?.reasonCode || response.error?.code || tx("no code");
   const text = reason === "writer_busy"
-    ? `Agent ${agentId} is working now: wait for the turn to end or stop it, then archive.`
+    ? tx("Agent {agentId} is working now: wait for the turn to end or stop it, then archive.", { agentId })
     : reason === "conflict"
-      ? `Agent ${agentId} not archived: the backend refused the closing (conflict) - the request does not match `
-        + "what is recorded about it."
-      : `Agent ${agentId} not archived: ${reason}.`;
-  atlasRecord("bad", "agent archiving", text);
-  openSheet(`Archiving · ${agentId}`, "backend operation").append(noteBlock("error", text));
+      ? tx("Agent {agentId} not archived: the backend refused the closing (conflict) - the request does not match ", { agentId })
+        + tx("what is recorded about it.")
+      : tx("Agent {agentId} not archived: {reason}.", { agentId, reason });
+  atlasRecord("bad", tx("agent archiving"), text);
+  openSheet(tx("Archiving · {agentId}", { agentId }), tx("backend operation")).append(noteBlock("error", text));
 }
 
 /** How many projects and quarters are archived - shown on the “Archive” button in the map corner. */
@@ -2218,69 +3121,211 @@ function refreshArchiveCount() {
   });
 }
 
-/** Archive: projects and quarters. Each one returns to the map without confirmation - nothing is lost. */
-async function atlasOpenProjectArchive() {
-  const body = openSheet("Archive", "trusted action");
+/** Why the backend did not undo a change, in words (its codes, action-journal-undo.mjs). */
+function undoRefusal(reason) {
+  const words = {
+    journal_undo_stale: tx("Something changed after it: undo the later change first."),
+    journal_undo_agent_worked: tx("The agent has already worked: close it instead."),
+    journal_undo_model_unavailable: tx("That model is no longer offered by the provider."),
+    journal_undo_file_not_here: tx("The previous version of the file is not on this PC: it was saved on another one, or long ago."),
+    journal_already_undone: tx("It is already undone."),
+    journal_not_undoable: tx("This change cannot be undone."),
+    memory_quarter_has_agents: tx("The quarter has open agents: close them first."),
+    memory_project_has_agents: tx("The project has open agents: close them first."),
+    memory_role_taken: tx("Another agent holds that role now."),
+    memory_project_archived: tx("Its project is archived: restore it first."),
+    memory_quarter_archived: tx("Its quarter is archived: restore it first."),
+  };
+  return words[reason] ?? tx("Not undone: {reason}.", { reason });
+}
+
+/** Why an entry has no “Undo” (the backend's noUndo). */
+function noUndoReason(reason) {
+  const words = {
+    undo_entry: tx("This is an undo: to repeat the change, make it again."),
+    file_not_kept: tx("Not undone here: the previous version of the file was not kept."),
+    binding_not_undone: tx("Not undone here: bind the folder again to change it."),
+    git_not_undone: tx("Not undone here: the git repository stays in the folder."),
+    desk_source_not_undone: tx("Not undone here: the agent keeps taking controller tasks."),
+    approval_without_write: tx("Nothing was written yet: the agent writes the approved document itself."),
+  };
+  return words[reason] ?? tx("Not undone here.");
+}
+
+/**
+ * The history of changes (the backend's action journal): who changed what and
+ * when, in the world or in one project, newest first; a change that can be
+ * undone has “Undo” (a trusted action the person confirms).
+ */
+/** A history entry in a few words: what happened, to which object (by its name). */
+function historyTitle(entry) {
+  const agent = entry.agentId === null ? "?" : displayName("agent", entry.projectId, entry.agentId);
+  const quarter = entry.quarterId === null ? "?" : displayName("quarter", entry.projectId, entry.quarterId);
+  const project = displayName("project", entry.projectId, entry.projectId);
+  const titles = {
+    "agent.create": () => tx("Agent {name} created", { name: agent }),
+    "agent.close": () => tx("Agent {name} closed", { name: agent }),
+    "agent.reopen": () => tx("Agent {name} back to work", { name: agent }),
+    "agent.profile": () => tx("Model of agent {name}", { name: agent }),
+    "agent.settings": () => tx("Role of agent {name}", { name: agent }),
+    "agent.permission-mode": () => tx("Permissions of agent {name}", { name: agent }),
+    "agent.desk-source": () => tx("{name} takes tasks", { name: agent }),
+    "scope.create": () => (entry.quarterId === null ? tx("Project {name} created", { name: project })
+      : tx("Quarter {name} created", { name: quarter })),
+    "memory.write": () => tx("Memory changed · {name}", { name: entry.agentId !== null ? agent
+      : entry.quarterId !== null ? quarter : project }),
+    "memory.approve": () => tx("Memory document approved · {name}", { name: agent }),
+    "project.archive": () => tx("Project {name} archived", { name: project }),
+    "project.restore": () => tx("Project {name} restored", { name: project }),
+    "quarter.archive": () => tx("Quarter {name} archived", { name: quarter }),
+    "quarter.restore": () => tx("Quarter {name} restored", { name: quarter }),
+    "project.copy": () => tx("Project copy {name}", { name: project }),
+    "project.policy": () => tx("Where project {name} is kept", { name: project }),
+    "project.bind": () => tx("Folder of project {name}", { name: project }),
+    "project.rebind": () => tx("Folder of project {name}", { name: project }),
+    "project.git-init": () => tx("Git in the folder of {name}", { name: project }),
+    "project.file-save": () => tx("File saved · {name}", { name: project }),
+    "object.rename": () => tx("Renamed · {name}", { name: entry.agentId !== null ? agent
+      : entry.quarterId !== null ? quarter : project }),
+  };
+  const title = titles[entry.action]?.() ?? entry.action;
+  return entry.undoes === null ? title : tx("Undo · {title}", { title });
+}
+
+async function atlasOpenHistory(projectId = null) {
+  const body = openSheet(projectId === null ? tx("History of changes")
+    : tx("History · {projectId}", { projectId: displayName("project", projectId, projectId) }), tx("trusted action"));
   const list = el("div");
-  body.append(list, noteBlock("note",
-    "An archived project or quarter is not visible on the map, but intact: memory, folder binding and closed agents "
-    + "are kept. Restoring puts it back on the map exactly as it was and asks for no confirmation. "
-    + "An archived agent also leaves the map; it cannot be brought back to work, but its conversation can be read from here."));
-  const since = (item) => (item.archivedAtUtc
-    ? `${item.archivedAtUtc.slice(0, 16).replace("T", " ")} UTC` : "not reported");
-  const restoreButton = (box, label, restore) => trustedButton("Restore to map", async () => {
-    const restored = await restore();
-    if (restored.ok) {
-      atlasRecord("ok", "restored from archive", label);
+  body.append(el("div", "muted history-hint", tx("Click an entry for details and “Undo”.")), list);
+  const when = (value) => (typeof value === "string" ? `${value.slice(0, 16).replace("T", " ")} UTC` : tx("app::not reported"));
+  // In the list: the time today, the day and the time before (this PC's clock).
+  const today = new Date().toDateString();
+  const short = (value) => {
+    const at = new Date(value);
+    if (!Number.isFinite(at.getTime())) return "?";
+    return at.toDateString() === today ? at.toLocaleTimeString(dateLocale(), { hour: "2-digit", minute: "2-digit" })
+      : at.toLocaleString(dateLocale(), { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+  };
+  const undoButton = (box, entry) => trustedButton(tx("Undo"), async () => {
+    const done = await window.atlas.undoAction({ projectId: entry.projectId, entryId: entry.entryId });
+    if (done.ok) {
+      atlasRecord("ok", tx("change undone"), entry.summary);
       refreshArchiveCount();
       await refresh();
       await render();
       return;
     }
-    const reason = restored.error?.reasonCode || restored.error?.code || "no code";
-    atlasRecord("bad", "restore from archive", `${label}: ${reason}`);
-    box.append(noteBlock("error", `Not restored: ${reason}.`));
+    if (done.error?.code === "user_declined") return;
+    const reason = done.error?.reasonCode || done.error?.code || tx("no code");
+    atlasRecord("bad", tx("undo change"), `${entry.summary}: ${reason}`);
+    box.append(noteBlock("error", undoRefusal(reason)));
   });
   const render = async () => {
-    list.replaceChildren(el("div", "muted", "Reading the archive…"));
+    list.replaceChildren(el("div", "muted", tx("Reading the history…")));
+    const response = await window.atlas.actionJournal({ projectId, limit: 200 });
+    if (!response.ok) {
+      list.replaceChildren(noteBlock("error",
+        tx("History not read: {value}.", { value: response.error?.reasonCode || response.error?.code || tx("no code") })));
+      return;
+    }
+    const { entries } = response.data;
+    list.replaceChildren(el("div", "section-title", tx("Changes · {length}", { length: entries.length })));
+    if (entries.length === 0) list.append(el("div", "empty", tx("No changes recorded yet.")));
+    // One line per change; a click opens its details: the full record, who and where, “Undo”.
+    for (const entry of entries) {
+      const box = el("div", "history-entry");
+      const row = el("button", "history-row");
+      row.append(el("span", "history-when", short(entry.atUtc)), el("span", "history-title", historyTitle(entry)));
+      if (entry.undoneBy !== null) row.append(el("span", "history-mark", tx("undone")));
+      const details = el("div", "history-details hidden");
+      details.append(el("div", "entry-text", entry.summary));
+      const who = entry.actor.kind === "agent"
+        ? tx("agent {agentId}", { agentId: entry.actor.id === null ? "?" : displayName("agent", entry.projectId, entry.actor.id) })
+        : tx("you");
+      const where = entry.quarterId === null ? displayName("project", entry.projectId, entry.projectId)
+        : `${displayName("project", entry.projectId, entry.projectId)} / ${entry.quarterId === HEADQUARTERS_QUARTER ? tx("HQ")
+          : displayName("quarter", entry.projectId, entry.quarterId)}`;
+      details.append(el("div", "muted", `${when(entry.atUtc)} · ${who} · ${where}`));
+      if (entry.undoneBy !== null) details.append(el("div", "muted", tx("Undone {value}.", { value: when(entry.undoneAtUtc) })));
+      else if (entry.undoable) {
+        const actions = el("div", "actions");
+        actions.append(undoButton(details, entry));
+        details.append(actions);
+      } else if (entry.noUndo !== null) details.append(el("div", "muted", noUndoReason(entry.noUndo)));
+      row.addEventListener("click", () => {
+        details.classList.toggle("hidden");
+        box.classList.toggle("open", !details.classList.contains("hidden"));
+      });
+      box.append(row, details);
+      list.append(box);
+    }
+  };
+  await render();
+}
+
+/** Archive: projects and quarters. Each one returns to the map without confirmation - nothing is lost. */
+async function atlasOpenProjectArchive() {
+  const body = openSheet(tx("app::Archive"), tx("trusted action"));
+  const list = el("div");
+  body.append(list, noteBlock("note",
+    tx("An archived project or quarter is not visible on the map, but intact: memory, folder binding and closed agents ")
+    + tx("are kept. Restoring puts it back on the map exactly as it was and asks for no confirmation. ")
+    + tx("An archived agent also leaves the map; its conversation can be read from here, and “History” brings it back to work (undo of its closing).")));
+  const since = (item) => (item.archivedAtUtc
+    ? `${item.archivedAtUtc.slice(0, 16).replace("T", " ")} UTC` : tx("app::not reported"));
+  const restoreButton = (box, label, restore) => trustedButton(tx("Restore to map"), async () => {
+    const restored = await restore();
+    if (restored.ok) {
+      atlasRecord("ok", tx("restored from archive"), label);
+      refreshArchiveCount();
+      await refresh();
+      await render();
+      return;
+    }
+    const reason = restored.error?.reasonCode || restored.error?.code || tx("no code");
+    atlasRecord("bad", tx("restore from archive"), `${label}: ${reason}`);
+    box.append(noteBlock("error", tx("Not restored: {reason}.", { reason })));
+  });
+  const render = async () => {
+    list.replaceChildren(el("div", "muted", tx("Reading the archive…")));
     const response = await window.atlas.archivedProjects();
     if (!response.ok) {
       list.replaceChildren(noteBlock("error",
-        `Archive not read: ${response.error?.reasonCode || response.error?.code || "no code"}.`));
+        tx("Archive not read: {value}.", { value: response.error?.reasonCode || response.error?.code || tx("no code") })));
       return;
     }
     const { projects, quarters = [] } = response.data;
     const agents = archivedAgents();
     showArchiveCount(projects.length + quarters.length + agents.length);
-    list.replaceChildren(el("div", "section-title", `Projects · ${projects.length}`));
-    if (projects.length === 0) list.append(el("div", "empty", "No projects in the archive."));
+    list.replaceChildren(el("div", "section-title", tx("Projects · {length}", { length: projects.length })));
+    if (projects.length === 0) list.append(el("div", "empty", tx("No projects in the archive.")));
     for (const item of projects) {
       const box = el("div", "entry");
       box.append(el("div", "entry-title", item.title ? `${item.projectId} · ${item.title}` : item.projectId));
       box.append(el("div", "entry-text",
-        `quarters: ${item.quarterCount ?? "not reported"} · archived since ${since(item)}`));
+        tx("quarters: {value} · archived since {value2}", { value: item.quarterCount ?? tx("app::not reported"), value2: since(item) })));
       box.append(restoreButton(box, item.projectId, () => window.atlas.restoreProject({ projectId: item.projectId })));
       list.append(box);
     }
-    list.append(el("div", "section-title", `Quarters · ${quarters.length}`));
-    if (quarters.length === 0) list.append(el("div", "empty", "No quarters in the archive."));
+    list.append(el("div", "section-title", tx("Quarters · {length}", { length: quarters.length })));
+    if (quarters.length === 0) list.append(el("div", "empty", tx("No quarters in the archive.")));
     for (const item of quarters) {
       const box = el("div", "entry");
       box.append(el("div", "entry-title", `${item.projectId} / ${item.quarterId}${item.title ? ` · ${item.title}` : ""}`));
-      box.append(el("div", "entry-text", `archived since ${since(item)}`));
+      box.append(el("div", "entry-text", tx("archived since {value}", { value: since(item) })));
       box.append(restoreButton(box, `${item.projectId}/${item.quarterId}`,
         () => window.atlas.restoreQuarter({ projectId: item.projectId, quarterId: item.quarterId })));
       list.append(box);
     }
-    // An agent cannot be brought back to work, but its conversation and memory remain: they can be read.
-    list.append(el("div", "section-title", `Agents · ${agents.length}`));
-    if (agents.length === 0) list.append(el("div", "empty", "No agents in the archive."));
+    // An archived agent's conversation and memory remain: they can be read; "History" brings it back to work.
+    list.append(el("div", "section-title", tx("Agents · {length}", { length: agents.length })));
+    if (agents.length === 0) list.append(el("div", "empty", tx("No agents in the archive.")));
     for (const agent of agents) {
       const box = el("div", "entry");
       box.append(el("div", "entry-title", agent.agentId));
-      box.append(el("div", "entry-text", `${agent.projectId} / ${agent.quarterId === HEADQUARTERS_QUARTER ? "HQ" : agent.quarterId}`
-        + ` · archived since ${since(agent)}`));
-      const read = el("button", "small", "Conversation");
+      box.append(el("div", "entry-text", tx("{projectId} / {quarterId}", { projectId: agent.projectId, quarterId: agent.quarterId === HEADQUARTERS_QUARTER ? tx("HQ") : agent.quarterId })
+        + tx(" · archived since {value}", { value: since(agent) })));
+      const read = el("button", "small", tx("Conversation"));
       read.addEventListener("click", () => {
         closeSheet();
         atlasOpenWorkspace({ kind: "agent", projectId: agent.projectId, quarterId: agent.quarterId,
@@ -2293,26 +3338,493 @@ async function atlasOpenProjectArchive() {
   await render();
 }
 
-/** Why the folder was not bound - in words, by the refusal code. */
-function bindRefusalText(projectId, error) {
-  const reason = error?.reasonCode || error?.code || "no code";
-  if (reason === "memory_workspace_conflict") {
-    return `Project ${projectId} is already bound to another folder. The folder is shown in the project HQ; you can change it `
-      + "there as well, as long as the project agents have not worked in it.";
+// --- projects not on this PC -----------------------------------------------
+
+/** The world by its registry: projects not on this PC (grey frames on the map), this PC, the "where it may be kept" rules. */
+function refreshAwayProjects() {
+  if (typeof window.atlas?.awayProjects !== "function" || atlasState.trusted?.available !== true) return;
+  window.atlas.awayProjects().then((response) => {
+    if (!response.ok) return;
+    atlasState.away = response.data;
+    $("awayToggle").classList.toggle("hidden", response.data.split !== true);
+    $("awayCount").textContent = String(response.data.projects.length);
+    requestRender();
+  });
+}
+
+const awayProjectOf = (projectId) => (atlasState.away.projects ?? []).find((item) => item.projectId === projectId) ?? null;
+const knownProjectOf = (projectId) => (atlasState.away.known ?? []).find((item) => item.projectId === projectId) ?? null;
+
+/** Where the project is now: on which PC, or in a package. */
+function placeText(location) {
+  if (location === null || location === undefined) return tx("where it is now — unknown");
+  return location.machineId === null ? tx("in a package (on no PC)") : tx("on PC \"{title}\"", { title: location.title });
+}
+
+/** Where the project may be kept - in words. */
+function policyText(policy) {
+  if (policy?.homeOnly) return tx("home only");
+  if (Array.isArray(policy?.allowedMachines)) {
+    const machines = atlasState.away.machines ?? {};
+    return tx("only on PC: {value}", { value: policy.allowedMachines.map((id) => machines[id]?.title ?? id).join(", ") });
   }
-  if (reason === "memory_workspace_in_use") {
-    return `The folder of project ${projectId} is held by its agents: an open agent is bound to it, and an agent `
-      + "that has already worked keeps its history there. It cannot be changed.";
+  return tx("on any PC");
+}
+
+/** A summary without texts: how many agents, quarters, open tasks, and when the last work was. */
+function summaryText(summary) {
+  if (summary === null || summary === undefined) return tx("no summary");
+  const when = summary.lastActivityUtc ? `${summary.lastActivityUtc.slice(0, 16).replace("T", " ")} UTC` : tx("app::none yet");
+  return tx("agents: {value} · quarters: {value2} · open tasks: ", { value: summary.agents ?? "?", value2: summary.quarters ?? "?" })
+    + tx("{value} · last work: {when}", { value: summary.tasksOpen ?? "?", when });
+}
+
+/** The "where the project may be kept" choice; the current one is selected. "Only on this PC" - when the PC has a name. */
+function policySelect(policy) {
+  const select = el("select");
+  const thisMachine = atlasState.away.thisMachine ?? null;
+  const current = policy?.homeOnly ? "home"
+    : Array.isArray(policy?.allowedMachines) ? (thisMachine !== null && policy.allowedMachines.length === 1
+      && policy.allowedMachines[0] === thisMachine.machineId ? "this-pc" : "other") : "anywhere";
+  const options = [["anywhere", tx("on any PC")], ["home", tx("home only")],
+    ["this-pc", thisMachine === null ? tx("only on this PC (the PC has no name yet)") : tx("only on this PC (\"{title}\")", { title: thisMachine.title })]];
+  if (current === "other") options.push(["other", tx("{value} (as now)", { value: policyText(policy) })]);
+  for (const [value, label] of options) {
+    const option = el("option", null, label);
+    option.value = value;
+    option.disabled = value === "this-pc" && thisMachine === null;
+    option.selected = value === current;
+    select.append(option);
   }
-  return `Not bound: ${reason}.`;
+  return select;
+}
+
+/** "Where the project is kept" in the HQ: where it is and where it may be kept (split instance). */
+function projectPlaceSection(body, projectId) {
+  if (atlasState.away.split !== true || projectId === WORLD_PROJECT) return;
+  const known = knownProjectOf(projectId);
+  body.append(el("div", "section-title", tx("Where it is kept")));
+  body.append(infoRow(tx("now"), atlasState.away.thisMachine ? tx("on this PC (\"{title}\")", { title: atlasState.away.thisMachine.title }) : tx("on this PC")));
+  body.append(infoRow(tx("may be kept"), policyText(known?.policy)));
+  const select = policySelect(known?.policy);
+  const result = el("div");
+  const actions = el("div", "actions");
+  actions.append(select, trustedButton(tx("Save"), async () => {
+    if (select.value === "other") return;
+    const response = await window.atlas.setProjectPolicy({ projectId, choice: select.value });
+    if (response.ok) {
+      atlasRecord("ok", tx("where to keep the project"), `${projectId}: ${policyText(response.data.policy)}`);
+      result.replaceChildren(noteBlock("note", response.data.changed
+        ? tx("Saved: {value}. The project package gets it with its next export.", { value: policyText(response.data.policy) })
+        : tx("Already recorded so.")));
+      refreshAwayProjects();
+      return;
+    }
+    if (response.error?.code === "user_declined") {
+      result.replaceChildren(noteBlock("note", tx("Not changed: the confirmation was declined.")));
+      return;
+    }
+    const reason = response.error?.reasonCode || response.error?.code || tx("no code");
+    result.replaceChildren(noteBlock("error", reason === "machine_not_named"
+      ? tx("This PC has no name yet: agents-factory machine set --id <id> --title <title>.")
+      : tx("Not changed: {reason}.", { reason })));
+  }));
+  body.append(actions, result);
+  body.append(noteBlock("note", tx("For now this is a mark: it starts refusing connection on other PCs with the world's sync (block 3).")));
+}
+
+/** Why the project was not disconnected or connected - in words, by the refusal's code. */
+function mountRefusalText(error) {
+  const reason = error?.reasonCode || error?.code || tx("no code");
+  const texts = {
+    project_not_quiescent: tx("A project agent is working now. Wait for the turn to end and try again."),
+    unmount_interactions_open: tx("A project agent has a question or a permission request without an answer. Answer it in the agent's ")
+      + tx("window and try again. Nothing was removed from this PC."),
+    package_folder_not_empty: tx("The chosen folder already holds other files. Choose an empty folder or this project's package folder."),
+    package_other_project: tx("The chosen folder holds another project's package."),
+    package_unreadable: tx("The chosen folder has no project package (project.af.json)."),
+    unmount_file_changed: tx("A project file changed while the package was written. Nothing was removed from this PC: try again."),
+    project_already_mounted: tx("This project is already on this PC."),
+    package_world_mismatch: tx("A package from another world: it cannot be connected to this instance."),
+    gateway_running: tx("The Gateway is running and could not be stopped. Stop it in the Gateway panel and try again."),
+    store_layout_single: tx("The instance is not split by project yet: projects can be disconnected after ")
+      + "agents-factory project migrate-layout.",
+    machine_not_named: tx("This PC has no name yet: agents-factory machine set --id <id> --title <title>."),
+  };
+  if (error?.code === "busy") return tx("The Gateway is busy with another action ({reason}). Try again when it is over.", { reason });
+  return texts[reason] ?? tx("Not done: {reason}.", { reason });
+}
+
+/** The Gateway stopped for the action - and whether it started again. */
+function gatewayPauseText(gateway) {
+  if (gateway?.paused !== true) return null;
+  return gateway.restarted
+    ? tx("The Gateway stopped for that time and was started again.")
+    : tx("The Gateway stopped for that time and did not start again: start it in the Gateway panel.");
 }
 
 /**
- * What holds the project folder - the same rule as rebind-workspace in the backend.
- * An agent that has already worked (open or closed): its history was made in this
- * folder, and the folder is permanent. An open agent that has not been sent anything yet:
- * its session is bound to the folder, but it can be archived without loss.
- * Quarters (and the HQ's service quarter) do not count. null - the world is not read yet.
+ * Disconnect the project from this PC: the package is written to a folder the person
+ * chooses, checked, and only then the project's memory, conversations and tasks
+ * leave the PC. The project folder with its files is not touched. The confirmation is in
+ * a system window, with the project, the package folder and where the package may be kept.
+ */
+async function atlasUnmountProject(projectId) {
+  const body = openSheet(tx("Disconnect from this PC · {projectId}", { projectId }), tx("trusted action"));
+  body.append(noteBlock("note",
+    tx("The project goes into a package: its memory, conversations, tasks and place on the map are written to the package folder, checked, ")
+    + tx("and only then leave this PC. A grey frame stays on the map. The project folder with its files is not touched. ")
+    + tx("The project comes back with a click on the frame or with \"Not on this PC\" at the top right, choosing the same package ")
+    + tx("folder. The package needs an empty folder or this project's earlier package folder.")));
+  const select = policySelect(knownProjectOf(projectId)?.policy);
+  const row = el("div", "actions");
+  row.append(el("span", "muted", tx("Where the package may be kept:")), select);
+  body.append(row);
+  const result = el("div");
+  const actions = el("div", "actions");
+  actions.append(trustedButton(tx("Choose the package folder and disconnect…"), async () => {
+    const chosen = await window.atlas.chooseWorkspace({ purpose: "package" });
+    if (!chosen.ok) {
+      atlasRecord("bad", tx("folder not chosen"), chosen.error.reasonCode || chosen.error.code);
+      return;
+    }
+    if (!chosen.data.chosen) return;
+    // The project's place on the map goes in its package: first write what is not written yet.
+    await flushPending();
+    result.replaceChildren(el("div", "muted", tx("Writing the package and disconnecting the project…")));
+    const response = await window.atlas.unmountProject({
+      projectId, selectionId: chosen.data.selectionId, choice: select.value === "other" ? null : select.value,
+    });
+    if (response.ok) {
+      atlasRecord("ok", tx("project disconnected from this PC"), tx("{projectId} · package {displayPath}", { projectId, displayPath: chosen.data.displayPath }));
+      result.replaceChildren(noteBlock("note", [tx("Project \"{projectId}\" disconnected. Package: {displayPath}.", { projectId, displayPath: chosen.data.displayPath }),
+        gatewayPauseText(response.data.gateway)].filter(Boolean).join(" ")));
+      refreshAwayProjects();
+      refreshArchiveCount();
+      await refresh();
+      return;
+    }
+    if (response.error?.code === "user_declined") {
+      result.replaceChildren(noteBlock("note", tx("Nothing was done: the confirmation was declined.")));
+      return;
+    }
+    atlasRecord("bad", tx("project not disconnected"), `${projectId}: ${response.error?.reasonCode || response.error?.code}`);
+    result.replaceChildren(noteBlock("error", [mountRefusalText(response.error),
+      gatewayPauseText(response.gateway)].filter(Boolean).join(" ")));
+  }, { primary: true }));
+  body.append(actions, result);
+}
+
+/**
+ * Connect a project from a package: the person chooses the package folder, the confirmation is
+ * in a system window. done(ok) - so that the window it was connected from refreshes.
+ */
+async function atlasMountAway(projectId, status, done = null) {
+  const chosen = await window.atlas.chooseWorkspace({ purpose: "package" });
+  if (!chosen.ok) {
+    atlasRecord("bad", tx("folder not chosen"), chosen.error.reasonCode || chosen.error.code);
+    return;
+  }
+  if (!chosen.data.chosen) return;
+  await flushPending();
+  status.replaceChildren(el("div", "muted", tx("Connecting {projectId}…", { projectId })));
+  const response = await window.atlas.mountProject({ selectionId: chosen.data.selectionId, projectId });
+  if (response.ok) {
+    atlasRecord("ok", tx("project connected to this PC"), projectId);
+    const missing = response.data.workspace === "missing"
+      ? tx("Its folder is not on this PC: change it in the project's HQ (\"Change folder…\").") : null;
+    status.replaceChildren(noteBlock("note", [tx("Project \"{projectId}\" is on this PC again.", { projectId }), missing,
+      gatewayPauseText(response.data.gateway)].filter(Boolean).join(" ")));
+    refreshAwayProjects();
+    refreshArchiveCount();
+    await refresh();
+    if (done) await done(true);
+    return;
+  }
+  if (response.error?.code === "user_declined") {
+    status.replaceChildren();
+    return;
+  }
+  atlasRecord("bad", tx("project not connected"), `${projectId}: ${response.error?.reasonCode || response.error?.code}`);
+  status.replaceChildren(noteBlock("error", [mountRefusalText(response.error), gatewayPauseText(response.gateway)]
+    .filter(Boolean).join(" ")));
+}
+
+/** The lines about a project not on this PC: where it is, where it may be kept, a summary without texts. */
+function awayDetails(item) {
+  const box = el("div");
+  box.append(infoRow(tx("where it is now"), placeText(item.location)));
+  box.append(infoRow(tx("may be kept"), policyText(item.policy)));
+  box.append(infoRow(tx("summary"), summaryText(item.summary)));
+  if (item.location?.atUtc) box.append(infoRow(tx("since when"), `${item.location.atUtc.slice(0, 16).replace("T", " ")} UTC`));
+  if (item.archived) box.append(infoRow(tx("archive"), tx("project archived")));
+  return box;
+}
+
+/** A grey frame on the map: the project is not on this PC. Only the summary and "Connect…". */
+function atlasOpenAwayProject(projectId) {
+  const item = awayProjectOf(projectId);
+  if (item === null) return;
+  const body = openSheet(tx("Not on this PC · {value}", { value: item.title ? `${projectId} · ${item.title}` : projectId }), tx("view only"));
+  body.append(awayDetails(item));
+  body.append(noteBlock("note", tx("The project's memory, conversations and tasks are not on this PC: only the summary is here. ")
+    + tx("You cannot write to the project's agents or change it from here. A hidden frame comes back with its tick in \"Not on this PC\".")));
+  body.append(awayCheck(tx("This project's frame on the map"), true, (on) => { setAwayShown(projectId, on); if (!on) closeSheet(); }));
+  const status = el("div");
+  const actions = el("div", "actions");
+  actions.append(trustedButton(tx("Connect…"), () => atlasMountAway(projectId, status, async () => closeSheet())));
+  body.append(actions, status);
+}
+
+/** A tick of the "Not on this PC" sheet: what this PC's map shows (not sent to the world). */
+function awayCheck(label, checked, onChange) {
+  const row = el("label", "check-row");
+  const input = el("input");
+  input.type = "checkbox";
+  input.checked = checked;
+  input.addEventListener("change", () => onChange(input.checked));
+  row.append(input, el("span", null, label));
+  return row;
+}
+
+/** A project's grey frame on this PC's map: shown, or hidden by the person. */
+function setAwayShown(projectId, on) {
+  const next = new Set(atlasState.ui.awayHidden ?? []);
+  if (on) next.delete(projectId); else next.add(projectId);
+  setPanel("awayHidden", [...next].sort());
+  requestRender();
+}
+
+/** The list of the "Not on this PC" sheet from atlasState.away: map ticks, summary, "Connect…". */
+function paintAwayList(list, status, reload) {
+  const { projects } = atlasState.away;
+  list.replaceChildren(el("div", "section-title", tx("Projects · {length}", { length: projects.length })));
+  const repaint = () => paintAwayList(list, status, reload);
+  const hidden = new Set(atlasState.ui.awayHidden ?? []);
+  const hiddenHere = projects.filter((item) => hidden.has(item.projectId)).map((item) => item.projectId);
+  if (projects.length === 0) list.append(el("div", "empty", tx("All the world's projects are on this PC.")));
+  else {
+    list.append(awayCheck(tx("Show grey frames of projects not on this PC on the map"), atlasState.ui.awayFrames !== false,
+      (on) => { setPanel("awayFrames", on); requestRender(); repaint(); }));
+  }
+  if (hiddenHere.length > 0) {
+    const restore = el("button", null, tx("Show hidden frames on the map ({length})", { length: hiddenHere.length }));
+    restore.addEventListener("click", () => {
+      setPanel("awayHidden", (atlasState.ui.awayHidden ?? []).filter((projectId) => !hiddenHere.includes(projectId)));
+      if (atlasState.ui.awayFrames === false) setPanel("awayFrames", true);
+      requestRender();
+      repaint();
+    });
+    list.append(restore);
+  }
+  for (const item of projects) {
+    const box = el("div", "entry");
+    box.append(el("div", "entry-title", item.title ? `${item.projectId} · ${item.title}` : item.projectId));
+    box.append(awayDetails(item));
+    const shown = awayCheck(tx("This project's frame on the map"), !hidden.has(item.projectId), (on) => {
+      setAwayShown(item.projectId, on);
+      repaint();
+    });
+    if (atlasState.ui.awayFrames === false) shown.querySelector("input").disabled = true;
+    box.append(shown);
+    box.append(trustedButton(tx("Connect…"), () => atlasMountAway(item.projectId, status, reload)));
+    list.append(box);
+  }
+}
+
+/**
+ * The world's projects that are not on this PC. Only the name, place and summary are here -
+ * memory, conversations and tasks are in a package or on another PC. "Connect…" takes
+ * the package from a folder the person chooses.
+ */
+async function atlasOpenAwayProjects() {
+  const body = openSheet(tx("Not on this PC"), tx("trusted action"));
+  const status = el("div");
+  const list = el("div");
+  body.append(status, list, noteBlock("note",
+    tx("These projects are not on this PC: their memory, conversations and tasks are in the project's package or on another PC; here are only ")
+    + tx("the name, place and summary. On the map they are grey frames. To bring a project back, press \"Connect…\" and choose ")
+    + tx("its package folder. The Gateway stops for that time and starts again.")));
+  const render = async () => {
+    list.replaceChildren(el("div", "muted", tx("Reading the list…")));
+    const response = await window.atlas.awayProjects();
+    if (!response.ok) {
+      list.replaceChildren(noteBlock("error",
+        tx("List not read: {value}.", { value: response.error?.reasonCode || response.error?.code || tx("no code") })));
+      return;
+    }
+    atlasState.away = response.data;
+    $("awayCount").textContent = String(response.data.projects.length);
+    requestRender();
+    paintAwayList(list, status, render);
+  };
+  await render();
+}
+
+// --- the world and projects between PCs (block 3) ---------------------------
+
+atlasState.sync = { configured: false };
+
+/** Whose world: by this PC's record, without the network. The full picture with repositories is in the sync window. */
+function refreshSync() {
+  if (typeof window.atlas?.syncStatus !== "function" || atlasState.trusted?.available !== true) return;
+  window.atlas.syncStatus({ remote: false }).then((response) => {
+    if (!response.ok) return;
+    paintSyncToggle(response.data);
+  });
+}
+
+function paintSyncToggle(view) {
+  atlasState.sync = view;
+  // The chip only in synced mode: in local mode work does not move between PCs.
+  const configured = view.configured === true && view.mode !== "local";
+  $("syncToggle").classList.toggle("hidden", !configured);
+  if (configured) $("syncState").textContent = view.world.held ? tx("here") : tx("handed over");
+  paintDataNotice();
+}
+
+const syncHolderText = (view, holder) => (holder === null || holder === undefined ? tx("nobody (free)")
+  : holder === view.machine?.machineId ? tx("this PC") : tx("\"{name}\"", { name: view.machines?.[holder]?.title ?? holder }));
+
+const SYNC_ACTION_TEXT = Object.freeze({
+  released: tx("handed over"), "backed-up": tx("backed up, stays here"), taken: tx("app::taken"), "already-mounted": tx("already here"),
+  "already-held": tx("already here"), initialized: tx("first push"),
+});
+
+/** Why a take or hand-over did not work - in words, by the refusal's code. */
+function syncRefusalText(error) {
+  const reason = error?.reasonCode || error?.code || tx("no code");
+  const texts = {
+    gateway_running: tx("The Gateway is running and could not be stopped. Stop it in the Gateway panel and try again."),
+    sync_held_elsewhere: tx("Another PC holds it: press \"Hand over\" there first."),
+    sync_not_holder: tx("This PC does not hold it: nothing to hand over."),
+    sync_world_changed_here: tx("The world on this PC changed while it was handed over. Nothing was replaced; a copy of what is here, ")
+      + tx("is kept in .project-local\\backups."),
+    sync_local_changes: tx("The instance folder has changes the repository does not. Nothing was taken."),
+    sync_diverged: tx("The history here and in the repository diverged. Nothing was taken."),
+    sync_race: tx("Another PC was first. Refresh the state and try again."),
+    sync_policy_denied: tx("This project may not be held on this PC (\"Where it is kept\")."),
+    sync_remote_not_home: tx("The project is \"home only\", and one of its repositories is not at home. Nothing was pushed."),
+    sync_workspace_not_pushed: tx("The project folder is not pushed to its repository: commit and push it, then try again."),
+    sync_secret_found: tx("Something that looks like a secret was found in the files to push. The push was stopped."),
+    sync_push_failed: tx("The repository did not take the push (no connection or no access). Nothing was lost, try again later."),
+    sync_git_failed: tx("Git could not do a step (no connection or no access). Try again later."),
+    sync_not_configured: tx("Sync is not set up on this PC (.project-local\\sync.json)."),
+    sync_not_initialized: tx("The repository is still empty: first push from the PC that has everything."),
+    unmount_interactions_open: tx("A project agent has a question or a permission request without an answer. Answer it and try again."),
+    project_not_quiescent: tx("A project agent is working now. Wait for the turn to end and try again."),
+  };
+  if (error?.code === "busy") return tx("The Gateway is busy with another action ({reason}). Try again when it is over.", { reason });
+  return texts[reason] ?? tx("app::Not done: {reason}.", { reason });
+}
+
+async function atlasOpenSync() {
+  const body = openSheet(tx("Sync between PCs"), tx("trusted action"));
+  const list = el("div");
+  const result = el("div");
+  body.append(list, result, noteBlock("note",
+    tx("The world and projects work on one PC at a time. \"Hand over\" pushes them to their repositories and frees them for another PC, ")
+    + tx("\"Take\" brings them here. A project that may be held only on this PC goes nowhere: on \"Hand over\" a backup goes to its ")
+    + tx("repository. The Gateway runs only on the PC that has the world.")));
+  const change = async (kind, target) => {
+    await flushPending();
+    result.replaceChildren(noteBlock("note", kind === "take" ? tx("Taking: repositories, then connecting…") : tx("Handing over: export, then repositories…")));
+    const response = await (kind === "take" ? window.atlas.syncTake : window.atlas.syncRelease)({ target });
+    if (response.ok) {
+      const data = response.data;
+      const lines = data.steps.map((step) => tx("{target}: {action}", { target: step.target === "world" ? tx("world") : step.target, action: SYNC_ACTION_TEXT[step.action] ?? step.action }));
+      for (const item of data.skipped) lines.push(tx("{projectId}: skipped ({value})", { projectId: item.projectId, value: item.reason === "sync_policy_denied" ? tx("not for this PC") : tx("held by another PC") }));
+      for (const projectId of data.stayLocal) lines.push(tx("{projectId}: not synced, stays here", { projectId }));
+      if (data.gateway?.started === true) lines.push(tx("Gateway started"));
+      else if (kind === "release" && (target === "all" || target === "world")) lines.push(tx("Gateway stopped: world handed over"));
+      atlasRecord("ok", kind === "take" ? tx("taken from another PC") : tx("handed over to another PC"), lines.join("; "));
+      result.replaceChildren(noteBlock("note", lines.join(" · ")));
+      await reloadLayoutFromDisk(kind === "take" ? tx("after \"Take\"") : tx("after \"Hand over\""));
+      await refresh();
+      refreshAwayProjects();
+    } else if (response.error?.code === "user_declined") {
+      result.replaceChildren(noteBlock("note", tx("Nothing was done: the confirmation was declined.")));
+    } else {
+      atlasRecord("bad", kind === "take" ? tx("not taken") : tx("not handed over"), response.error?.reasonCode || response.error?.code);
+      result.replaceChildren(noteBlock("error", syncRefusalText(response.error)));
+    }
+    await render();
+  };
+  const render = async () => {
+    list.replaceChildren(el("div", "muted", tx("Reading the state and repositories…")));
+    const response = await window.atlas.syncStatus({ remote: true });
+    if (!response.ok) {
+      list.replaceChildren(noteBlock("error", tx("State not read: {value}.", { value: response.error?.reasonCode || response.error?.code || tx("no code") })));
+      return;
+    }
+    const view = response.data;
+    paintSyncToggle(view);
+    if (!view.configured || view.mode === "local") {
+      list.replaceChildren(noteBlock("note", view.mode === "local"
+        ? tx("The instance is in local mode: the world and projects do not move between PCs (agents-factory instance mode).")
+        : tx("Sync is not set up on this PC (.project-local\\sync.json).")));
+      return;
+    }
+    const unreachable = view.world.remote?.reachable === false ? tx(" · the world's repository is unreachable") : "";
+    list.replaceChildren(infoRow(tx("this PC"), view.machine?.title ?? view.machine?.machineId ?? tx("no name")),
+      infoRow(tx("world"), tx("{where} · held by: {holder}", { where: view.world.held ? tx("here") : tx("not here"),
+        holder: syncHolderText(view, view.world.remote?.holder ?? (view.world.held ? view.machine?.machineId : null)) })
+        + unreachable),
+      el("div", "section-title", tx("Projects · {length}", { length: view.projects.length })));
+    for (const item of view.projects) {
+      const box = el("div", "entry");
+      box.append(el("div", "entry-title", item.projectId));
+      box.append(el("div", "muted", [
+        item.mounted ? tx("on this PC") : tx("not here"),
+        !item.configured ? tx("not synced") : item.onlyHere ? tx("this PC only: \"Hand over\" makes a backup")
+          : item.mayHold ? tx("held by: {value}", { value: syncHolderText(view, item.remote?.holder ?? (item.held ? view.machine?.machineId : null)) })
+            : tx("not for this PC"),
+      ].join(" · ")));
+      if (item.configured && item.mounted) {
+        box.append(trustedButton(item.onlyHere ? tx("Back up…") : tx("Hand over…"), () => change("release", item.projectId)));
+      }
+      if (item.configured && !item.mounted && item.mayHold && view.world.held) {
+        box.append(trustedButton(tx("Take…"), () => change("take", item.projectId)));
+      }
+      list.append(box);
+    }
+    const actions = el("div", "actions");
+    if (view.world.held) actions.append(trustedButton(tx("Hand over all…"), () => change("release", "all"), { primary: true }));
+    else actions.append(trustedButton(tx("Take all…"), () => change("take", "all"), { primary: true }));
+    list.append(actions);
+  };
+  await render();
+}
+
+/** Why the folder was not bound or changed - in words, by the refusal's code. */
+function bindRefusalText(projectId, error) {
+  const reason = error?.reasonCode || error?.code || tx("no code");
+  if (reason === "memory_workspace_conflict") {
+    return tx("Project {projectId} is already bound to another folder. The folder is shown in the project HQ; you can change it ", { projectId })
+      + tx("there too.");
+  }
+  if (reason === "memory_workspace_in_use") {
+    return tx("The folder of project {projectId} is held by its agents. It cannot be changed.", { projectId });
+  }
+  const texts = {
+    rebind_project_busy: tx("An agent of project {projectId} is working now. Wait for the turn to end and try again.", { projectId }),
+    gateway_running: tx("The Gateway is running and could not be stopped. Stop it in the Gateway panel and try again."),
+    rebind_folder_missing: tx("The chosen folder is not on the disk."),
+    rebind_session_elsewhere: tx("One agent's session was not recorded in the project's old folder. Nothing was changed."),
+    rebind_provider_folder_unknown: tx("The provider's folder of the agent's sessions was not found. Nothing was changed."),
+    rebind_target_exists: tx("The new place already has sessions with the same names. Nothing was changed."),
+    rebind_contention: tx("The project's agent list changed during the move. The move was cancelled, try again."),
+  };
+  if (error?.code === "busy") return tx("The Gateway is busy with another action ({reason}). Try again when it is over.", { reason });
+  return texts[reason] ?? tx("app::Not done: {reason}.", { reason });
+}
+
+/**
+ * The project's agents and the folder (R36): who already worked in it (their conversations and sessions
+ * move with the binding), who is bound to it (an open agent or
+ * one that worked: then the Gateway stops for the change, as the backend decides in
+ * project-rebind.mjs) and who works right now (while it works, the folder cannot
+ * be changed). null - the world is not read yet.
  */
 function folderHolders(projectId) {
   const world = atlasState.world;
@@ -2323,122 +3835,114 @@ function folderHolders(projectId) {
   const worked = (agent) => (agent.lastOperation ?? null) !== null;
   return {
     worked: agents.filter(worked),
-    idle: agents.filter((agent) => agent.state !== "archived" && !worked(agent)),
+    bound: agents.filter((agent) => agent.state !== "archived" || worked(agent)),
+    busy: agents.filter((agent) => agent.currentOperationId),
   };
 }
 
-/** Another folder for a project whose agents have not worked yet: a choice, both folders in view, a confirmation. */
+/**
+ * Another folder for the project (R36): the choice, both folders in view, the confirmation.
+ * If the agents already worked, their conversations and sessions move with the
+ * binding; the person moves the project's files.
+ */
 async function rebindFolder(projectId, current) {
   const chosen = await window.atlas.chooseWorkspace();
   if (!chosen.ok) {
-    atlasRecord("bad", "folder not chosen", chosen.error.reasonCode || chosen.error.code);
+    atlasRecord("bad", tx("folder not chosen"), chosen.error.reasonCode || chosen.error.code);
     return;
   }
   if (!chosen.data.chosen) return;
-  const body = openSheet(`Folder change · ${projectId}`, "while agents have not worked in it");
-  body.append(infoRow("now", current));
-  body.append(infoRow("will be", chosen.data.displayPath));
-  body.append(noteBlock("note", "The project agents have not worked in the old folder, so it can still be changed. "
-    + "Files from the old folder are not moved. Once a project agent starts working, the folder becomes permanent."));
+  const holders = folderHolders(projectId);
+  const worked = (holders?.worked ?? []).length > 0;
+  const bound = (holders?.bound ?? []).length > 0;
+  const body = openSheet(tx("Folder change · {projectId}", { projectId }),
+    worked ? tx("with the agents' sessions moved") : bound ? tx("the agents have not worked yet") : tx("no agents yet"));
+  body.append(infoRow(tx("now"), current));
+  body.append(infoRow(tx("will be"), chosen.data.displayPath));
+  body.append(noteBlock("note", worked
+    ? tx("The project's agents already worked in the old folder: their conversations and sessions move with the binding, and in the new ")
+      + tx("folder they go on from the same place. Atlas does not move the project's files: move them to the new folder yourself. ")
+      + tx("The Gateway stops for the move and starts again.")
+    : bound
+      ? tx("The project's agents have not worked yet: they have no conversations or sessions; with the binding only the agents' ")
+        + tx("folder changes. The Gateway stops for that time and starts again. Files of the old folder are not moved.")
+      : tx("The project has no agents yet: only the binding changes. Files of the old folder are not moved.")));
   const result = el("div");
   const actions = el("div", "actions");
-  actions.append(trustedButton("Change with confirmation", async () => {
+  actions.append(trustedButton(tx("Change with confirmation"), async () => {
+    await flushPending();
     const response = await window.atlas.rebindWorkspace({ projectId, selectionId: chosen.data.selectionId });
     if (response.ok) {
-      atlasRecord("ok", "project folder changed", `${projectId} · ${chosen.data.displayPath}`);
-      result.replaceChildren(noteBlock("note", `Changed: the project works in the folder ${chosen.data.displayPath}.`));
+      atlasRecord("ok", tx("project folder changed"), `${projectId} · ${chosen.data.displayPath}`);
+      result.replaceChildren(noteBlock("note", [tx("Changed: the project works in the folder {displayPath}.", { displayPath: chosen.data.displayPath }),
+        gatewayPauseText(response.data.gateway)].filter(Boolean).join(" ")));
+      await refresh();
     } else if (response.error.code === "user_declined") {
-      result.replaceChildren(noteBlock("note", "Not changed: the confirmation was declined."));
+      result.replaceChildren(noteBlock("note", tx("app::Not changed: the confirmation was declined.")));
     } else {
-      atlasRecord("bad", "project folder not changed", response.error.reasonCode || response.error.code);
-      result.replaceChildren(noteBlock("error", bindRefusalText(projectId, response.error)));
+      atlasRecord("bad", tx("project folder not changed"), response.error.reasonCode || response.error.code);
+      result.replaceChildren(noteBlock("error", [bindRefusalText(projectId, response.error),
+        gatewayPauseText(response.gateway)].filter(Boolean).join(" ")));
     }
   }, { primary: true }));
   body.append(actions, result);
 }
 
-/**
- * Whether the bound folder can be changed and what holds it. Agents that have already
- * worked make it permanent. Open ones that have not been sent anything yet
- * are listed with an archive button: without them the folder can be changed. After
- * archiving, changed is called (the HQ window reopens so that the
- * lead row is fresh too).
- */
-function folderHold(box, projectId, path, changed) {
+/** Whether the bound folder can be changed now (R36): not only while a project agent works. */
+function folderHold(box, projectId, path) {
   const holders = folderHolders(projectId);
   if (holders === null) {
     box.replaceChildren();
     return;
   }
-  const label = (agent) => `${agent.agentId} · ${agent.quarterId === HEADQUARTERS_QUARTER
-    ? "project lead" : agent.quarterId}`;
-  if (holders.worked.length > 0) {
-    box.replaceChildren(noteBlock("note", "Bound permanently: project agents have already worked in this folder "
-      + `(${holders.worked.map((agent) => agent.agentId).join(", ")}).`));
-    return;
-  }
-  if (holders.idle.length > 0) {
-    const one = holders.idle.length === 1;
-    box.replaceChildren(noteBlock("note", "The project agents have not worked in this folder yet, so it can be changed. "
-      + (one ? "But an open agent is bound to the folder: archive it first. It has not been sent anything yet"
-        : "But open agents are bound to the folder: archive them first. They have not been sent anything yet")
-      + ", so nothing is lost, and new agents can then be created in the new folder."));
-    for (const agent of holders.idle) {
-      const row = el("div", "entry");
-      row.append(el("div", "entry-title", label(agent)));
-      row.append(el("div", "entry-text", "open · has not worked yet"));
-      const archive = el("button", "small", "Archive…");
-      archive.addEventListener("click", async () => {
-        await atlasArchiveAgent(agent.agentId);
-        // A refusal or a declined confirmation leaves the agent open - the window is left alone.
-        if (folderHolders(projectId)?.idle.some((item) => item.agentId === agent.agentId)) return;
-        if (changed) changed();
-        else folderHold(box, projectId, path, changed);
-      });
-      row.append(archive);
-      box.append(row);
-    }
+  if (holders.busy.length > 0) {
+    box.replaceChildren(noteBlock("note", tx("The folder cannot be changed now: working is ")
+      + tx("{value}. Wait for the turn to end.", { value: holders.busy.map((agent) => agent.agentId).join(", ") })));
     return;
   }
   const actions = el("div", "actions");
-  actions.append(trustedButton("Change folder…", () => rebindFolder(projectId, path)));
-  box.replaceChildren(noteBlock("note", "The project agents have not worked in this folder yet: it can be changed. "
-    + "Once a project agent starts working, the folder becomes permanent."), actions);
+  actions.append(trustedButton(tx("Change folder…"), () => rebindFolder(projectId, path)));
+  box.replaceChildren(noteBlock("note", holders.worked.length > 0
+    ? tx("The project's agents already worked in this folder. It can be changed: their conversations and sessions move with ")
+      + tx("the binding, and the project's files you move yourself.")
+    : holders.bound.length > 0
+      ? tx("The project's agents have not worked in this folder yet: it can be changed, the Gateway stops for that time.")
+      : tx("The project has no agents yet: the folder can be changed.")), actions);
 }
 
 /**
  * Project folder: which folder it is bound to - or a “Bind” button if there is no folder
  * yet. The path is read by the trusted host of this window (the Gateway does not give out paths).
  */
-function projectFolderSection(body, projectId, { changed = null } = {}) {
+function projectFolderSection(body, projectId) {
   const box = el("div");
-  box.append(infoRow("project folder", "checking…"));
+  box.append(infoRow(tx("project folder"), tx("checking…")));
   body.append(box);
   if (typeof window.atlas?.projectFolder !== "function" || atlasState.trusted?.available !== true) {
-    box.replaceChildren(infoRow("project folder", "not checked: trusted actions unavailable"));
+    box.replaceChildren(infoRow(tx("project folder"), tx("not checked: trusted actions unavailable")));
     return;
   }
   window.atlas.projectFolder({ projectId }).then((response) => {
     if (!response.ok) {
-      box.replaceChildren(infoRow("project folder",
-        `not checked: ${response.error?.reasonCode || response.error?.code || "no code"}`));
+      box.replaceChildren(infoRow(tx("project folder"),
+        tx("not checked: {value}", { value: response.error?.reasonCode || response.error?.code || tx("no code") })));
       return;
     }
     if (response.data.configured) {
       const path = response.data.workspacePath;
-      box.replaceChildren(infoRow("project folder", path));
+      box.replaceChildren(infoRow(tx("project folder"), path));
       if (!response.data.available) {
-        box.append(noteBlock("error", "This folder is no longer on disk: the project agents cannot work in it "
-          + "until it is back in place."));
+        box.append(noteBlock("error", tx("This folder is no longer on disk: the project agents cannot work in it ")
+          + tx("until it is back in place.")));
       }
       const hold = el("div");
       box.append(hold);
-      folderHold(hold, projectId, path, changed);
+      folderHold(hold, projectId, path);
       return;
     }
-    box.replaceChildren(infoRow("project folder", "not bound"));
+    box.replaceChildren(infoRow(tx("project folder"), tx("not bound")));
     const actions = el("div", "actions");
-    actions.append(trustedButton("Bind folder…", () => bindFolder(projectId), { primary: true }));
+    actions.append(trustedButton(tx("Bind folder…"), () => bindFolder(projectId), { primary: true }));
     box.append(actions);
   });
 }
@@ -2446,25 +3950,25 @@ function projectFolderSection(body, projectId, { changed = null } = {}) {
 async function bindFolder(projectId) {
   const chosen = await window.atlas.chooseWorkspace();
   if (!chosen.ok) {
-    atlasRecord("bad", "folder not chosen", chosen.error.reasonCode || chosen.error.code);
+    atlasRecord("bad", tx("folder not chosen"), chosen.error.reasonCode || chosen.error.code);
     return;
   }
   if (!chosen.data.chosen) return;
-  const body = openSheet(`Folder binding · ${projectId}`, "irreversible");
-  body.append(infoRow("chosen folder", chosen.data.displayPath));
+  const body = openSheet(tx("Folder binding · {projectId}", { projectId }), tx("irreversible"));
+  body.append(infoRow(tx("chosen folder"), chosen.data.displayPath));
   body.append(noteBlock("note",
-    "The binding is permanent: it cannot be changed later. All quarters of the project work in this folder."));
+    tx("The binding is permanent: it cannot be changed later. All quarters of the project work in this folder.")));
   const result = el("div");
   const actions = el("div", "actions");
-  actions.append(trustedButton("Bind with confirmation", async () => {
+  actions.append(trustedButton(tx("Bind with confirmation"), async () => {
     const response = await window.atlas.bindWorkspace({ projectId, selectionId: chosen.data.selectionId });
     if (response.ok) {
-      atlasRecord("ok", "folder bound", `${projectId} · ${chosen.data.displayPath}`);
-      result.replaceChildren(noteBlock("note", `Bound: the project works in the folder ${chosen.data.displayPath}.`));
+      atlasRecord("ok", tx("folder bound"), `${projectId} · ${chosen.data.displayPath}`);
+      result.replaceChildren(noteBlock("note", tx("Bound: the project works in the folder {displayPath}.", { displayPath: chosen.data.displayPath })));
     } else if (response.error.code === "user_declined") {
-      result.replaceChildren(noteBlock("note", "Not bound: the confirmation was declined."));
+      result.replaceChildren(noteBlock("note", tx("Not bound: the confirmation was declined.")));
     } else {
-      atlasRecord("bad", "folder not bound", response.error.reasonCode || response.error.code);
+      atlasRecord("bad", tx("folder not bound"), response.error.reasonCode || response.error.code);
       result.replaceChildren(noteBlock("error", bindRefusalText(projectId, response.error)));
     }
   }, { primary: true }));
@@ -2473,7 +3977,7 @@ async function bindFolder(projectId) {
 
 // “default” passes no level: Claude Code uses the default level of
 // the chosen model. The other levels are shown the way Claude Code names them.
-const EFFORT_LABELS = Object.freeze({ default: "default — the default level of the model" });
+const EFFORT_LABELS = Object.freeze({ default: tx("default — the default level of the model") });
 
 function profileSelect(entries) {
   const select = el("select", "field");
@@ -2491,12 +3995,24 @@ function profileSelect(entries) {
  * they can be neither typed nor chosen. Returns a reader of the chosen profile.
  */
 function renderProfileLists(box, catalog) {
-  const provider = profileSelect([[catalog.provider.profileProvider, catalog.provider.label]]);
-  const model = profileSelect(catalog.models.map((item) => [item.id, `${item.name} · ${item.id}`]));
+  // The Gateway may run agents of several providers (Claude Code and DeepSeek Harness):
+  // models show only for the chosen provider.
+  const providers = catalog.providers ?? [{ provider: catalog.provider, models: catalog.models }];
+  const provider = profileSelect(providers.map((item) => [item.provider.profileProvider, item.provider.label]));
+  const model = el("select", "field");
+  const modelsOf = () => (providers.find((item) => item.provider.profileProvider === provider.value) ?? providers[0]).models;
+  const fillModels = () => {
+    model.replaceChildren(...modelsOf().map((item) => {
+      const option = el("option", null, `${item.name} · ${item.id}${modelStateSuffix(item.id)}`);
+      option.value = item.id;
+      return option;
+    }));
+    fillEfforts();
+  };
   const effort = el("select", "field");
   const effortNote = el("div", "muted");
   const fillEfforts = () => {
-    const chosen = catalog.models.find((item) => item.id === model.value) ?? catalog.models[0];
+    const chosen = modelsOf().find((item) => item.id === model.value) ?? modelsOf()[0];
     effort.replaceChildren(...chosen.efforts.map((value) => {
       const option = el("option", null, EFFORT_LABELS[value] ?? value);
       option.value = value;
@@ -2504,18 +4020,20 @@ function renderProfileLists(box, catalog) {
     }));
     effort.value = chosen.defaultEffort;
     effortNote.textContent = chosen.efforts.length === 1 && chosen.efforts[0] === "default"
-      ? "This model does not support choosing a reasoning effort."
+      ? tx("This model does not support choosing a reasoning effort.")
       : "";
   };
   model.addEventListener("change", fillEfforts);
-  fillEfforts();
+  provider.addEventListener("change", fillModels);
+  fillModels();
   box.replaceChildren(
-    el("div", "section-title", "Provider"), provider,
-    el("div", "section-title", "Model"), model,
-    el("div", "section-title", "Reasoning effort"), effort, effortNote,
-    noteBlock("note", "The backend sent the provider, models and levels: this is the list from claude-provider.json of the controller, "
-      + "which it uses to check the profile of a new agent. There is one provider — the one the Gateway runs on."
-      + (catalog.complete ? "" : " The backend sent only part of the list.")),
+    el("div", "section-title", tx("Provider")), provider,
+    el("div", "section-title", tx("Model")), model,
+    el("div", "section-title", tx("Reasoning effort")), effort, effortNote,
+    noteBlock("note", tx("The providers, models and levels came from the backend: these are the lists of the controller's claude-provider.json ")
+      + (providers.length > 1 ? tx("and acp-provider.json ") : "") + tx("by which it checks a new agent's profile.")
+      + (providers.length > 1 ? tx(" An agent of any provider may take any role.") : tx(" One provider — the one the Gateway runs on."))
+      + (catalog.complete ? "" : tx(" The backend sent only part of the list."))),
   );
   return () => ({ provider: provider.value, model: model.value, reasoningEffort: effort.value });
 }
@@ -2529,22 +4047,22 @@ function renderProfileFields(box, failure) {
   const onPaperclip = atlasState.info?.mode === "paperclip" || onDirect;
   const provider = el("input");
   provider.value = "claude";
-  provider.placeholder = "provider";
+  provider.placeholder = tx("provider");
   const model = el("input");
   model.value = onPaperclip ? "claude-sonnet-5" : "claude-sonnet-5-5";
-  model.placeholder = "model";
+  model.placeholder = tx("model");
   const effort = el("input");
   effort.value = "default";
-  effort.placeholder = "effort";
+  effort.placeholder = tx("effort");
   box.replaceChildren(
-    el("div", "section-title", onPaperclip ? "Profile: provider, model, effort" : "Profile from the catalog"),
+    el("div", "section-title", onPaperclip ? tx("Profile: provider, model, effort") : tx("Profile from the catalog")),
     provider, model, effort,
     noteBlock("note", onDirect
-      ? "Provider: claude. The model and effort are passed to Claude Code as is; “default” leaves the choice to Claude Code."
+      ? tx("Provider: claude. The model and effort are passed to Claude Code as is; “default” leaves the choice to Claude Code.")
       : onPaperclip
-      ? "Provider: claude or codex. The model and effort are passed to the Paperclip adapter as is; “default” leaves the choice to the adapter. The project folder must be bound before the agent is created."
-      : `The backend did not send the model list (${failure?.reasonCode || failure?.code || "no code"}). `
-        + "The profile must be declared by the backend catalog; switching to another model is not allowed."),
+      ? tx("Provider: claude or codex. The model and effort are passed to the Paperclip adapter as is; “default” leaves the choice to the adapter. The project folder must be bound before the agent is created.")
+      : tx("The backend did not send the model list ({value}). ", { value: failure?.reasonCode || failure?.code || tx("no code") })
+        + tx("The profile must be declared by the backend catalog; switching to another model is not allowed.")),
   );
   return () => ({
     provider: provider.value.trim(), model: model.value.trim(), reasoningEffort: effort.value.trim(),
@@ -2552,12 +4070,12 @@ function renderProfileFields(box, failure) {
 }
 
 const LEAD_WORDS = Object.freeze({
-  "project-lead": { title: "Project lead", hint: "Responsible for the whole project: knows its memory, quarters and the agents in them "
-    + "(the role and model of each). You talk to it about the project as a whole. It can change the whole project folder, "
-    + "so while it works, the other agents of this folder wait." },
-  "quarter-lead": { title: "Quarter lead", hint: "Responsible for the quarter: knows its memory and the agents of the quarter "
-    + "(role, model, write zone). You talk to it about the quarter as a whole. It can change the zones of the agents of its "
-    + "quarter and docs/memory/." },
+  "project-lead": { title: tx("Project lead"), hint: tx("Responsible for the whole project: knows its memory, quarters and the agents in them ")
+    + tx("(the role and model of each). You talk to it about the project as a whole. It can change the whole project folder, ")
+    + tx("so while it works, the other agents of this folder wait.") },
+  "quarter-lead": { title: tx("Quarter lead"), hint: tx("Responsible for the quarter: knows its memory and the agents of the quarter ")
+    + tx("(role, model, write zone). You talk to it about the quarter as a whole. It can change the zones of the agents of its ")
+    + tx("quarter and docs/memory/.") },
 });
 
 /**
@@ -2566,26 +4084,28 @@ const LEAD_WORDS = Object.freeze({
  */
 async function openCreateAgentSheet(projectId, quarterId, { role = null } = {}) {
   const lead = LEAD_WORDS[role] ?? null;
-  const body = openSheet(lead === null ? `New agent · ${quarterId}`
-    : `${lead.title} · ${role === "project-lead" ? projectId : quarterId}`, "backend operation");
+  const body = openSheet(lead === null ? tx("New agent · {quarterId}", { quarterId })
+    : `${lead.title} · ${role === "project-lead" ? projectId : quarterId}`, tx("backend operation"));
   if (lead !== null) body.append(noteBlock("note", lead.hint));
-  const agentId = identifierField("agent identifier", { taken: agentIdTaken });
+  const agentId = identifierField(tx("agent identifier"), { taken: agentIdTaken });
   // The default lead name is the first free one: a previous lead may have been archived under the same name.
   if (lead !== null) agentId.set(freeAgentId(`${role === "project-lead" ? projectId : quarterId}-lead`));
-  body.append(el("div", "section-title", "Identifier"), agentId.input, agentId.hint);
+  const naming = nameAndIdFields(agentId, tx("agent name"), (candidate) => agentNamed(candidate) !== null);
+  body.append(el("div", "section-title", tx("Name")), naming.input,
+    el("div", "section-title", tx("ID (does not change)")), agentId.input, agentId.hint);
   const profileBox = el("div");
-  profileBox.append(el("div", "muted", "Reading the model list from the backend…"));
+  profileBox.append(el("div", "muted", tx("Reading the model list from the backend…")));
   body.append(profileBox);
   const catalog = await window.atlas.models();
   const readProfile = catalog.ok
     ? renderProfileLists(profileBox, catalog.data)
     : renderProfileFields(profileBox, catalog.error);
   const linksBox = el("div");
-  body.append(el("div", "section-title", "Agent links"), linksBox);
+  body.append(el("div", "section-title", tx("Agent links")), linksBox);
   const result = el("div");
   const actions = el("div", "actions");
   const canCreate = operationStatus("mutation.memory.agent.create")?.status === "available";
-  const create = actionButton("Create", "mutation.memory.agent.create", async () => {
+  const create = actionButton(tx("Create"), "mutation.memory.agent.create", async () => {
     const problem = agentId.problem();
     if (problem !== null) {
       result.replaceChildren(noteBlock("error", problem));
@@ -2604,14 +4124,15 @@ async function openCreateAgentSheet(projectId, quarterId, { role = null } = {}) 
     // stays with an explanation.
     if (response.ok) {
       const node = { kind: "agent", projectId, quarterId, agentId: newAgentId };
+      await nameCreated(result, "agent", projectId, newAgentId, naming.name());
       if (lead !== null) {
         // The role is set right after creation: the agent has not started working yet.
         const assigned = await window.atlas.setAgentRole({ agentId: newAgentId, role, expectedRevision: 0 });
         if (!assigned.ok) {
-          const reason = assigned.error?.reasonCode || assigned.error?.code || "no code";
+          const reason = assigned.error?.reasonCode || assigned.error?.code || tx("no code");
           result.append(noteBlock("error", reason === "memory_role_taken"
-            ? `The agent is created, but the role is not assigned: the ${role === "project-lead" ? "project" : "quarter"} already has a lead.`
-            : `The agent is created, but the role is not assigned: ${reason}.`));
+            ? tx("The agent is created, but the role is not assigned: the {value} already has a lead.", { value: role === "project-lead" ? tx("app::project") : tx("app::quarter") })
+            : tx("The agent is created, but the role is not assigned: {reason}.", { reason })));
           await refresh();
           return;
         }
@@ -2635,27 +4156,27 @@ async function openCreateAgentSheet(projectId, quarterId, { role = null } = {}) 
     const { project, quarter } = findNode({ kind: "quarter", projectId, quarterId, agentId: null });
     const projectMemory = project?.memory?.scopeId ?? null;
     const quarterMemory = quarter?.memory?.scopeId ?? null;
-    linksBox.replaceChildren(el("div", "muted", "Checking links…"));
+    linksBox.replaceChildren(el("div", "muted", tx("Checking links…")));
     const files = await window.atlas.projectFiles({ projectId, path: "" });
     const folder = files.ok ? "bound"
       : files.error?.reasonCode === "workspace_not_bound" ? "unbound" : "unknown";
     const rows = [
-      infoRow("project memory", projectMemory === null ? "no" : `yes · ${projectMemory}`),
-      infoRow("quarter memory", quarterMemory === null ? "no" : `yes · ${quarterMemory}`),
-      infoRow("project folder", folder === "bound" ? "bound"
-        : folder === "unbound" ? "not bound"
-        : `not checked: ${files.error?.reasonCode || files.error?.code || "no code"}`),
+      infoRow(tx("project memory"), projectMemory === null ? tx("no") : tx("yes · {projectMemory}", { projectMemory })),
+      infoRow(tx("quarter memory"), quarterMemory === null ? tx("no") : tx("yes · {quarterMemory}", { quarterMemory })),
+      infoRow(tx("project folder"), folder === "bound" ? tx("bound")
+        : folder === "unbound" ? tx("not bound")
+        : tx("not checked: {value}", { value: files.error?.reasonCode || files.error?.code || tx("no code") })),
     ];
     linksBox.replaceChildren(...rows);
     if (folder === "unbound") {
       linksBox.append(noteBlock("error",
-        "A Claude Code agent works in the project folder, and it is not bound. Bind the folder — the binding is permanent."));
-      const bind = trustedButton("Bind folder…", async () => {
+        tx("A Claude Code agent works in the project folder, and it is not bound. Bind the folder — the binding is permanent.")));
+      const bind = trustedButton(tx("Bind folder…"), async () => {
         const chosen = await window.atlas.chooseWorkspace();
         if (!chosen.ok || !chosen.data.chosen) return;
         const bound = await window.atlas.bindWorkspace({ projectId, selectionId: chosen.data.selectionId });
         if (bound.ok) {
-          atlasRecord("ok", "folder bound", projectId);
+          atlasRecord("ok", tx("folder bound"), projectId);
           await checkLinks();
         } else if (bound.error?.code !== "user_declined") {
           linksBox.append(noteBlock("error", bindRefusalText(projectId, bound.error)));
@@ -2668,7 +4189,7 @@ async function openCreateAgentSheet(projectId, quarterId, { role = null } = {}) 
     const ready = projectMemory !== null && quarterMemory !== null && folder === "bound";
     if (canCreate) {
       create.disabled = !ready;
-      create.title = ready ? "" : "All agent links are needed first";
+      create.title = ready ? "" : tx("All agent links are needed first");
     }
   };
   await checkLinks();
@@ -2681,31 +4202,39 @@ async function openCreateAgentSheet(projectId, quarterId, { role = null } = {}) 
 function showCreateOutcome(result, kind, targetId, response) {
   const described = describeCreateOutcome(kind, targetId, response);
   result.replaceChildren(outcomeBlock(described));
-  atlasRecord(described.tone === "note" ? "ok" : "bad", "creation", [described.title, ...described.details].join(" "));
+  atlasRecord(described.tone === "note" ? "ok" : "bad", tx("creation"), [described.title, ...described.details].join(" "));
 }
 
 function openCreateScopeSheet(kind, projectId) {
-  const body = openSheet(kind === "project" ? "New project" : `New quarter · ${projectId}`,
-    "backend operation");
-  const idField = identifierField(kind === "project" ? "project identifier" : "quarter identifier");
-  const titleField = el("input");
-  titleField.placeholder = "title";
-  body.append(idField.input, idField.hint, titleField);
-  body.append(noteBlock("note", `${kind === "project" ? "The project" : "The quarter"} is created at once, without `
-    + "confirmation, with empty memory. One you do not need goes to the archive (with confirmation) and comes back from there intact."));
+  const body = openSheet(kind === "project" ? tx("New project") : tx("New quarter · {projectId}", { projectId }),
+    tx("backend operation"));
+  // “world” - the service project of the World HQ: an ordinary project cannot have this name.
+  const idField = identifierField(kind === "project" ? tx("project identifier") : tx("quarter identifier"),
+    { taken: kind === "project" ? (value) => (value === WORLD_PROJECT
+      ? tx("The name “world” is taken: it is the name of the World HQ's service project.") : null) : null });
+  const naming = nameAndIdFields(idField, kind === "project" ? tx("project name") : tx("quarter name"),
+    (candidate) => (kind === "project" ? projectOf(candidate) !== null
+      : projectOf(projectId)?.quarters.some((quarter) => quarter.quarterId === candidate) === true));
+  body.append(el("div", "section-title", tx("Name")), naming.input,
+    el("div", "section-title", tx("ID (does not change)")), idField.input, idField.hint);
+  body.append(noteBlock("note", tx("{value} is created at once, without ", { value: kind === "project" ? tx("The project") : tx("The quarter") })
+    + tx("confirmation, with empty memory. One you do not need goes to the archive (with confirmation) and comes back from there intact.")));
   const result = el("div");
   const actions = el("div", "actions");
-  actions.append(actionButton("Create",
+  actions.append(actionButton(tx("Create"),
     "mutation.memory.scope.create", async () => {
     const problem = idField.problem();
     if (problem !== null) {
       result.replaceChildren(noteBlock("error", problem));
       return;
     }
+    const newId = idField.input.value.trim();
+    const title = naming.name() || newId;
     const response = await window.atlas.createScope(kind === "project"
-      ? { kind: "project", projectId: idField.input.value.trim(), title: titleField.value.trim() }
-      : { kind: "quarter", projectId, quarterId: idField.input.value.trim(), title: titleField.value.trim() });
-    showCreateOutcome(result, kind, idField.input.value.trim(), response);
+      ? { kind: "project", projectId: newId, title }
+      : { kind: "quarter", projectId, quarterId: newId, title });
+    showCreateOutcome(result, kind, newId, response);
+    if (response.ok) await nameCreated(result, kind, kind === "project" ? newId : projectId, newId, naming.name());
     if (describeCreateOutcome(kind, "", response).reread) await refresh();
   }, { primary: true }));
   body.append(actions, result);
@@ -2738,8 +4267,8 @@ function atlasOpenContextMenu(node, point) {
       quarterId: badge.quarterId, agentId: badge.agentId,
     };
   }
-  const { project, quarter } = node === null ? { project: null, quarter: null } : findNode(node);
-  if (badge !== null) add(`Attention list · ${attentionItemsFor(badge).length}`, () => atlasOpenAttention(badge));
+  const { project, quarter } = node === null || node.kind === "away" ? { project: null, quarter: null } : findNode(node);
+  if (badge !== null) add(tx("Attention list · {length}", { length: attentionItemsFor(badge).length }), () => atlasOpenAttention(badge));
   // The menu opens for the object under the cursor, at any zoom:
   // the choice of target does not depend on how far the person has zoomed in.
   const copyHere = () => {
@@ -2748,40 +4277,68 @@ function atlasOpenContextMenu(node, point) {
   };
 
   const canArchive = atlasState.trusted.available === true;
+  const worldLead = worldLeadOf();
   if (node === null) {
-    add("Create project…", () => openCreateScopeSheet("project", null), canScope);
-    add("Paste blueprint", () => atlasPasteBlueprint(), hasClipboard);
-    add("Archive…", () => atlasOpenProjectArchive(), canArchive);
-    add("Whole world", () => goLevel(LEVEL.world));
+    add(tx("Create project…"), () => openCreateScopeSheet("project", null), canScope);
+    add(tx("Paste blueprint"), () => atlasPasteBlueprint(), hasClipboard);
+    add(tx("app::Archive…"), () => atlasOpenProjectArchive(), canArchive);
+    add(tx("History of changes…"), () => atlasOpenHistory(), canArchive);
+    if (atlasState.away.split === true) add(tx("Not on this PC…"), () => atlasOpenAwayProjects(), canArchive);
+    add(tx("World HQ"), () => atlasOpenWorldHeadquarters());
+    add(tx("Whole world"), () => goLevel(LEVEL.world));
+  } else if (node.kind === "away") {
+    // Grey frame: the project is not on this PC; you can only see its summary and connect it.
+    add(tx("Summary and connect…"), () => atlasOpenAwayProject(node.projectId), canArchive);
+    add(tx("Not on this PC…"), () => atlasOpenAwayProjects(), canArchive);
+  } else if (node.kind === "world") {
+    add(tx("World HQ"), () => atlasOpenWorldHeadquarters());
+    if (worldLead !== null) {
+      add(tx("World lead chat"), () => atlasOpenWorkspace(leadNode(worldLead), { camera: false }));
+    } else {
+      add(tx("Create world lead…"), () => openCreateWorldLeadSheet(), canAgent && canArchive);
+    }
+    add(tx("Whole world"), () => goLevel(LEVEL.world));
   } else if (node.kind === "project" || node.kind === "hq") {
-    add("Project HQ", () => atlasOpenHeadquarters(node.projectId));
-    add("Enter project", () => atlasEnterProject(node.projectId));
-    add("Project memory", () => openMemorySheet(project.memory.scopeId,
-      `Project memory · ${node.projectId}`), canRead && project !== null);
-    add("Create quarter…", () => openCreateScopeSheet("quarter", node.projectId), canScope);
-    add("Copy blueprint (Ctrl+C)", copyHere);
-    add("Paste blueprint (Ctrl+V)", () => atlasPasteBlueprint(), hasClipboard);
-    add("Fit bounds", () => sceneCompactProject(node.projectId));
-    add("Archive project…", () => atlasArchiveProject(node.projectId), canArchive);
+    add(tx("Project HQ"), () => atlasOpenHeadquarters(node.projectId));
+    add(tx("Enter project"), () => atlasEnterProject(node.projectId));
+    add(tx("Project memory"), () => openMemorySheet(project.memory.scopeId,
+      tx("Project memory · {projectId}", { projectId: node.projectId })), canRead && project !== null);
+    add(tx("Create quarter…"), () => openCreateScopeSheet("quarter", node.projectId), canScope);
+    add(tx("Copy blueprint (Ctrl+C)"), copyHere);
+    add(tx("Paste blueprint (Ctrl+V)"), () => atlasPasteBlueprint(), hasClipboard);
+    add(tx("Fit bounds"), () => sceneCompactProject(node.projectId));
+    add(tx("Rename…"), () => openRenameSheet("project", node.projectId, node.projectId), canArchive);
+    add(tx("History of the project…"), () => atlasOpenHistory(node.projectId), canArchive);
+    add(tx("Archive project…"), () => atlasArchiveProject(node.projectId), canArchive);
+    if (atlasState.away.split === true && node.projectId !== WORLD_PROJECT) {
+      add(tx("Disconnect from this PC…"), () => atlasUnmountProject(node.projectId), canArchive);
+    }
   } else if (node.kind === "quarter") {
-    add("Enter quarter", () => atlasEnterQuarter(node.projectId, node.quarterId));
-    add("Create quarter lead…", () => openCreateAgentSheet(node.projectId, node.quarterId,
+    add(tx("Enter quarter"), () => atlasEnterQuarter(node.projectId, node.quarterId));
+    add(tx("Create quarter lead…"), () => openCreateAgentSheet(node.projectId, node.quarterId,
       { role: "quarter-lead" }), canAgent && leadOf(node.projectId, node.quarterId) === null);
-    add("Quarter memory", () => openMemorySheet(quarter.memory.scopeId,
-      `Quarter memory · ${node.quarterId}`), canRead && quarter !== null);
-    add("Create agent…", () => openCreateAgentSheet(node.projectId, node.quarterId), canAgent);
-    add("Copy blueprint (Ctrl+C)", copyHere);
-    add("Paste blueprint (Ctrl+V)", () => atlasPasteBlueprint(), hasClipboard);
-    add("Fit project bounds", () => sceneCompactProject(node.projectId));
-    add("Archive quarter…", () => atlasArchiveQuarter(node.projectId, node.quarterId), canArchive);
+    add(tx("Quarter memory"), () => openMemorySheet(quarter.memory.scopeId,
+      tx("Quarter memory · {quarterId}", { quarterId: node.quarterId })), canRead && quarter !== null);
+    add(tx("Create agent…"), () => openCreateAgentSheet(node.projectId, node.quarterId), canAgent);
+    add(tx("Copy blueprint (Ctrl+C)"), copyHere);
+    add(tx("Paste blueprint (Ctrl+V)"), () => atlasPasteBlueprint(), hasClipboard);
+    add(tx("Fit project bounds"), () => sceneCompactProject(node.projectId));
+    add(tx("Rename…"), () => openRenameSheet("quarter", node.projectId, node.quarterId), canArchive);
+    add(tx("Archive quarter…"), () => atlasArchiveQuarter(node.projectId, node.quarterId), canArchive);
   } else {
     const canClose = operationStatus("mutation.memory.agent.close")?.status === "available";
-    add("Agent workspace", () => atlasOpenWorkspace(node));
-    add("Agent skills", () => atlasOpenSkills(node));
-    add("Show in inspector", () => selectNode(node));
-    add("Copy blueprint (Ctrl+C)", copyHere);
-    add("Paste blueprint (Ctrl+V)", () => atlasPasteBlueprint(), hasClipboard);
-    add("Archive agent…", () => atlasArchiveAgent(node.agentId), canClose);
+    add(tx("Agent workspace"), () => atlasOpenWorkspace(node));
+    add(tx("Agent skills"), () => atlasOpenSkills(node));
+    add(tx("Show in inspector"), () => selectNode(node));
+    // Only while it applies: an open agent, not the world lead, not yet recorded as a task source.
+    const agent = findNode(node).agent;
+    if (agent !== null && deskRegistrationState(agent, boardForState()).offer && canArchive) {
+      add(tx("Take tasks (desk agent)…"), () => openDeskAgentSheet(agent));
+    }
+    add(tx("Copy blueprint (Ctrl+C)"), copyHere);
+    add(tx("Paste blueprint (Ctrl+V)"), () => atlasPasteBlueprint(), hasClipboard);
+    add(tx("Rename…"), () => openRenameSheet("agent", node.projectId, node.agentId), canArchive);
+    add(tx("Archive agent…"), () => atlasArchiveAgent(node.agentId), canClose);
   }
   menu.classList.remove("hidden");
   const stage = $("mapStage").getBoundingClientRect();
@@ -2830,19 +4387,20 @@ async function refresh({ silent = false } = {}) {
     ]);
     atlasState.info = info.ok ? info.data : null;
     atlasState.runtime = runtime.ok ? runtime.data : null;
-    loadClaudeAccount();
+    // "Refresh" asks Claude Code again at once; the live view - no more often than the answer is kept.
+    loadClaudeAccount({ force: !silent });
     // The Claude account is checked in the background when the desktop opens: reread when the answer arrives.
     const account = claudeAccountOf();
     if (account !== null && account.state === "checking" && atlasState.accountTimer === undefined) {
       atlasState.accountTimer = setTimeout(() => { atlasState.accountTimer = undefined; refresh({ silent: true }); }, 2500);
     } else if (account !== null && account.state === "known" && atlasState.accountSeen !== account.email) {
       atlasState.accountSeen = account.email;
-      atlasRecord("ok", "Claude account", [account.email, account.organization].filter(Boolean).join(" · ") || "no email");
+      atlasRecord("ok", tx("app::Claude account"), [account.email, account.organization].filter(Boolean).join(" · ") || tx("no email"));
     }
     atlasState.trusted = trusted.ok ? trusted.data : { available: false, reasonCode: "host_error" };
     if (atlasState.trusted.acl === "not-hardened") {
-      showNotice("Permissions of the input files directory are not hardened — see the journal");
-      atlasRecord("bad", "directory permissions not hardened", atlasState.trusted.aclReasonCode ?? "");
+      showNotice(tx("Permissions of the input files directory are not hardened — see the journal"));
+      atlasRecord("bad", tx("directory permissions not hardened"), atlasState.trusted.aclReasonCode ?? "");
     }
 
     const previous = atlasState.connection;
@@ -2851,15 +4409,15 @@ async function refresh({ silent = false } = {}) {
     // restarted: what is open stays open. A restart is a different instance.
     const change = connectionChange(previous, atlasState.connection);
     if (change === "restarted") {
-      atlasRecord("bad", "Gateway restarted",
-        `generation ${atlasState.connection.generation}: everything reread, nothing replayed`);
+      atlasRecord("bad", tx("Gateway restarted"),
+        tx("generation {generation}: everything reread, nothing replayed", { generation: atlasState.connection.generation }));
       closeSheet();
       closeWorkspace({ keepDraft: true });
     } else if (change === "renewed") {
-      atlasRecord("ok", "connection renewed",
-        `same instance, generation ${atlasState.connection.generation}; valid until ${atlasState.connection.validUntilUtc}`);
+      atlasRecord("ok", tx("connection renewed"),
+        tx("same instance, generation {generation}; valid until {validUntilUtc}", { generation: atlasState.connection.generation, validUntilUtc: atlasState.connection.validUntilUtc }));
     } else if (change === "lost") {
-      atlasRecord("bad", "connection lost", "nothing open is closed; the data will be reread on recovery");
+      atlasRecord("bad", tx("connection lost"), tx("nothing open is closed; the data will be reread on recovery"));
     }
 
     if (atlasState.connection.available) {
@@ -2868,6 +4426,11 @@ async function refresh({ silent = false } = {}) {
       await loadExpected();
       const world = await window.atlas.world({});
       atlasState.world = world.ok ? world.data : null;
+      // Task board (desk agents, the world lead's tasks) - in the background and no more often than the TTL:
+      // from it the agent menu knows whether to offer “Take tasks”.
+      loadTaskBoard().then(() => requestRender());
+      // The names of projects, quarters and agents - in the background too, no more often than their TTL.
+      loadNames().then(() => requestRender());
       // The person already sees the answer of the agent whose conversation is open now.
       if (typeof isWorkspaceOpen === "function" && isWorkspaceOpen() && workspaceState.tab === "chat") {
         atlasMarkTurnSeen(workspaceState.node.agentId);
@@ -2879,10 +4442,10 @@ async function refresh({ silent = false } = {}) {
     }
 
     const availability = atlasState.connection.available
-      ? `connected · ${atlasState.connection.projectId}`
-      : `unavailable · ${atlasState.connection.error ? (atlasState.connection.error.reasonCode || atlasState.connection.error.code) : "unknown"}`;
+      ? tx("connected · {projectId}", { projectId: atlasState.connection.projectId })
+      : tx("unavailable · {value}", { value: atlasState.connection.error ? (atlasState.connection.error.reasonCode || atlasState.connection.error.code) : tx("app::unknown") });
     if (!silent || availability !== atlasState.lastAvailability) {
-      atlasRecord(atlasState.connection.available ? "ok" : "bad", "read", availability);
+      atlasRecord(atlasState.connection.available ? "ok" : "bad", tx("read"), availability);
     }
     atlasState.lastAvailability = availability;
 
@@ -2895,6 +4458,7 @@ async function refresh({ silent = false } = {}) {
     // the attention list or readiness right before the eyes of the person.
     if (scene.selection !== null && !$("inspector").classList.contains("hidden")) atlasOnSelection(scene.selection);
     if (!$("readinessPanel").classList.contains("hidden")) renderReadiness();
+    atlasGatewayPanelRefresh();
     refreshWorkspace();
   } finally {
     atlasState.busy = false;
@@ -2905,7 +4469,7 @@ async function refresh({ silent = false } = {}) {
 function setWatch(on) {
   atlasState.watch = on;
   const button = $("watch");
-  button.textContent = `Live: ${on ? "on" : "off"}`;
+  button.textContent = tx("Live: {value}", { value: on ? tx("on") : tx("off") });
   button.classList.toggle("primary", on);
   if (atlasState.watchTimer !== null) {
     clearInterval(atlasState.watchTimer);
@@ -2916,8 +4480,8 @@ function setWatch(on) {
       if (!atlasState.busy) refresh({ silent: true });
     }, 10000);
   }
-  atlasRecord("info", on ? "live view on" : "live view off",
-    on ? "rereading every 10 seconds" : "");
+  atlasRecord("info", on ? tx("live view on") : tx("live view off"),
+    on ? tx("rereading every 10 seconds") : "");
   if (atlasState.ui.watch !== on) setPanel("watch", on);
 }
 
@@ -2936,6 +4500,11 @@ async function start() {
   // of the window (--capture) works with its own rereads and without it.
   if (atlasState.ui.watch !== false && atlasState.info?.automated !== true) setWatch(true);
   refreshArchiveCount();
+  refreshAwayProjects();
+  refreshSync();
+  // The model servers are asked now and every minute: the person sees what is connected before sending.
+  await refreshModelHealth();
+  setInterval(() => refreshModelHealth(), MODEL_HEALTH_EVERY_MS);
 
   const layout = sceneGetLayout();
   if (layout !== null && layout.view !== undefined && layout.view !== null) sceneRestoreView(layout.view);
@@ -2967,6 +4536,9 @@ $("trayToggle").addEventListener("click", () => setPanel("trayOpen", !atlasState
 $("trayClose").addEventListener("click", () => setPanel("trayOpen", false));
 $("logToggle").addEventListener("click", () => setPanel("logOpen", !atlasState.ui.logOpen));
 $("archiveToggle").addEventListener("click", () => atlasOpenProjectArchive());
+$("historyToggle").addEventListener("click", () => atlasOpenHistory());
+$("awayToggle").addEventListener("click", () => atlasOpenAwayProjects());
+$("syncToggle").addEventListener("click", () => atlasOpenSync());
 $("readinessToggle").addEventListener("click", () => {
   if ($("readinessPanel").classList.contains("hidden")) atlasOpenReadiness();
   else closeReadiness();
@@ -2977,20 +4549,20 @@ $("sheetClose").addEventListener("click", closeSheet);
 $("clearLog").addEventListener("click", () => { atlasState.log = []; renderLog(); });
 $("saveLog").addEventListener("click", async () => {
   const response = await window.atlas.saveLog({ text: logText() });
-  if (response.ok && response.data.saved) atlasRecord("ok", "journal saved", response.data.fileName);
-  else if (response.ok) atlasRecord("info", "saving canceled", "");
-  else atlasRecord("bad", "journal not saved", response.error.code);
+  if (response.ok && response.data.saved) atlasRecord("ok", tx("journal saved"), response.data.fileName);
+  else if (response.ok) atlasRecord("info", tx("saving canceled"), "");
+  else atlasRecord("bad", tx("journal not saved"), response.error.code);
 });
 $("exportEvidence").addEventListener("click", async () => {
   const response = await window.atlas.exportEvidence();
   if (response.ok && response.data.saved) {
-    const state = response.data.complete ? "complete" : "INCOMPLETE (unfinished calls or truncation)";
-    atlasRecord(response.data.complete ? "ok" : "bad", "evidence exported",
+    const state = response.data.complete ? tx("complete") : tx("INCOMPLETE (unfinished calls or truncation)");
+    atlasRecord(response.data.complete ? "ok" : "bad", tx("evidence exported"),
       `${response.data.directoryName} · ${state} · SHA256SUMS ${response.data.sumsSha256}`);
   } else if (response.ok) {
-    atlasRecord("info", "evidence export canceled", "");
+    atlasRecord("info", tx("evidence export canceled"), "");
   } else {
-    atlasRecord("bad", "evidence not exported", `${response.error.code} ${response.error.reasonCode ?? ""}`);
+    atlasRecord("bad", tx("evidence not exported"), `${response.error.code} ${response.error.reasonCode ?? ""}`);
   }
 });
 $("mapUndo").addEventListener("click", () => undoLocal());
@@ -3002,19 +4574,19 @@ $("mapCompact").addEventListener("click", () => {
 });
 $("mapExport").addEventListener("click", async () => {
   const response = await window.atlas.exportLayout({ layout: sceneGetLayout() });
-  if (response.ok && response.data.saved) atlasRecord("ok", "layout exported", response.data.fileName);
-  else if (response.ok) atlasRecord("info", "export canceled", "");
-  else atlasRecord("bad", "layout not exported", response.error.reasonCode || response.error.code);
+  if (response.ok && response.data.saved) atlasRecord("ok", tx("layout exported"), response.data.fileName);
+  else if (response.ok) atlasRecord("info", tx("export canceled"), "");
+  else atlasRecord("bad", tx("layout not exported"), response.error.reasonCode || response.error.code);
 });
 $("mapImport").addEventListener("click", async () => {
   const response = await window.atlas.importLayout();
   if (!response.ok) {
-    atlasRecord("bad", "layout not imported", response.error.reasonCode || response.error.code);
+    atlasRecord("bad", tx("layout not imported"), response.error.reasonCode || response.error.code);
     return;
   }
   if (response.data.imported !== true) return;
   sceneReplaceLayout(response.data.layout);
-  atlasRecord("ok", "layout imported from file", response.data.fileName);
+  atlasRecord("ok", tx("layout imported from file"), response.data.fileName);
 });
 for (const button of document.querySelectorAll("[data-level]")) {
   button.addEventListener("click", () => {
@@ -3037,7 +4609,7 @@ $("mapStage").addEventListener("pointerdown", (event) => {
 }, true);
 
 if (typeof window.atlas === "undefined") {
-  $("connectionChip").textContent = "bridge unavailable";
+  $("connectionChip").textContent = tx("bridge unavailable");
   $("connectionChip").className = "chip status bad";
 } else {
   window.atlas.onFlush(flushPending);

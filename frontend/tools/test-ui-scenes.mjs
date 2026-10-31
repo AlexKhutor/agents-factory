@@ -58,7 +58,7 @@ const SCENES = Object.freeze([
   ["ui-a20-lead-chat-camera", "The quarter lead and project lead chat does not move the camera and does not close at world level; an agent chat zooms in"],
   ["ui-a21-corner-resize", "Quarter, HQ and agent resize by the corner; a released agent snaps to a grid crossing"],
   ["ui-a22-workspace-closes", "The agent window closes on a click outside it and with the level button at the bottom; a click on the agent does not close it"],
-  ["ui-a23-folder-hold", "Agents hold the folder, not quarters: those that worked hold it for good, open ones without work - archive them, otherwise change it"],
+  ["ui-a23-folder-hold", "The project folder can be changed after the agents worked too (R36): not only while a project agent works"],
   ["ui-a24-agent-name-taken", "An agent name is not reused: the form names a taken one (archived ones too) before sending; a lead gets the first free one"],
   ["ui-a25-chat-thinking-scale", "Thinking is its own block, not an action window; a running turn says what the agent is doing; font and scale of the agent window"],
   ["ui-a26-permission-mode", "Agent permission mode by the input field: the provider one is marked, Shift+Tab - the next one, “Bypass permissions” after confirmation"],
@@ -66,6 +66,18 @@ const SCENES = Object.freeze([
   ["ui-a28-tabs-keep-memory-document", "A world refresh does not rebuild a tab that does not use the catalog (the scroll stays); memory document: show, approve and write"],
   ["ui-a29-agent-commits", "Agent history in the “Files” tab: a folder without git offers to become a repository (with confirmation), then the agent commits"],
   ["ui-a30-archived-agent-off-map", "An archived agent leaves the map; “Archive” lists it and opens its conversation"],
+  ["ui-a31-gateway-panel", "Gateway panel: a start refusal with its code, the API key in a hidden field is not seen anywhere, a start with progress, the window reconnects; autostart with confirmation"],
+  ["ui-a32-world-hq", "World HQ left of the projects and bigger than HQs; Backspace centres it; the sheet shows the world lead and tasks by step; entering opens its chat without moving the camera"],
+  ["ui-a33-world-lead-create", "“Create world lead…” in one confirmed step: the world bound to the controller folder, the agent in the World HQ, the coordinator role, chat without moving the camera"],
+  ["ui-a34-desk-agent", "Desk agent from Atlas: a registered agent says so permanently; another is offered “Take tasks” with confirmation; a refusal is a sentence"],
+  ["ui-a35-tasks-tab", "“Tasks” tab: the agent's tasks from the world lead by step; the world lead has all tasks given out"],
+  ["ui-a36-sync-sheet", "Sync between PCs: the chip says where the world is; the sheet - what \"Hand over\" does with each project (leaves, backup), \"Hand over all…\" while the world is here; a handed-over world - a line above the empty map"],
+  ["ui-a37-trace-keeps-open", "The trace is read every 2.5 s: a block the person expanded stays expanded, a collapsed one collapsed, without new records the list is not rebuilt"],
+  ["ui-a38-away-frames", "Grey frames of projects not on this PC: in their place or, without one, in a column on the right; the \"Not on this PC\" ticks (small, with the label beside) hide all frames or one, \"Show hidden frames\" brings them back, a setting of this PC; the frames shown are within the world's bounds (minimap); the buttons at the top right on one line, the sheet below them"],
+  ["ui-a39-model-health", "Readiness names each model server and whether it answers (the office one off, this PC's on) with \"Check now\"; a model list marks the one that does not answer"],
+  ["ui-a41-names", "Names: an agent renamed in its sheet is shown by its name with the ID beside it in the tooltip; a create form proposes an ID made from the name; an empty name brings the ID back"],
+  ["ui-a42-badge-double-click", "Double-click on an attention badge: a number opens the list of what is behind it (even for one agent), a question mark opens that agent's chat"],
+  ["ui-a40-history", "History of changes: an archived and restored project shows both; \"Undo\" on the restore (confirmed) archives it again by a new entry, and the restore says it is undone"],
 ]);
 
 const atlasWindowOpen = () => new Promise((resolve) => {
@@ -83,8 +95,9 @@ function runScene(root, name, outDir, { fixture = true } = {}) {
   return new Promise((resolve) => {
     // The window must be shown: a hidden window is not composited, so the
     // camera gets no animation frames and the screenshot cannot be taken.
+    // The scenes check English texts (the code's language), whatever the language of this PC.
     const child = spawn(ELECTRON, [root, ...(fixture ? ["--dev-fixture"] : []), "--capture", png,
-      "--capture-scene", name, "--scene-result", json], { stdio: "ignore" });
+      "--capture-scene", name, "--scene-result", json], { stdio: "ignore", env: { ...process.env, ATLAS_LANGUAGE: "en" } });
     const timer = setTimeout(() => child.kill(), 90_000);
     child.on("close", async () => {
       clearTimeout(timer);

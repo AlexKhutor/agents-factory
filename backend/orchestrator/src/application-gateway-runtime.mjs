@@ -39,10 +39,18 @@ const SAFE_LOG_ERROR_CODES = new Set(APPLICATION_GATEWAY_LOG_ERROR_CODES);
 // new refusal (the archive, the folder binding), and the person saw only
 // application_gateway_failed.
 const MEMORY_LOG_CODE = /^memory_[a-z0-9_]{1,64}$/u;
+// A desk agent's registration as a controller source (register-desk-source,
+// desk-agent-sources.mjs) refuses with its own fixed codes; they are kept the
+// same way, so Atlas can say why in words.
+const DESK_SOURCE_LOG_CODE = /^(?:desk_source_[a-z0-9_]{1,64}|controller_registry_incompatible|duplicate_source_id)$/u;
+// So do the refusals of a project's folder change (project-rebind.mjs) and of
+// where a project may be kept: Atlas pauses the Gateway on gateway_running and
+// retries; with application_gateway_failed in its place it could not.
+const PROJECT_LOG_CODE = /^(?:rebind_[a-z0-9_]{1,64}|settle_[a-z0-9_]{1,64}|gateway_running|project_not_found|policy_invalid)$/u;
 const MEMORY_PHASES = new Set(["root", "input-read", "input-validate", "store-open",
   "authorize", "write", "bind-workspace", "operation",
   "archive-project", "restore-project", "archive-quarter", "restore-quarter", "list-archived-projects",
-  "read-workspace", "rebind-workspace"]);
+  "read-workspace", "rebind-workspace", "settle-send"]);
 const FILE_CAUSES = new Set(["EACCES", "EPERM", "ENOENT", "ENOTDIR", "EISDIR", "ENOSPC", "EBUSY", "EIO"]);
 const MONITOR_CHECKS = new Set([
   'monitor_missing', 'monitor_read_failed', 'monitor_identity_mismatch',
@@ -90,7 +98,9 @@ export function createApplicationGatewayFailureLogRecord(error) {
   const message = typeof error?.message === "string" ? error.message : "";
   const family = /^(invalid_argument|missing_argument):/u.exec(message)?.[1] ?? null;
   const memoryPhase = MEMORY_PHASES.has(error?.memoryPhase) ? error.memoryPhase : null;
-  const code = family ?? (memoryPhase && typeof error?.code === "string" && MEMORY_LOG_CODE.test(error.code) ? error.code : null)
+  const code = family ?? (memoryPhase && typeof error?.code === "string"
+    && [MEMORY_LOG_CODE, DESK_SOURCE_LOG_CODE, PROJECT_LOG_CODE].some((pattern) => pattern.test(error.code))
+    ? error.code : null)
     ?? (SAFE_LOG_ERROR_CODES.has(message)
     ? message
     : "application_gateway_failed");
@@ -332,8 +342,18 @@ export function assessApplicationGatewayRuntime({
   });
 }
 
+// How often a status file is renamed into place on Windows while a reader (Atlas, the monitor,
+// an antivirus scan) holds the old one open: 8 attempts back off over about 0.7 s, well inside
+// one heartbeat. Three attempts in 75 ms were not enough on a busy desktop (2026-10-25).
+export const GATEWAY_RENAME_ATTEMPTS = 8;
+
+/**
+ * `onContention({ filePath, attempt, code, elapsedMs, final })` hears every
+ * rename that Windows refused (a reader holds the old file); `final` marks the
+ * one after which the write fails. A diagnostic only.
+ */
 export async function writeGatewayJsonAtomic(filePath, value, {
-  renameFile = rename, wait = delay, platform = process.platform,
+  renameFile = rename, wait = delay, platform = process.platform, onContention = null,
 } = {}) {
   const started = performance.now();
   const temporaryPath = `${filePath}.${randomUUID()}.tmp`;
@@ -350,8 +370,14 @@ export async function writeGatewayJsonAtomic(filePath, value, {
       renameAttempts++;
       try { await renameFile(temporaryPath, filePath); break; }
       catch (error) {
-        if (platform !== "win32" || !["EPERM", "EBUSY"].includes(error?.code)
-            || renameAttempts >= 3) throw error;
+        const contended = platform === "win32" && ["EPERM", "EBUSY"].includes(error?.code);
+        if (contended && typeof onContention === "function") {
+          try {
+            onContention({ filePath, attempt: renameAttempts, code: error.code,
+              elapsedMs: Math.round(performance.now() - started), final: renameAttempts >= GATEWAY_RENAME_ATTEMPTS });
+          } catch { /* a diagnostic never changes the write */ }
+        }
+        if (!contended || renameAttempts >= GATEWAY_RENAME_ATTEMPTS) throw error;
         await wait(25 * renameAttempts);
       }
     }
@@ -375,8 +401,12 @@ async function readJson(filePath) {
 }
 
 export class ApplicationGatewayRuntimeFiles {
-  constructor({ repoRoot }) {
+  #onContention;
+
+  /** `onContention`: see writeGatewayJsonAtomic; heard for the status and monitor files. */
+  constructor({ repoRoot, onContention = null }) {
     this.paths = applicationGatewayRuntimePaths(repoRoot);
+    this.#onContention = onContention;
   }
 
   async readStatus() {
@@ -386,7 +416,7 @@ export class ApplicationGatewayRuntimeFiles {
 
   async writeStatus(value) {
     const status = validateApplicationGatewayLifecycleStatus(value);
-    await writeGatewayJsonAtomic(this.paths.status, status);
+    await writeGatewayJsonAtomic(this.paths.status, status, { onContention: this.#onContention });
     return status;
   }
 
@@ -397,7 +427,7 @@ export class ApplicationGatewayRuntimeFiles {
 
   async writeMonitor(value) {
     const status = validateApplicationGatewayMonitorStatus(value);
-    await writeGatewayJsonAtomic(this.paths.monitor, status);
+    await writeGatewayJsonAtomic(this.paths.monitor, status, { onContention: this.#onContention });
     return status;
   }
 

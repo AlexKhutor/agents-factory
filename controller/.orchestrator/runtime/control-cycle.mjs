@@ -7,6 +7,7 @@ import { readChildInterventions } from "./child-intervention-store.mjs";
 import { createAttentionProjection } from "./control-attention-model.mjs";
 import { createProjectMemoryStore } from "./project-memory-store.mjs";
 import { ProjectMemoryService } from "./project-memory-service.mjs";
+import { projectsRoot, STORE_LAYOUT_MARKER } from "./project-store-layout.mjs";
 import { createControlProjection, createExecutionSummary, writeProjectionAtomic } from "./control-read-model.mjs";
 import { createServiceRunId } from "./service-review-registry.mjs";
 import { createWorkProjectionV2FromV1 } from "./work-projection-v2-bridge.mjs";
@@ -323,9 +324,9 @@ export class SerializedControlCycle {
           finishedAtUtc: null,
           rawTrace: {
             available: false,
-            // Only a Codex reviewer leaves a rollout in the reviewer CODEX_HOME; a
-            // Claude Code review is kept in the controller's service session journal.
-            archiveState: ["fake", "claude-code"].includes(providerMetadata.provider) ? "not-applicable" : "missing",
+            // A Claude Code review is kept in the controller's service session
+            // journal, not as a raw trace (the Codex reviewer's rollouts left with it).
+            archiveState: "not-applicable",
           },
           updatedAtUtc: startedAtUtc,
         });
@@ -698,7 +699,10 @@ export class SerializedControlCycle {
   async #readDeskAgents() {
     const database = path.join(this.controllerRoot, ".project-local", "orchestration", "project-memory",
       "project-memory.v1.sqlite");
-    try { await access(database); } catch { return []; }
+    const split = path.join(projectsRoot(this.controllerRoot), STORE_LAYOUT_MARKER);
+    try { await access(database); } catch {
+      try { await access(split); } catch { return []; }
+    }
     try {
       this.deskAgentService ??= new ProjectMemoryService({ archive: null,
         store: await createProjectMemoryStore({ controllerRoot: this.controllerRoot }) });
@@ -753,9 +757,7 @@ export class SerializedControlCycle {
     if (!serviceRunId || !this.serviceReviewRegistry) return null;
     const current = await this.serviceReviewRegistry.get(serviceRunId);
     const threadId = result?.threadId ?? current?.threadId ?? null;
-    const rawTrace = current?.provider === "codex-app-server" && threadId
-      ? await this.serviceReviewRegistry.locateRawTrace(threadId)
-      : current?.rawTrace ?? { available: false, archiveState: "not-applicable" };
+    const rawTrace = current?.rawTrace ?? { available: false, archiveState: "not-applicable" };
     const providerMetadata = result?.providerMetadata ?? {};
     const finishedAtUtc = new Date().toISOString();
     return this.serviceReviewRegistry.patch(serviceRunId, {

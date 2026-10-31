@@ -185,12 +185,30 @@ export function createGateway({ kit, resolveDescriptor, expectedWorkspace, fetch
   }
 
   /**
+   * The adapters among `adapterIds` that discovery offers for a provider-scoped
+   * operation: with desk agents of several providers each is asked by name,
+   * since an unnamed request is ambiguous.
+   */
+  async function providersOf(operationId, adapterIds) {
+    const found = [];
+    for (const adapterId of adapterIds) {
+      try {
+        const status = await client.operationStatus(operationId, { provider: { adapterId }, forceDiscovery: false });
+        if (status.status === "available" && status.provider?.adapterId === adapterId) found.push(adapterId);
+      } catch { /* not offered */ }
+    }
+    return found;
+  }
+
+  /**
    * Invokes one allowlisted operation. Result envelopes - including failed and
    * uncertain outcomes - are returned as data; the caller must not treat a
    * delivered envelope as success.
    */
-  async function run(operationId, input = {}) {
+  async function run(operationId, input = {}, { provider = null } = {}) {
     const method = methodFor(operationId);
+    // A provider-scoped read may name the provider it is for (providersOf).
+    const options = provider === null ? {} : { provider: { adapterId: String(provider.adapterId) } };
     if (method === null) {
       journal?.notAttempted(operationId, input, "operation_not_allowed");
       return { ok: false, error: { code: "operation_not_allowed", message: operationId } };
@@ -200,7 +218,7 @@ export function createGateway({ kit, resolveDescriptor, expectedWorkspace, fetch
       return calls.run({ localEntryId: entry.localEntryId }, async () => {
         const identity = await currentIdentity();
         try {
-          const result = await client[method](operationId, input);
+          const result = await client[method](operationId, input, options);
           journal.complete(entry, { identity, envelope: result });
           return { ok: true, result };
         } catch (error) {
@@ -211,13 +229,13 @@ export function createGateway({ kit, resolveDescriptor, expectedWorkspace, fetch
       });
     }
     try {
-      return { ok: true, result: await client[method](operationId, input) };
+      return { ok: true, result: await client[method](operationId, input, options) };
     } catch (error) {
       return { ok: false, error: describeError(error) };
     }
   }
 
   return {
-    connection, availability, expectedAvailability, providerOf, run, disconnect: () => client.disconnect(),
+    connection, availability, expectedAvailability, providerOf, providersOf, run, disconnect: () => client.disconnect(),
   };
 }

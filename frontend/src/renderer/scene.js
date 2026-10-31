@@ -71,6 +71,11 @@ const emptyLayout = () => ({
 // Archived agents do not stand on the map either, like archived projects and quarters:
 // their conversation is read from the “Archive”.
 const HEADQUARTERS_QUARTER = "hq";
+// The world's service project: the world lead lives in it, in the HQ quarter, and it is
+// bound to the controller folder. On the map the World HQ building stands in for it - the main
+// base of the world, left of the projects. It is not drawn as a project territory on the map.
+const WORLD_PROJECT = "world";
+const worldHqNode = () => ({ kind: "world", projectId: WORLD_PROJECT, quarterId: null, agentId: null });
 const mapViews = new WeakMap();
 
 const worldOf = () => {
@@ -80,7 +85,8 @@ const worldOf = () => {
   if (view === undefined) {
     view = {
       ...world,
-      projection: { ...world.projection, projects: world.projection.projects.map((project) => ({
+      projection: { ...world.projection, projects: world.projection.projects
+        .filter((project) => project.projectId !== WORLD_PROJECT).map((project) => ({
         ...project, quarters: project.quarters.filter((quarter) => quarter.quarterId !== HEADQUARTERS_QUARTER)
           .map((quarter) => ({ ...quarter, agents: quarter.agents.filter((agent) => agent.state !== "archived") })),
       })) },
@@ -91,6 +97,9 @@ const worldOf = () => {
   }
   return view;
 };
+// The name an object is shown by on the map (app.js displayName: the person's name, else the ID);
+// the ID where the window has no names (the scene tests).
+const sceneName = (kind, projectId, objectId) => (typeof displayName === "function" ? displayName(kind, projectId, objectId) : objectId);
 const projectionOf = () => (worldOf() === null ? { projects: [] } : worldOf().projection);
 
 function projectOf(projectId) {
@@ -257,9 +266,21 @@ function ensurePlacement() {
     // each other. Only when the map placed something new: a drag by
     // the person never moves anyone's neighbours.
     reflowAutoProjects(scene.layout, world.projection.projects.map((project) => project.projectId));
-    atlasOnLayoutChanged({ immediate: false });
   }
+  // The World HQ always exists - even before the world has a lead: the lead is
+  // created in it. Until it is moved, it stands left of the projects and moves
+  // only when the map itself rearranged the projects.
+  const worldPlaced = autoPlaceWorldHeadquarters(scene.layout, WORLD_PROJECT, world.projection.projects
+    .map((project) => scene.layout.projects[project.projectId]).filter((box) => box !== undefined),
+  { reflow: placed > 0 || cleared > 0 });
+  if (worldPlaced) placed += 1;
+  if (placed > 0 || cleared > 0) atlasOnLayoutChanged({ immediate: false });
   return placed;
+}
+
+/** The World HQ building in world coordinates, or null while there is no layout. */
+function worldHqBox() {
+  return scene.layout?.projects[WORLD_PROJECT] ?? null;
 }
 
 function worldBounds() {
@@ -268,12 +289,31 @@ function worldBounds() {
   if (layout === null) return null;
   // World bounds are computed from what is in the catalog. A layout entry
   // that is no longer in the catalog shows under “off the map”, but it must not stretch
-  // the whole world after it, and zoom the camera out.
+  // the whole world — and zoom the camera out — it must not. The World HQ with its label is part of the world,
+  // as are the grey frames of projects not on this PC, while they are shown.
   const known = projectionOf().projects
     .map((project) => layout.projects[project.projectId])
     .filter((box) => box !== undefined);
+  const hq = worldHqBox();
+  if (hq !== null) known.push({ ...hq, height: hq.height + GEOMETRY.worldHqLabelHeight });
+  for (const { box } of awayBoxes()) known.push(box);
   if (known.length > 0) return boundsOf(known);
   return boundsOf(Object.values(layout.projects));
+}
+
+/**
+ * To the World HQ, like “go to base” in a strategy game (Backspace in StarCraft II): the camera at
+ * world level, the HQ in the middle of the screen. The scale matches “Whole world”.
+ */
+function focusWorldHeadquarters({ instant = false } = {}) {
+  atlasDismissPanels();
+  const box = worldHqBox();
+  if (box === null) return;
+  scene.scope = { projectId: null, quarterId: null };
+  scene.reference = 0;
+  const centre = centreOf(box);
+  moveCamera(centre.x, centre.y, worldFitScale(worldBounds(), scene.size, { margin: 120 }), { instant });
+  atlasOnHudChanged();
 }
 
 function goWorld({ instant = false } = {}) {
@@ -347,16 +387,17 @@ function goLevel(level, node = null) {
 function enterNode(node) {
   if (node === null) return;
   if (node.kind === "attention") {
-    // A double click on a badge does not fly to the agent; it opens a panel on the right with the
-    // requests and problems this area has now.
-    selectNode(behindBadge(node));
-    atlasOpenAttention(node);
+    // Double-click on a badge: one agent waits for attention - its chat at once;
+    // several - a short list for that area. What is under the badge
+    // (quarter, project) is not selected and does not open its window.
+    atlasOpenAttentionTarget(node);
     return;
   }
   // Entering a project or a quarter opens a conversation with its lead (or
   // offers to create one) without moving the camera: zooming in is only for agents.
   if (node.kind === "project") atlasEnterProject(node.projectId);
   else if (node.kind === "hq") atlasEnterProject(node.projectId);
+  else if (node.kind === "world") atlasEnterWorld();
   else if (node.kind === "quarter") atlasEnterQuarter(node.projectId, node.quarterId);
   else atlasOpenWorkspace(node);
 }
@@ -420,6 +461,12 @@ function sceneLeaveWorkspace(node) {
 
 function focusNode(node, { instant = false } = {}) {
   if (node === null) return;
+  if (node.kind === "world") {
+    focusWorldHeadquarters({ instant });
+    scene.selection = node;
+    atlasOnSelection(node);
+    return;
+  }
   if (node.kind === "agent") {
     goQuarter(node.projectId, node.quarterId, { instant });
     scene.selection = node;
@@ -486,7 +533,7 @@ function recordChange(label, action) {
 function undoLocal() {
   const label = scene.history.undo();
   if (label === null) return;
-  atlasRecord("info", "undone", label);
+  atlasRecord("info", tx("undone"), label);
   atlasOnHistoryChanged();
   requestRender();
 }
@@ -494,7 +541,7 @@ function undoLocal() {
 function redoLocal() {
   const label = scene.history.redo();
   if (label === null) return;
-  atlasRecord("info", "redone", label);
+  atlasRecord("info", tx("redone"), label);
   atlasOnHistoryChanged();
   requestRender();
 }
@@ -587,6 +634,9 @@ function draw() {
 
   if (scene.layout !== null && world !== null) {
     ensurePlacement();
+    const hq = worldHqBox();
+    if (hq !== null && boxInView(hq, 80)) drawWorldHeadquarters(hq);
+    drawAwayProjects();
     for (const project of world.projection.projects) {
       const box = scene.layout.projects[project.projectId];
       if (box !== undefined) drawProject(project, box, level, ratio, attention);
@@ -595,6 +645,7 @@ function draw() {
   }
 
   ctx.restore();
+  if (scene.layout !== null && world !== null) drawAwayLabels();
   drawLabels(level, ratio, attention);
   drawAttentionBadges(level, ratio, attention);
   drawMinimap(attention);
@@ -650,6 +701,82 @@ function drawTerrain() {
     ctx.lineTo(view.right, y);
   }
   ctx.stroke();
+}
+
+// --- projects not on this PC ----------------------------------------------------
+//
+// A project disconnected from this PC (or one that lives on another) stays
+// in its place as a grey dashed frame: nothing is inside, it is not moved and
+// not opened. The place comes from the world's part of the map.
+
+const AWAY_BOX = Object.freeze({ width: 420, height: 220, gap: 60 });
+
+/**
+ * Grey frames of projects not on this PC, [{ item, box }]: in their place from the world's part
+ * (written by the PC where the project is), and a project with no place on this map - in a
+ * column right of the others, on screen only. The person may hide all frames
+ * or some of them (the "Not on this PC" sheet; a setting of this PC's window).
+ */
+function awayBoxes() {
+  if (scene.layout === null || typeof atlasState === "undefined") return [];
+  if (atlasState.ui?.awayFrames === false) return [];
+  const hidden = new Set(atlasState.ui?.awayHidden ?? []);
+  const here = new Set(projectionOf().projects.map((project) => project.projectId));
+  const away = (atlasState.away?.projects ?? []).filter((item) => !here.has(item.projectId) && !hidden.has(item.projectId));
+  const placed = Object.values(scene.layout.projects).filter((box) => Number.isFinite(box?.x) && Number.isFinite(box?.width));
+  const right = placed.length === 0 ? 0 : Math.max(...placed.map((box) => box.x + box.width)) + AWAY_BOX.gap;
+  const top = placed.length === 0 ? 0 : Math.min(...placed.map((box) => box.y));
+  let row = 0;
+  return away.map((item) => {
+    const known = scene.layout.projects[item.projectId];
+    if (Number.isFinite(known?.x) && Number.isFinite(known?.width)) return { item, box: known };
+    const box = { x: right, y: top + row * (AWAY_BOX.height + AWAY_BOX.gap), width: AWAY_BOX.width, height: AWAY_BOX.height };
+    row += 1;
+    return { item, box };
+  });
+}
+
+const awayNode = (projectId) => ({ kind: "away", projectId, quarterId: null, agentId: null });
+
+function drawAwayProjects() {
+  for (const { item, box } of awayBoxes()) {
+    if (!boxInView(box, 40)) continue;
+    rect(box.x, box.y, box.width, box.height, "rgba(150,154,140,0.08)");
+    scene.ctx.save();
+    scene.ctx.setLineDash([14 / scene.camera.scale, 10 / scene.camera.scale]);
+    rect(box.x, box.y, box.width, box.height, null, "rgba(176,180,166,0.55)", 1.5);
+    scene.ctx.restore();
+    if (sameNode(scene.hover, awayNode(item.projectId))) {
+      const pad = 14 / scene.camera.scale;
+      cornerBrackets(box.x - pad, box.y - pad, box.width + pad * 2, box.height + pad * 2,
+        "rgba(200,204,190,0.8)", 1.3, 26 / scene.camera.scale);
+    }
+  }
+}
+
+/** The frame's label: the name and where the project is - in screen pixels, like the other labels. */
+function drawAwayLabels() {
+  for (const { item, box } of awayBoxes()) {
+    if (!boxInView(box, 40)) continue;
+    const corner = worldToScreen(scene.camera, scene.size, box.x, box.y);
+    const width = box.width * scene.camera.scale;
+    if (width < 60) continue;
+    const place = item.location === null || item.location === undefined ? tx("not on this PC")
+      : item.location.machineId === null ? tx("not on this PC · in a package") : tx("not on this PC · \"{title}\"", { title: item.location.title });
+    screenText(fitText(item.title ? `${item.projectId} · ${item.title}` : item.projectId, width - 20, 13, 600),
+      corner.x + 10, corner.y + 22, 13, "rgba(214,216,204,0.85)", "left", 600);
+    screenText(fitText(place, width - 20, 11, 500), corner.x + 10, corner.y + 39, 11, PALETTE.muted, "left", 500);
+  }
+}
+
+/** The frame of a project not on this PC under the point, or null. */
+function awayAt(point) {
+  for (const { item, box } of awayBoxes().reverse()) {
+    if (point.x >= box.x && point.x <= box.x + box.width && point.y >= box.y && point.y <= box.y + box.height) {
+      return awayNode(item.projectId);
+    }
+  }
+  return null;
 }
 
 function drawProject(project, box, level, ratio, attention) {
@@ -722,6 +849,63 @@ function drawHeadquarters(project, box, ratio) {
   }
 }
 
+/**
+ * The World HQ is the main base of the world, like a town hall or a command center in a strategy game:
+ * bigger than a project HQ, behind a fortress wall with four towers, with a keep and
+ * a gold flag above it. It is drawn at the standard size and scaled down as a whole.
+ */
+function drawWorldHeadquarters(box) {
+  const ctx = scene.ctx;
+  const W = GEOMETRY.worldHqWidth;
+  const H = GEOMETRY.worldHqHeight;
+  ctx.save();
+  ctx.translate(box.x + box.width / 2, box.y + box.height / 2);
+  ctx.scale(box.width / W, box.height / H);
+  rect(-W / 2 + 10, -H / 2 + 13, W, H, "rgba(17,24,14,0.45)");
+  // Courtyard behind the wall.
+  rect(-W / 2, -H / 2, W, H, "#4b5537", "#b3a571", 2.5);
+  for (let i = 0; i < 7; i += 1) {
+    polyline([[-W / 2 + 12, -H / 2 + 16 + i * 38], [W / 2 - 12, -H / 2 + 16 + i * 38]], "rgba(170,158,108,0.18)", 1);
+  }
+  // Wall with battlements along the top.
+  rect(-W / 2 + 14, -H / 2 + 14, W - 28, 10, "#6a704f");
+  for (let x = -W / 2 + 34; x < W / 2 - 34; x += 18) rect(x, -H / 2 + 8, 9, 7, "#8d8a64");
+  // Four towers at the corners.
+  const tower = 50;
+  for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+    const cx = sx * (W / 2 - tower / 2 + 8);
+    const cy = sy * (H / 2 - tower / 2 + 8);
+    rect(cx - tower / 2, cy - tower / 2, tower, tower, "#707856", "#d2c08c", 2);
+    rect(cx - tower / 2 + 9, cy - tower / 2 + 9, tower - 18, tower - 18, "#3b4a2c", "#a7a27a", 1.2);
+  }
+  // Keep: the main building, its roof and entrance.
+  rect(-112, -96, 224, 164, PALETTE.hqInner, "#3c4b2d", 3);
+  rect(-94, -80, 188, 122, "#3f4d33", "#d6c999", 1.6);
+  rect(-50, -64, 100, 88, PALETTE.hqRoof, "#bdb283", 2);
+  rect(-25, -42, 50, 44, "#25301d", PALETTE.gold, 1.5);
+  // Flag above the keep - the mark of the main base.
+  polyline([[0, -42], [0, -112]], PALETTE.gold, 3);
+  ctx.beginPath();
+  ctx.moveTo(0, -112);
+  ctx.lineTo(38, -101);
+  ctx.lineTo(0, -90);
+  ctx.closePath();
+  ctx.fillStyle = PALETTE.gold;
+  ctx.fill();
+  // Gate in the bottom wall.
+  rect(-38, H / 2 - 32, 76, 32, "#27351f", "#d2c08c", 1.5);
+  for (let i = 0; i < 6; i += 1) rect(-32 + i * 12, H / 2 - 26, 6, 20, "#949f7d");
+  ctx.restore();
+
+  const selected = sameNode(scene.selection, worldHqNode());
+  const hovered = sameNode(scene.hover, worldHqNode());
+  if (selected || hovered) {
+    const pad = 11 / scene.camera.scale;
+    cornerBrackets(box.x - pad, box.y - pad, box.width + pad * 2, box.height + pad * 2, PALETTE.gold,
+      selected ? 2 : 1.3, 18 / scene.camera.scale);
+  }
+}
+
 function drawQuarter(project, quarter, projectBox, box, level, ratio, attention) {
   const x = projectBox.x + box.x;
   const y = projectBox.y + box.y;
@@ -790,7 +974,7 @@ function drawQuarter(project, quarter, projectBox, box, level, ratio, attention)
   }
   if (level <= LEVEL.project) {
     if (quarter.agents.length === 0) {
-      monoText("RIGHT-CLICK → NEW AGENT",
+      monoText(tx("RIGHT-CLICK → NEW AGENT"),
         worldToScreen(scene.camera, scene.size, x + box.width / 2, y + box.height / 2).x,
         worldToScreen(scene.camera, scene.size, x + box.width / 2, y + box.height / 2).y,
         10, "#adb99b");
@@ -884,16 +1068,40 @@ function drawHeadquartersLabel(project, box, ratio, level, contextOf) {
   if (centre.y < -60 || centre.y > scene.size.height + 60) return;
   const selected = sameNode(scene.selection,
     { kind: "hq", projectId: project.projectId, quarterId: null, agentId: null });
-  screenText(`HQ · ${project.projectId}`, centre.x, centre.y, 12 * k,
+  screenText(tx("scene::HQ · {projectId}", { projectId: sceneName("project", project.projectId, project.projectId) }), centre.x, centre.y, 12 * k,
     selected ? PALETTE.gold : "#c8d0b1", "center", 600, 7 * k);
   // The lead lives in the service quarter, which the map does not show: you see the lead by the caption,
   // and what the lead is doing by the frame under it, as for any agent (from the project level and closer).
   const lead = leadOf(project.projectId);
-  screenText(lead === null ? "Goal · team · decisions" : `lead · ${lead.agentId}`,
+  screenText(lead === null ? tx("Goal · team · decisions") : tx("lead · {agentId}", { agentId: sceneName("agent", lead.projectId, lead.agentId) }),
     centre.x, centre.y + 16 * k, 10 * k, "#98ac83", "center", 500, 7 * k);
   if (lead !== null && level <= LEVEL.project) {
     const context = contextOf(lead);
     drawTag(centre.x, centre.y + 16 * k + 9, context.text, CONTEXT_TONES[context.tone] ?? PALETTE.muted);
+  }
+}
+
+/**
+ * World HQ label: “WORLD HQ” and its lead, and below them what
+ * the lead is doing, in a frame, as for an agent. The World HQ is a world-level object,
+ * so the frame shows at any level. The label size matches the project plaques.
+ */
+function drawWorldHeadquartersLabel(ratio, contextOf) {
+  const box = worldHqBox();
+  if (box === null) return;
+  const k = Math.min(1, Math.max(0.6, ratio / 0.3));
+  const point = worldToScreen(scene.camera, scene.size, box.x + box.width / 2, box.y + box.height);
+  const centre = { x: point.x, y: point.y + 17 * k };
+  if (centre.x < -240 || centre.x > scene.size.width + 240) return;
+  if (centre.y < -80 || centre.y > scene.size.height + 80) return;
+  const selected = sameNode(scene.selection, worldHqNode());
+  screenText(tx("WORLD HQ"), centre.x, centre.y, 14 * k, selected ? PALETTE.gold : "#e3d6a6", "center", 700, 7 * k);
+  const lead = worldLeadOf();
+  screenText(lead === null ? tx("World lead not assigned") : tx("world lead · {agentId}", { agentId: sceneName("agent", lead.projectId, lead.agentId) }),
+    centre.x, centre.y + 17 * k, 10.5 * k, "#b8b083", "center", 500, 7 * k);
+  if (lead !== null) {
+    const context = contextOf(lead);
+    drawTag(centre.x, centre.y + 17 * k + 9, context.text, CONTEXT_TONES[context.tone] ?? PALETTE.muted);
   }
 }
 
@@ -918,8 +1126,8 @@ function drawLabels(level, ratio, attention) {
   // leads it is the same, only shown at the HQ and in the quarter plaque.
   const contextOf = (agent) => {
     const questions = questionsByAgent.get(agent.agentId) ?? 0;
-    return questions === 0 && asking.has(agent.agentId) ? { text: "waiting for your answer", tone: "ask" }
-      : questions === 0 && unread.has(agent.agentId) ? { text: "answer waiting for you", tone: "ask" }
+    return questions === 0 && asking.has(agent.agentId) ? { text: tx("waiting for your answer"), tone: "ask" }
+      : questions === 0 && unread.has(agent.agentId) ? { text: tx("answer waiting for you"), tone: "ask" }
         : agentContextLine(agent, questions);
   };
 
@@ -927,6 +1135,7 @@ function drawLabels(level, ratio, attention) {
     const box = scene.layout.projects[project.projectId];
     if (box !== undefined) drawHeadquartersLabel(project, box, ratio, level, contextOf);
   }
+  drawWorldHeadquartersLabel(ratio, contextOf);
 
   // The project plaque is above its top-left corner, outside the frame, at any
   // level: in the overview the name does not lie on the buildings. From afar, where
@@ -940,14 +1149,14 @@ function drawLabels(level, ratio, attention) {
     if (corner.y < -40 || corner.y > scene.size.height + 80) continue;
     const node = { kind: "project", projectId: project.projectId, quarterId: null, agentId: null };
     const agents = project.quarters.reduce((sum, quarter) => sum + quarter.agents.length, 0);
-    drawPlaque(corner.x, corner.y - 4, project.projectId,
+    drawPlaque(corner.x, corner.y - 4, sceneName("project", project.projectId, project.projectId),
       `${countWords(project.quarters.length, QUARTER_FORMS)} · ${countWords(agents, AGENT_FORMS)}`,
       16 * projectPlaqueScale, sameNode(scene.selection, node), node);
   }
   // The quarter plaque is outside, at its top-left corner, close to the edge
   // (the overview has none); at the project level it also shows how many agents
-  // have their memory delivered. Agent names are at any level and of one size: from
-  // the overview you can also see who is where. The state frame under an agent is at the
+  // memory is delivered. Agents' names - at any level: from the overview you also see
+  // who is where; there they shrink with the quarter. The state frame under an agent - at the levels
   // quarter and agent levels.
   const quarterPlaqueScale = Math.min(1, ratio);
   for (const project of projection.projects) {
@@ -968,11 +1177,11 @@ function drawLabels(level, ratio, attention) {
         // is doing shows in its plaque.
         const lead = level === LEVEL.project ? leadOf(project.projectId, quarter.quarterId) : null;
         const detail = lead !== null
-          ? `${countWords(quarter.agents.length, AGENT_FORMS)} · lead: ${contextOf(lead).text}`
+          ? tx("{value} · lead: {text}", { value: countWords(quarter.agents.length, AGENT_FORMS), text: contextOf(lead).text })
           : level === LEVEL.project && quarter.agents.length > 0 && roomy
-            ? `${countWords(quarter.agents.length, AGENT_FORMS)} · memory ${delivered}/${quarter.agents.length}`
+            ? tx("{value} · memory {delivered}/{length}", { value: countWords(quarter.agents.length, AGENT_FORMS), delivered, length: quarter.agents.length })
             : countWords(quarter.agents.length, AGENT_FORMS);
-        drawPlaque(corner.x, corner.y - 3, quarter.quarterId, detail,
+        drawPlaque(corner.x, corner.y - 3, sceneName("quarter", project.projectId, quarter.quarterId), detail,
           14 * quarterPlaqueScale, sameNode(scene.selection, node), node);
       }
       for (const agent of quarter.agents) {
@@ -987,12 +1196,15 @@ function drawLabels(level, ratio, attention) {
         // A name is no wider than the step at which the map places agents (but no shorter than 56 px), otherwise
         // the names of neighbours overlap; the selected one is shown in full.
         const room = Math.max(56, GEOMETRY.agentAutoStep * scene.camera.scale - 6);
-        const label = selectedAgent ? agent.agentId : fitText(agent.agentId, room, 14, 600);
+        // In the overview the name shrinks with the quarter (not smaller than 9 px); closer - 14 px.
+        const nameSize = level >= LEVEL.world ? Math.max(9, Math.round(14 * quarterPlaqueScale)) : 14;
+        const shown = sceneName("agent", agent.projectId, agent.agentId);
+        const label = selectedAgent ? shown : fitText(shown, room, nameSize, 600);
         // Name above the unit, state below it. Labels move away from the unit
         // in proportion to its size on screen, otherwise close up they lie on it.
         const extent = agentExtent(placement);
         const half = Math.max(extent.halfHeight * scene.camera.scale, 3);
-        screenText(label, point.x, point.y - half - 8, 14,
+        screenText(label, point.x, point.y - half - Math.round(nameSize * 0.55), nameSize,
           selectedAgent ? PALETTE.gold : "#dfe7cc", "center", 600);
         if (level >= LEVEL.project) continue;
         // Short context under the unit, in a frame sized to the text: what the agent
@@ -1008,7 +1220,7 @@ function drawLabels(level, ratio, attention) {
           if (said !== undefined) {
             const firstLine = said.text.split(/\r?\n/u)[0];
             const excerpt = firstLine.length > 46 ? `${firstLine.slice(0, 45)}…` : firstLine;
-            screenText(`«${excerpt}»`, point.x, tagTop + tagHeight + 11, 10, "#b9c4a4", "center");
+            screenText(tx("\"{name}\"", { name: excerpt }), point.x, tagTop + tagHeight + 11, 10, "#b9c4a4", "center");
           }
         }
       }
@@ -1123,28 +1335,40 @@ const CONTEXT_TONES = Object.freeze({
  * the scale, and, if it is the main one at this distance, it becomes a target for
  * the cursor: you can hover it, click it and open the list.
  */
+// Badges that wait for the person's action pulse smoothly in opacity (period 1.8 s).
+const PULSE_PERIOD_MS = 1800;
+const PULSE_FRAME_MS = 50;
+
+/** The pulsing badge's opacity now: from 0.45 to 1, by a cosine. */
+function pulseOpacity() {
+  const phase = (performance.now() % PULSE_PERIOD_MS) / PULSE_PERIOD_MS;
+  return 0.725 + 0.275 * Math.cos(phase * Math.PI * 2);
+}
+
 function drawBadge(x, y, signal, opacity = 1, node = null) {
   if (opacity < 0.04) return;
   const ctx = scene.ctx;
   const dpr = scene.dpr ?? 1;
-  const radius = signal.count > 9 ? 13 : 11;
+  const radius = signal.count > 9 ? 17 : 15;
   const colour = signal.severity >= 3 ? PALETTE.red : PALETTE.amber;
+  const pulsing = signal.urgent === true && !scene.reducedMotion;
+  if (pulsing) scene.pulsing = true;
   ctx.save();
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.globalAlpha = opacity;
+  ctx.globalAlpha = opacity * (pulsing ? pulseOpacity() : 1);
   ctx.beginPath();
   ctx.arc(x, y, radius, 0, Math.PI * 2);
   ctx.fillStyle = signal.severity >= 3 ? "#3a2622" : "#3a3322";
   ctx.fill();
   ctx.strokeStyle = colour;
-  ctx.lineWidth = 1.5;
+  ctx.lineWidth = 2;
   ctx.stroke();
   ctx.fillStyle = colour;
-  ctx.font = "bold 12px Consolas, monospace";
+  ctx.font = "bold 17px Consolas, monospace";
   ctx.textAlign = "center";
   // A single signal is shown as a sign: a question to the person is “?”, everything else is “!”.
   ctx.fillText(signal.count === 1 ? (signal.severity === 1 ? "?" : "!") : String(signal.count),
-    x, y + 4);
+    x, y + 6);
   ctx.restore();
   // Only a badge that is visible almost in full at this distance catches the
   // cursor: otherwise the targets of three levels would overlap each other.
@@ -1164,10 +1388,41 @@ const attentionLevelOf = (level) => (level >= LEVEL.world ? "project"
  */
 function drawAttentionBadges(level, ratio, attention) {
   scene.badges = [];
+  scene.pulsing = false;
+  // While a badge pulses on screen, the map redraws itself (~20 times a
+  // second) - the canvas only: not through the camera's frame, which on stopping
+  // refreshes the panels (they would be rebuilt and flicker under the cursor).
+  try { drawAttentionBadgesNow(level, ratio, attention); } finally {
+    if (scene.pulsing && !scene.pulseTimer) {
+      scene.pulseTimer = setTimeout(() => {
+        scene.pulseTimer = null;
+        requestAnimationFrame(() => { if (!scene.animating) draw(); });
+      }, PULSE_FRAME_MS);
+    }
+  }
+}
+
+function drawAttentionBadgesNow(level, ratio, attention) {
   const world = worldOf();
   if (world === null || scene.layout === null || attention.total === 0) return;
   const showing = attentionLevelOf(level);
   const screen = (x, y) => worldToScreen(scene.camera, scene.size, x, y);
+  // A badge sits with its centre exactly on the top right corner of what it is about:
+  // the corner is taken in map coordinates, with no offset in them - otherwise
+  // the offset grows with the zoom and the badge drifts away from the corner.
+
+  // The world lead is in the World HQ, which is not among the projects: its badge is
+  // at the World HQ building, at any level (the World HQ is a world-level object).
+  const worldLead = worldLeadOf();
+  const worldSignal = worldLead === null ? undefined : attention.byAgent.get(worldLead.agentId);
+  const hq = worldHqBox();
+  if (worldSignal !== undefined && hq !== null && boxInView(hq, 160)) {
+    const point = screen(hq.x + hq.width, hq.y);
+    drawBadge(point.x, point.y, worldSignal, 1, {
+      kind: "attention", scopeKind: "agent",
+      projectId: worldLead.projectId, quarterId: worldLead.quarterId, agentId: worldLead.agentId,
+    });
+  }
 
   for (const project of world.projection.projects) {
     if (attention.byProject.get(project.projectId) === undefined) continue;
@@ -1178,7 +1433,7 @@ function drawAttentionBadges(level, ratio, attention) {
     if (!boxInView(box, 160)) continue;
 
     if (showing === "project") {
-      const point = screen(box.x + box.width - 6, box.y - 22);
+      const point = screen(box.x + box.width, box.y);
       drawBadge(point.x, point.y, attention.byProject.get(project.projectId), 1, {
         kind: "attention", scopeKind: "project",
         projectId: project.projectId, quarterId: null, agentId: null,
@@ -1191,7 +1446,7 @@ function drawAttentionBadges(level, ratio, attention) {
     const leadSignal = lead === null ? undefined : attention.byAgent.get(lead.agentId);
     if (leadSignal !== undefined) {
       const hq = headquartersBox(box);
-      const point = screen(box.x + hq.x + hq.width - 4, box.y + hq.y + 4);
+      const point = screen(box.x + hq.x + hq.width, box.y + hq.y);
       drawBadge(point.x, point.y, leadSignal, 1, {
         kind: "attention", scopeKind: "agent",
         projectId: project.projectId, quarterId: lead.quarterId, agentId: lead.agentId,
@@ -1205,8 +1460,7 @@ function drawAttentionBadges(level, ratio, attention) {
       if (quarterBox === undefined) continue;
 
       if (showing === "quarter") {
-        const point = screen(box.x + quarterBox.x + quarterBox.width - 8,
-          box.y + quarterBox.y - 12);
+        const point = screen(box.x + quarterBox.x + quarterBox.width, box.y + quarterBox.y);
         drawBadge(point.x, point.y, quarterSignal, 1, {
           kind: "attention", scopeKind: "quarter",
           projectId: project.projectId, quarterId: quarter.quarterId, agentId: null,
@@ -1246,6 +1500,42 @@ function drawMinimap(attention) {
 
   const projection = projectionOf();
   scene.minimapHits = [];
+  const fit = (text, width) => {
+    let title = text.length > 20 ? `${text.slice(0, 19)}…` : text;
+    while (title.length > 3 && ctx.measureText(title).width > Math.max(26, width - 4)) title = `${title.slice(0, -2)}…`;
+    return title;
+  };
+  // Projects not on this PC - grey dashed frames, as on the map and when on the map
+  // (the "Not on this PC" ticks). A click on them moves the view, as on an empty place.
+  for (const { item, box } of awayBoxes()) {
+    const topLeft = transform.toMap(box.x, box.y);
+    const width = box.width * transform.scale;
+    const height = box.height * transform.scale;
+    ctx.fillStyle = "rgba(150,154,140,0.12)";
+    ctx.fillRect(topLeft.x, topLeft.y, width, height);
+    ctx.strokeStyle = "rgba(176,180,166,0.7)";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 2]);
+    ctx.strokeRect(topLeft.x, topLeft.y, width, height);
+    ctx.setLineDash([]);
+    ctx.fillStyle = "rgba(214,216,204,0.75)";
+    ctx.textAlign = "center";
+    ctx.font = `400 9px "Segoe UI", Arial, sans-serif`;
+    ctx.fillText(fit(item.projectId, width), topLeft.x + width / 2, topLeft.y + height / 2 + 3);
+  }
+  // The World HQ on the minimap is a gold square: the main base is visible from there too.
+  const hq = worldHqBox();
+  if (hq !== null) {
+    const corner = transform.toMap(hq.x, hq.y);
+    const width = Math.max(6, hq.width * transform.scale);
+    const height = Math.max(6, hq.height * transform.scale);
+    ctx.fillStyle = "#5a5030";
+    ctx.fillRect(corner.x, corner.y, width, height);
+    ctx.strokeStyle = PALETTE.gold;
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(corner.x, corner.y, width, height);
+    scene.minimapHits.push({ x: corner.x, y: corner.y, width, height, projectId: WORLD_PROJECT, world: true });
+  }
   for (const project of projection.projects) {
     const box = scene.layout.projects[project.projectId];
     if (box === undefined) continue;
@@ -1267,12 +1557,7 @@ function drawMinimap(attention) {
     ctx.fillStyle = active ? "#f0e6c6" : "#d4dec0";
     ctx.textAlign = "center";
     ctx.font = `${active ? 600 : 400} 9px "Segoe UI", Arial, sans-serif`;
-    let title = project.projectId.length > 20
-      ? `${project.projectId.slice(0, 19)}…` : project.projectId;
-    while (title.length > 3 && ctx.measureText(title).width > Math.max(26, width - 4)) {
-      title = `${title.slice(0, -2)}…`;
-    }
-    ctx.fillText(title, topLeft.x + width / 2, topLeft.y + height / 2 + 3);
+    ctx.fillText(fit(project.projectId, width), topLeft.x + width / 2, topLeft.y + height / 2 + 3);
 
     const signal = attention.byProject.get(project.projectId);
     if (signal !== undefined && width > 26) {
@@ -1310,6 +1595,11 @@ function onMinimapPointer(event) {
   // the view without changing the scale. The same as in the prototype.
   const hit = (scene.minimapHits ?? []).find((item) => x >= item.x && x <= item.x + item.width
     && y >= item.y && y <= item.y + item.height);
+  if (hit !== undefined && hit.world === true) {
+    selectNode(worldHqNode(), { focus: true });
+    atlasRecord("info", tx("minimap jump"), tx("scene::World HQ"));
+    return;
+  }
   if (hit !== undefined) {
     // The attention badge on the minimap opens the list for that project, as in the prototype.
     if (hit.badge !== undefined && Math.hypot(x - hit.badge.x, y - hit.badge.y) <= hit.badge.r) {
@@ -1317,13 +1607,15 @@ function onMinimapPointer(event) {
       return;
     }
     goProject(hit.projectId);
-    atlasRecord("info", "minimap jump", hit.projectId);
+    // A project where something waits for the person also opens its list at once.
+    if (hit.badge !== undefined) atlasOpenAttention({ projectId: hit.projectId, quarterId: null, agentId: null });
+    atlasRecord("info", tx("minimap jump"), hit.projectId);
     return;
   }
   const point = scene.minimap.toWorld(x, y);
   atlasDismissPanels();
   moveCamera(point.x, point.y, scene.camera.scale);
-  atlasRecord("info", "view moved via minimap", "");
+  atlasRecord("info", tx("view moved via minimap"), "");
 }
 
 // --- interaction ------------------------------------------------------------------
@@ -1353,21 +1645,23 @@ function nodeAt(event) {
   if (plaque !== null) return plaque.node;
   // Tolerance in world units: from afar a unit is small on the screen, but the person
   // must still be able to hit it.
-  return hitTest(projectionOf(), scene.layout, pointerWorld(event), currentLevel(), scene.scope,
+  const point = pointerWorld(event);
+  const found = hitTest(projectionOf(), scene.layout, point, currentLevel(), scene.scope,
     { tolerance: 5 / scene.camera.scale });
+  if (found !== null) return found;
+  const away = awayAt(point);
+  if (away !== null) return away;
+  // The World HQ is drawn under the projects: a project placed on top of it takes the cursor first.
+  const hq = worldHqBox();
+  return hq !== null && point.x >= hq.x && point.x <= hq.x + hq.width && point.y >= hq.y && point.y <= hq.y + hq.height
+    ? worldHqNode() : null;
 }
-
-/** The object the attention badge refers to. */
-const behindBadge = (node) => ({
-  kind: node.scopeKind, projectId: node.projectId,
-  quarterId: node.quarterId, agentId: node.agentId,
-});
 
 /** What will follow the cursor: what is under it, at any level; null means panning. */
 function dragNodeFor(node) {
   if (node === null || scene.layout === null) return null;
-  // An attention badge is not a building: it is not dragged.
-  if (node.kind === "attention") return null;
+  // An attention badge is not a building: it is not dragged. Nor is the frame of a project not on this PC.
+  if (node.kind === "attention" || node.kind === "away") return null;
   return dragTargetFor(node);
 }
 
@@ -1406,6 +1700,12 @@ function resizeHandles() {
   if (scene.layout === null || selection === null || scene.tool !== "select") return [];
   const project = scene.layout.projects[selection.projectId];
   if (project === undefined) return [];
+  if (selection.kind === "world") {
+    // The World HQ has one handle in the bottom-right corner, like a project HQ.
+    return [{ kind: "world", projectId: WORLD_PROJECT, quarterId: null, corner: "se",
+      x: project.x + project.width, y: project.y + project.height,
+      cx: project.x + project.width / 2, cy: project.y + project.height / 2, side: Math.min(project.width, project.height) }];
+  }
   if (selection.kind === "quarter") {
     const box = scene.layout.quarters[selection.projectId]?.[selection.quarterId];
     if (box === undefined) return [];
@@ -1485,6 +1785,10 @@ function resizeStart(handle) {
       ...scene.layout.agents[agent.agentId] })).filter((agent) => Number.isFinite(agent.x) && Number.isFinite(agent.y));
     return { box: { x: box.x, y: box.y, width: box.width, height: box.height }, agents };
   }
+  if (handle.kind === "world") {
+    const box = scene.layout.projects[WORLD_PROJECT];
+    return { width: box.width, height: box.height };
+  }
   const hq = headquartersBox(scene.layout.projects[handle.projectId]);
   return { width: hq.width, height: hq.height, quarters: structuredClone(scene.layout.quarters[handle.projectId] ?? {}) };
 }
@@ -1502,8 +1806,11 @@ function onPointerDown(event) {
   const target = event.button === 1 || scene.spaceDown || scene.tool === "pan"
     ? null : dragNodeFor(node);
   if (target === null) {
+    // The middle button only pans: without a move it selects nothing and
+    // opens nothing, and the browser's autoscroll does not start on it.
+    if (event.button === 1) event.preventDefault();
     scene.drag = {
-      kind: "pan", moved: false,
+      kind: "pan", moved: false, panOnly: event.button === 1,
       startX: event.clientX, startY: event.clientY,
       originX: scene.camera.x, originY: scene.camera.y,
     };
@@ -1549,12 +1856,15 @@ function onPointerMove(event) {
     if (!drag.moved) {
       if (Math.abs(dx) * scene.camera.scale < 3 && Math.abs(dy) * scene.camera.scale < 3) return;
       drag.moved = true;
-      beginGesture(drag.handle.kind === "quarter" ? "Resize quarter"
-        : drag.handle.kind === "agent" ? "Resize agent" : "Resize HQ");
+      beginGesture(drag.handle.kind === "quarter" ? tx("Resize quarter")
+        : drag.handle.kind === "agent" ? tx("Resize agent")
+          : drag.handle.kind === "world" ? tx("Resize World HQ") : tx("Resize HQ"));
     }
     const { handle } = drag;
     if (handle.kind === "quarter") {
       resizeQuarter(scene.layout, handle.projectId, handle.quarterId, drag.origin, handle.corner, dx, dy);
+    } else if (handle.kind === "world") {
+      resizeWorldHeadquarters(scene.layout, WORLD_PROJECT, drag.origin, dx, dy);
     } else if (handle.kind === "agent") {
       resizeAgent(scene.layout, handle.projectId, handle.quarterId, handle.agentId, drag.origin, dx, dy);
     } else {
@@ -1570,8 +1880,9 @@ function onPointerMove(event) {
   if (!drag.moved) {
     if (Math.abs(dx) * scene.camera.scale < 3 && Math.abs(dy) * scene.camera.scale < 3) return;
     drag.moved = true;
-    beginGesture(drag.node.kind === "quarter" ? "Move quarter"
-      : drag.node.kind === "agent" ? "Move agent" : "Move project");
+    beginGesture(drag.node.kind === "quarter" ? tx("Move quarter")
+      : drag.node.kind === "agent" ? tx("Move agent")
+        : drag.node.projectId === WORLD_PROJECT ? tx("Move World HQ") : tx("Move project"));
   }
   drag.start = current;
   const node = drag.node;
@@ -1616,6 +1927,7 @@ function onPointerUp(event) {
       onCameraSettled();
       return;
     }
+    if (drag.panOnly) return;
     // Panning without movement is an ordinary click: it must select what is under
     // the cursor, not clear the selection. Otherwise a quarter, which is not dragged at its
     // level, could not be clicked.
@@ -1654,8 +1966,11 @@ function onPointerUp(event) {
   commitClick(nodeAt(event));
 }
 
-/** Click: the HQ opens its sheet, an attention badge opens the list, anything else gets selected. */
+/** A click: an HQ opens its sheet, anything else is selected; an attention badge - only with a double-click. */
 function commitClick(node) {
+  // A single click on an attention badge does nothing: it touches neither what is under it nor
+  // the open windows. A badge opens with a double-click.
+  if (node?.kind === "attention") return;
   // A click on the map removes the open sheet (HQ, creation, archive): the person
   // has come back to the map. A click on the HQ opens its sheet again at once.
   if (!document.getElementById("sheet").classList.contains("hidden")) closeSheet();
@@ -1667,14 +1982,22 @@ function commitClick(node) {
     selectNode(null);
     return;
   }
-  if (node.kind === "attention") {
-    selectNode(behindBadge(node));
-    atlasOpenAttention(node);
+  // The frame of a project not on this PC: its summary and "Connect…", nothing in it to select.
+  if (node.kind === "away") {
+    selectNode(null);
+    atlasOpenAwayProject(node.projectId);
     return;
   }
   if (node.kind === "hq") {
     selectNode({ kind: "project", projectId: node.projectId, quarterId: null, agentId: null });
     atlasOpenHeadquarters(node.projectId);
+    return;
+  }
+  // The World HQ works like a project HQ: a click selects it (resize handle, drag) and
+  // opens its sheet - the world lead, its tasks, the desk agents.
+  if (node.kind === "world") {
+    selectNode(node);
+    atlasOpenWorldHeadquarters();
     return;
   }
   // A single click only selects, also when an agent window is open: the agent
@@ -1702,6 +2025,7 @@ function onDoubleClick(event) {
     goWorld();
     return;
   }
+  if (node.kind === "away") return;
   enterNode(node);
 }
 
@@ -1761,11 +2085,12 @@ function onKeyDown(event) {
     return;
   }
   const holding = event.ctrlKey || event.metaKey || event.altKey;
-  if (!holding && (event.key === "v" || event.key === "V" || event.key === "\u043c" || event.key === "\u041c")) {
+  // Letter shortcuts go by the physical key (event.code), so they work in any keyboard layout.
+  if (!holding && event.code === "KeyV") {
     sceneSetTool("select");
     return;
   }
-  if (!holding && (event.key === "h" || event.key === "H" || event.key === "\u0440" || event.key === "\u0420")) {
+  if (!holding && event.code === "KeyH") {
     sceneSetTool("pan");
     return;
   }
@@ -1780,12 +2105,12 @@ function onKeyDown(event) {
     redoLocal();
     return;
   }
-  if ((event.ctrlKey || event.metaKey) && (key.toLowerCase() === "c" || key === "\u0441" || key === "\u0421")) {
+  if ((event.ctrlKey || event.metaKey) && event.code === "KeyC") {
     event.preventDefault();
     atlasCopyBlueprint();
     return;
   }
-  if ((event.ctrlKey || event.metaKey) && (key.toLowerCase() === "v" || key === "\u043c" || key === "\u041c")) {
+  if ((event.ctrlKey || event.metaKey) && event.code === "KeyV") {
     event.preventDefault();
     atlasPasteBlueprint();
     return;
@@ -1798,11 +2123,17 @@ function onKeyDown(event) {
     sceneZoomBy(1 / 1.25);
     return;
   }
+  // To the main base, like Backspace in StarCraft II: the World HQ is selected and in the middle of the screen.
+  if (key === "Backspace" && !holding) {
+    event.preventDefault();
+    selectNode(worldHqNode(), { focus: true });
+    return;
+  }
   if (key === "Home" || key === "4") goLevel(LEVEL.world);
   else if (key === "3") goLevel(LEVEL.project);
   else if (key === "2") goLevel(LEVEL.quarter);
   else if (key === "1" && scene.selection?.kind === "agent") atlasOpenWorkspace(scene.selection);
-  else if (key === "f" || key === "F" || key === "\u0430" || key === "\u0410") fitSelection();
+  else if (event.code === "KeyF") fitSelection();
   else if (key === "Escape") atlasEscape();
 }
 
@@ -1892,7 +2223,7 @@ function scenePasteTarget() {
 
 /** Apply the local part of a blueprint to an object that has already been created. */
 function sceneApplyBlueprintPart(node, part) {
-  recordChange("Paste blueprint", () => {
+  recordChange(tx("scene::Paste blueprint"), () => {
     const placement = node.kind === "project" ? scene.layout.projects[node.projectId]
       : node.kind === "quarter" ? scene.layout.quarters[node.projectId]?.[node.quarterId]
         : scene.layout.agents[node.agentId];
@@ -1915,7 +2246,9 @@ function updateTray() {
   const known = new Set(projectionOf().projects.map((project) => project.projectId));
   const tray = [];
   for (const projectId of Object.keys(scene.layout?.projects ?? {})) {
-    if (!known.has(projectId)) tray.push({ kind: "project", id: projectId, reason: "not in the catalog" });
+    // The World HQ entry is its place on the map, not a project: it exists without the catalog too.
+    if (projectId === WORLD_PROJECT) continue;
+    if (!known.has(projectId)) tray.push({ kind: "project", id: projectId, reason: tx("not in the catalog") });
   }
   for (const omission of world?.projection.omissions ?? []) {
     tray.push({ kind: omission.kind, id: omission.id, reason: omission.reason });
@@ -1979,11 +2312,13 @@ function sceneZoomBy(factor) {
 }
 
 function sceneCompactProject(projectId) {
-  recordChange("Fit project", () => compactProject(scene.layout, projectId));
+  // The World HQ is not a project territory: there is nothing in it to fit.
+  if (projectId === WORLD_PROJECT) return;
+  recordChange(tx("Fit project"), () => compactProject(scene.layout, projectId));
 }
 
 function sceneSetAppearance(projectId, patch) {
-  recordChange("Project appearance", () => {
+  recordChange(tx("Project appearance"), () => {
     const placement = scene.layout.projects[projectId];
     if (placement === undefined) return;
     if (patch.symbol !== undefined) {
@@ -1996,8 +2331,8 @@ function sceneSetAppearance(projectId, patch) {
 }
 
 function sceneSetAnnotation(node, patch) {
-  recordChange("Note and role", () => {
-    const placement = node.kind === "project" || node.kind === "hq"
+  recordChange(tx("Note and role"), () => {
+    const placement = node.kind === "project" || node.kind === "hq" || node.kind === "world"
       ? scene.layout.projects[node.projectId]
       : node.kind === "quarter" ? scene.layout.quarters[node.projectId]?.[node.quarterId]
         : scene.layout.agents[node.agentId];
@@ -2013,7 +2348,7 @@ function sceneSetAnnotation(node, patch) {
 
 function placementOf(node) {
   if (node === null || scene.layout === null) return null;
-  const placement = node.kind === "project" || node.kind === "hq"
+  const placement = node.kind === "project" || node.kind === "hq" || node.kind === "world"
     ? scene.layout.projects[node.projectId]
     : node.kind === "quarter" ? scene.layout.quarters[node.projectId]?.[node.quarterId]
       : scene.layout.agents[node.agentId];
@@ -2033,7 +2368,7 @@ function sceneAnnotationOf(node) {
 const sceneSkillsOf = (node) => (placementOf(node)?.skills ?? []).slice();
 
 function sceneSetSkills(node, skills) {
-  recordChange("Skills (your list)", () => {
+  recordChange(tx("Skills (your list)"), () => {
     const placement = placementOf(node);
     if (placement === null) return;
     const clean = skills
@@ -2053,7 +2388,7 @@ function sceneWorldUpdated() {
 }
 
 function sceneReplaceLayout(layout) {
-  recordChange("Import layout", () => { scene.layout = layout; });
+  recordChange(tx("Import layout"), () => { scene.layout = layout; });
   goWorld();
 }
 
@@ -2065,6 +2400,8 @@ function initScene() {
   scene.reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   scene.canvas.addEventListener("pointerdown", onPointerDown);
+  // The middle button pans the map, it is not Chromium's autoscroll.
+  scene.canvas.addEventListener("mousedown", (event) => { if (event.button === 1) event.preventDefault(); });
   scene.canvas.addEventListener("pointermove", onPointerMove);
   scene.canvas.addEventListener("pointerup", onPointerUp);
   scene.canvas.addEventListener("pointercancel", onPointerUp);

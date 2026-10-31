@@ -58,9 +58,10 @@ with `--yes` / `--non-interactive`.
 | Command | What it does |
 | --- | --- |
 | `agents-factory claude install [--version <v>]` | Install the pinned Claude Agent SDK version from npm |
-| `agents-factory claude key set` | Take an Anthropic API key (from a prompt or stdin, not from a command-line argument) and put it in the system credential store |
-| `agents-factory claude key check` | Check the key without an agent turn |
-| `agents-factory claude key remove` | Remove the key from the store |
+| `agents-factory key set` | Take an Anthropic API key (from stdin, not from a command-line argument) and put it in the system credential store |
+| `agents-factory key status` | Whether there is a key and where it will come from (environment or store); the key itself is never printed |
+| `agents-factory key check` | Check the key without an agent turn (not yet) |
+| `agents-factory key remove` | Remove the key from the store |
 | `agents-factory claude status` | How the Gateway will sign in to Claude; read-only |
 
 The public product does not offer claude.ai subscription sign-in
@@ -106,11 +107,57 @@ Confirmations of irreversible actions work the same way as in Atlas: a
 today: `--confirm-agent`, `--confirm-project`); without it, the command
 refuses and explains why.
 
+## What exists today (CLI v0.1.0)
+
+Shipped in v0.2.0 (`backend/orchestrator/src/agents-factory-*.mjs`, bundle
+`dist/agents-factory-cli.bundle.mjs`, in the controller template as
+`.orchestrator/runtime/agents-factory.mjs`):
+
+- `gateway start | stop | status | recover | logs [--follow]`;
+- `service install | uninstall | status`;
+- `key set` (the key from stdin) / `key status` / `key remove`;
+- `claude install [--version]` / `claude status` - by default the pinned SDK
+  version 0.3.288 (the same as Atlas uses), `--version latest` for the newest;
+- `setup`, `doctor`, `migrate [--dry-run]`, `version`, `help`.
+
+Common flags: `--instance <folder>`, `--data-dir <folder>`, `--json`, `--yes`,
+`--non-interactive`, `--node <path>` (which Node runs the Gateway).
+`--plan-only` on the Gateway and service commands shows the plan and changes
+nothing.
+
+Not yet: `gateway run` (foreground), `update`, `uninstall`, `telemetry`, the
+team commands (`open`, `project`, `agent`, `attention`, `memory`, `mcp`),
+`migrate --restore`, SDK packages for musl, a guard against two `setup` runs
+at once.
+
+Run it from a controller: `node .orchestrator/runtime/agents-factory.mjs help`.
+
+### Folders
+
+| OS | Data root | Default instance |
+| --- | --- | --- |
+| Windows | `%LOCALAPPDATA%\AgentsFactory` | `…\AgentsFactory\controller` |
+| macOS | `~/Library/Application Support/AgentsFactory` | `…/AgentsFactory/controller` |
+| Linux | `$XDG_DATA_HOME/agents-factory` (`~/.local/share/agents-factory`) | `…/agents-factory/controller` |
+
+The data root holds the key (on Windows a DPAPI file) and the SDK
+(`runtime/claude-agent-sdk/<version>`); the instance is the controller folder.
+
+### Environment variables
+
+| Variable | What it does |
+| --- | --- |
+| `AGENTS_FACTORY_HOME` | The instance folder (instead of the default one); `--instance` wins |
+| `AGENTS_FACTORY_DATA_DIR` | The data root; `--data-dir` wins |
+| `AGENTS_FACTORY_SQLITE` | `node` (default) or `python` - what opens memory, the conversation archive and the control queue; `control-cycle.json` may say the same with `sqliteBackend`; without `node:sqlite` everything falls back to Python |
+| `AGENTS_FACTORY_NPM_REGISTRY` | The npm registry for `claude install` (default `https://registry.npmjs.org`) |
+| `ANTHROPIC_API_KEY` | The API key; when set, it wins over the key store |
+
 ## Headless install (Linux server)
 
 ```sh
 curl -fsSL https://github.com/AlexKhutor/agents-factory/releases/latest/download/install.sh | sh -s -- --headless
-agents-factory claude install && agents-factory claude key set
+agents-factory claude install && agents-factory key set
 agents-factory setup --headless
 agents-factory service install
 ```

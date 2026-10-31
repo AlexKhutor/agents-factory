@@ -242,6 +242,10 @@ class ClaudeCodeSessionJournal {
       if (current === null) fail("thread_not_found");
       const next = structuredClone(current);
       if (next.turnIds.includes(turn.id)) fail("claude_turn_exists");
+      // The turns folder of a session that never ran is empty, and a project
+      // package carries files only: after a mount it is not there.
+      await mkdir(path.dirname(this.#turnFile(sessionId, turn.id)), { recursive: true })
+        .catch(() => fail("claude_journal_unavailable"));
       await writeAtomic(this.#turnFile(sessionId, turn.id), turn, CLAUDE_CODE_SESSION_LIMITS.turnBytes);
       this.#remember(`${sessionId}:${turn.id}`, structuredClone(turn));
       next.turnIds.push(turn.id);

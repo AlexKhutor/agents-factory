@@ -68,6 +68,18 @@ check("attention-built-from-what-is-observed",
     && view.attention.some((item) => item.kind === "state"),
   view.attention.map((item) => `${item.kind}:${item.agentId}`));
 
+// The world lead: the one coordinator, in the world project's headquarters
+// quarter - what the world headquarters on the map stands for.
+{
+  const worldProject = view.projection.projects.find((project) => project.projectId === "world") ?? null;
+  const leads = view.projection.projects.flatMap((project) => project.quarters.flatMap((quarter) => quarter.agents))
+    .filter((agent) => agent.settings?.role === "coordinator");
+  check("world-with-world-lead",
+    worldProject !== null && leads.length === 1 && leads[0].projectId === "world" && leads[0].quarterId === "hq"
+      && worldProject.quarters.map((quarter) => quarter.quarterId).join() === "hq",
+    { worldProject: worldProject?.quarters.map((quarter) => quarter.quarterId), leads: leads.map((agent) => agent.agentId) });
+}
+
 // Progress is never reported, so it stays null. Attention is only what the
 // catalog captured (Kit v0.15.0): null, or an object marked captured-only.
 check("progress-not-invented-attention-only-captured",

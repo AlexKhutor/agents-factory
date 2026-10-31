@@ -6,7 +6,7 @@
 // than an overwrite, and the same edit returns its original receipt instead of
 // being applied twice.
 
-import { copyFile, mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -31,8 +31,9 @@ async function createRoot() {
   return root;
 }
 
-function actionsFor(root, { answer = true, folder = null } = {}) {
+function actionsFor(root, { answer = true, folder = null, gateway = null } = {}) {
   const asked = [];
+  const purposes = [];
   const actions = createTrustedActions({
     config: {
       controllerRoot: root,
@@ -42,9 +43,10 @@ function actionsFor(root, { answer = true, folder = null } = {}) {
       },
     },
     confirm: async (request) => { asked.push(request); return answer; },
-    chooseDirectory: async () => folder,
+    chooseDirectory: async (purpose) => { purposes.push(purpose); return folder; },
+    gateway,
   });
-  return { actions, asked };
+  return { actions, asked, purposes };
 }
 
 const root = await createRoot();
@@ -214,6 +216,218 @@ let firstReceipt = null;
     { moved, after, busy, stale, asked });
 }
 
+// 6c-2. Plan R36: a project whose agents worked moves with its sessions, which
+// needs the Gateway stopped. The first try is refused (gateway_running); the
+// same rebind runs again inside the Gateway control's pause, and the answer
+// says the Gateway was paused. Without a Gateway control the refusal stays.
+{
+  const statusFile = path.join(root, ".project-local", "application-gateway", "status.v1.json");
+  await mkdir(path.dirname(statusFile), { recursive: true });
+  await writeFile(statusFile, JSON.stringify({ terminal: false }));
+  const target = path.join(root, "worked-new");
+  await mkdir(target, { recursive: true });
+  const pauses = [];
+  const gateway = {
+    projectCommand: async () => ({ ok: false, error: { code: "unexpected" } }),
+    whileStopped: async (work) => {
+      pauses.push("stop");
+      await writeFile(statusFile, JSON.stringify({ terminal: true }));
+      try {
+        return { ...(await work()), gateway: { paused: true, restarted: true } };
+      } finally {
+        await writeFile(statusFile, JSON.stringify({ terminal: false }));
+        pauses.push("start");
+      }
+    },
+  };
+  const { actions, asked } = actionsFor(root, { folder: target, gateway });
+  const chosen = await actions.chooseWorkspace();
+  const moved = await actions.rebindWorkspace({ projectId: "atlas-dev-fixture-worked-project", selectionId: chosen.data.selectionId });
+  const { actions: plain } = actionsFor(root, { folder: target });
+  const again = await plain.chooseWorkspace();
+  const refused = await plain.rebindWorkspace({ projectId: "atlas-dev-fixture-worked-project", selectionId: again.data.selectionId });
+  check("worked-project-rebinds-with-the-gateway-paused",
+    moved.ok === true && moved.data.gateway?.paused === true && pauses.join() === "stop,start"
+      && asked.length === 1 && asked[0].detail.includes("move with the binding") && asked[0].detail.includes(target)
+      && refused.ok === false && refused.error.reasonCode === "gateway_running",
+    { moved, pauses, refused, asked: asked.map((item) => item.detail) });
+  await rm(path.dirname(statusFile), { recursive: true, force: true });
+}
+
+// 6c-2b. An uncertain send is checked only after the person confirms, always
+// with the Gateway paused (the backend refuses a running one); the answer says
+// whether the message went, and the cause the backend recorded.
+{
+  const statusFile = path.join(root, ".project-local", "application-gateway", "status.v1.json");
+  await mkdir(path.dirname(statusFile), { recursive: true });
+  await writeFile(statusFile, JSON.stringify({ terminal: false }));
+  const pauses = [];
+  const gateway = {
+    projectCommand: async () => ({ ok: false, error: { code: "unexpected" } }),
+    whileStopped: async (work) => {
+      pauses.push("stop");
+      await writeFile(statusFile, JSON.stringify({ terminal: true }));
+      try {
+        return { ...(await work()), gateway: { paused: true, restarted: true } };
+      } finally {
+        await writeFile(statusFile, JSON.stringify({ terminal: false }));
+        pauses.push("start");
+      }
+    },
+  };
+  const { actions, asked } = actionsFor(root, { gateway });
+  const freed = await actions.settleSend({ agentId: "agent-1", operationId: "atlas-send-1" });
+  const went = await actions.settleSend({ agentId: "agent-1", operationId: "atlas-send-2-went" });
+  const { actions: declining } = actionsFor(root, { gateway, answer: false });
+  const declined = await declining.settleSend({ agentId: "agent-1", operationId: "atlas-send-3" });
+  const bad = await actions.settleSend({ agentId: "agent 1", operationId: "atlas-send-4" });
+  check("uncertain-send-is-settled-with-the-gateway-paused",
+    freed.ok === true && freed.data.went === false && freed.data.operationState === "failed"
+      && freed.data.causeCode === "claude_journal_unavailable" && freed.data.gateway?.paused === true
+      && went.ok === true && went.data.went === true && went.data.operationState === "completed"
+      && pauses.join() === "stop,start,stop,start" && asked.length === 2 && asked[0].detail.includes("session journal")
+      && declined.ok === false && declined.error.code === "user_declined"
+      && bad.ok === false,
+    { freed, went, declined, bad, pauses });
+  await rm(path.dirname(statusFile), { recursive: true, force: true });
+}
+
+// 6c-2c. Sync between PCs (block 3): status reads; a release names in its
+// confirmation what leaves, what is backed up and what stays local, runs with
+// the Gateway paused and does not start it; a take of the world starts it.
+{
+  const view = { ok: true, value: { configured: true, machine: { machineId: "home", title: "Home", home: true },
+    machines: { home: { title: "Home", home: true }, office: { title: "Office", home: false } },
+    world: { held: true, remote: { reachable: true, initialized: true, holder: "home" } },
+    projects: [
+      { projectId: "open", configured: true, mounted: true, held: true, policy: { homeOnly: false }, mayHold: true, onlyHere: false },
+      { projectId: "inzoi", configured: true, mounted: true, held: true, policy: { homeOnly: true }, mayHold: true, onlyHere: true },
+      { projectId: "scratch", configured: false, mounted: true, held: false, policy: { homeOnly: false }, mayHold: true, onlyHere: false },
+    ] } };
+  const calls = [];
+  const gateway = {
+    projectCommand: async () => ({ ok: false, error: { code: "unexpected" } }),
+    syncCommand: async (args) => {
+      calls.push(args);
+      if (args[1] === "status") return view;
+      return { ok: true, value: { results: [{ target: "world", action: args[1] === "take" ? "taken" : "released" }], skipped: [], stayLocal: [] } };
+    },
+    whileStopped: async (work) => ({ ...(await work()), gateway: { paused: false, restarted: false } }),
+    start: async () => { calls.push(["gateway", "start"]); return { ok: true }; },
+  };
+  const { actions, asked } = actionsFor(root, { gateway });
+  const status = await actions.syncStatus({ remote: true });
+  const released = await actions.syncRelease({ target: "all" });
+  const taken = await actions.syncTake({ target: "world" });
+  const { actions: declining } = actionsFor(root, { gateway, answer: false });
+  const declined = await declining.syncRelease({ target: "open" });
+  const bad = await actions.syncTake({ target: "no such project" });
+  const changes = calls.filter((args) => args[1] !== "status");
+  check("sync-confirms-what-goes-where-and-starts-the-gateway-after-a-world-take",
+    status.ok === true && status.data.projects.find((item) => item.projectId === "inzoi").onlyHere === true
+      && released.ok === true && taken.ok === true && taken.data.gateway.started === true
+      && asked[0].detail.includes("open") && asked[0].detail.includes("inzoi") && asked[0].detail.includes("scratch")
+      && asked[0].detail.includes("does not start") && asked[1].message.includes("\"Home\"")
+      && changes.length === 3 && changes[0].join(" ") === "sync release --confirm home"
+      && changes[1].join(" ") === "sync take --world --confirm home" && changes[2].join(" ") === "gateway start"
+      && declined.ok === false && declined.error.code === "user_declined"
+      && bad.ok === false,
+    { status, released, taken, declined, bad, calls, asked: asked.map((item) => item.detail) });
+  // The mode (plan 5.1): an older CLI that names none is synced when configured; a local instance shows nothing more.
+  const { actions: local } = actionsFor(root, { gateway: { ...gateway,
+    syncCommand: async () => ({ ok: true, value: { configured: true, mode: "local" } }) } });
+  const localStatus = await local.syncStatus();
+  check("sync-status-says-the-mode",
+    status.data.mode === "synced" && localStatus.ok === true && localStatus.data.mode === "local"
+      && localStatus.data.configured === true && localStatus.data.world === undefined,
+    { mode: status.data.mode, localStatus });
+}
+
+// 6c-3. Projects not on this PC. A single instance lists none (split: false)
+// and refuses to take one off without asking. In a split instance the list
+// comes from the memory CLI; taking a project off and bringing it back run the
+// agents-factory command inside the Gateway pause, after the person confirmed
+// the project and the package folder. The package path is not in the answer.
+{
+  const packageDir = path.join(root, "package-alpha");
+  await mkdir(packageDir, { recursive: true });
+  const commands = [];
+  const gateway = {
+    projectCommand: async (args) => {
+      commands.push(args);
+      return args[1] === "unmount"
+        ? { ok: true, value: { projectId: "alpha", revision: 3, removedFiles: 7, tasksIndexed: 1, package: packageDir } }
+        : { ok: true, value: { projectId: "alpha", folder: "alpha", scopes: 2, conversations: 1, workspace: "missing" } };
+    },
+    whileStopped: async (work) => ({ ...(await work()), gateway: { paused: true, restarted: true } }),
+  };
+  const { actions, asked, purposes } = actionsFor(root, { folder: packageDir, gateway });
+  const single = await actions.listAwayProjects();
+  const chosen = await actions.chooseWorkspace({ purpose: "package" });
+  const singleRefused = await actions.unmountProject({ projectId: "alpha", selectionId: chosen.data.selectionId });
+  const singleCommands = commands.length;
+  const singleAsked = asked.length;
+  const marker = path.join(root, ".project-local", "projects", "store-layout.v1.json");
+  await mkdir(path.dirname(marker), { recursive: true });
+  await writeFile(marker, JSON.stringify({ schemaVersion: 1, layout: "split" }));
+  const statePath = path.join(root, ".project-local", "atlas-dev-cli-state.json");
+  const state = JSON.parse(await readFile(statePath, "utf8"));
+  await writeFile(statePath, JSON.stringify({ ...state,
+    thisMachine: { machineId: "office", title: "Office", home: false },
+    machines: { office: { title: "Office", home: false }, home: { title: "Home", home: true } },
+    worldProjects: {
+      home: { title: "Home", archived: false, here: false, policy: { homeOnly: true, allowedMachines: null },
+        location: { machineId: "home", atUtc: "2026-10-26T10:00:00.000Z" },
+        summary: { agents: 2, quarters: 1, tasksOpen: 1, lastActivityUtc: "2026-10-26T09:00:00.000Z" } },
+      alpha: { title: "Alpha", archived: false, here: true, policy: { homeOnly: false, allowedMachines: null }, location: null, summary: null },
+    } }));
+  const away = await actions.listAwayProjects();
+  // Stricter: only this PC, without asking. Looser: asked first, and a "no" keeps it.
+  const stricter = await actions.setProjectPolicy({ projectId: "alpha", choice: "this-pc" });
+  const askedAfterStricter = asked.length;
+  const { actions: declining, asked: declinedAsk } = actionsFor(root, { answer: false, gateway });
+  const looser = await declining.setProjectPolicy({ projectId: "alpha", choice: "anywhere" });
+  const kept = JSON.parse(await readFile(statePath, "utf8")).worldProjects.alpha.policy;
+  const world = await actions.unmountProject({ projectId: "world", selectionId: chosen.data.selectionId });
+  const badChoice = await actions.unmountProject({ projectId: "alpha", selectionId: chosen.data.selectionId, choice: "nowhere" });
+  const unmounted = await actions.unmountProject({ projectId: "alpha", selectionId: chosen.data.selectionId, choice: "home" });
+  const recorded = JSON.parse(await readFile(statePath, "utf8")).worldProjects.alpha.policy;
+  check("where-a-project-may-be-kept",
+    stricter.ok === true && stricter.data.changed === true && askedAfterStricter === 0
+      && JSON.stringify(kept) === JSON.stringify({ homeOnly: false, allowedMachines: ["office"] })
+      && looser.ok === false && looser.error.code === "user_declined" && declinedAsk.length === 1
+      && declinedAsk[0].detail.includes("only on PC: Office")
+      && badChoice.ok === false && badChoice.error.reasonCode === "policy_choice_invalid"
+      && JSON.stringify(recorded) === JSON.stringify({ homeOnly: true, allowedMachines: null }),
+    { stricter, looser, kept, badChoice, recorded, declined: declinedAsk.map((item) => item.detail) });
+  await writeFile(path.join(packageDir, "project.af.json"), JSON.stringify({ projectId: "alpha", title: "Alpha" }));
+  const pick = await actions.chooseWorkspace({ purpose: "package" });
+  const wrong = await actions.mountProject({ selectionId: pick.data.selectionId, projectId: "beta" });
+  const mounted = await actions.mountProject({ selectionId: pick.data.selectionId, projectId: "alpha" });
+  check("single-instance-has-no-projects-away",
+    single.ok === true && single.data.split === false && single.data.projects.length === 0
+      && singleRefused.ok === false && singleRefused.error.reasonCode === "store_layout_single" && singleCommands === 0 && singleAsked === 0,
+    { single, singleRefused });
+  check("project-goes-off-this-pc-and-back-through-the-gateway-pause",
+    away.ok === true && away.data.split === true && away.data.projects.length === 1 && away.data.known.length === 2
+      && away.data.thisMachine.title === "Office"
+      && away.data.projects[0].projectId === "home" && away.data.projects[0].policy.homeOnly === true
+      && away.data.projects[0].location.title === "Home" && away.data.projects[0].summary.agents === 2
+      && world.ok === false && world.error.reasonCode === "project_id_invalid"
+      && unmounted.ok === true && unmounted.data.removedFiles === 7 && unmounted.data.gateway.paused === true
+      && JSON.stringify(commands[0]) === JSON.stringify(["project", "unmount", "--project", "alpha", "--out", packageDir,
+        "--confirm", "alpha"])
+      && !JSON.stringify(unmounted).includes("package-alpha")
+      && asked[0].detail.includes(packageDir) && asked[0].detail.includes("home only")
+      && asked[0].detail.includes("was: only on PC: Office")
+      && wrong.ok === false && wrong.error.reasonCode === "package_other_project"
+      && mounted.ok === true && mounted.data.projectId === "alpha" && mounted.data.workspace === "missing"
+      && JSON.stringify(commands[1]) === JSON.stringify(["project", "mount", "--package", packageDir])
+      && asked.length === 2 && asked[1].message.includes("alpha") && purposes.every((item) => item === "package"),
+    { away, world, unmounted, wrong, mounted, commands, asked: asked.map((item) => item.message) });
+  await rm(path.dirname(marker), { recursive: true, force: true });
+}
+
 // 6d. An agent's permission mode: "bypass" only after the person confirms, the
 // others at once; a declined bypass changes nothing; the read names each own mode.
 {
@@ -331,6 +545,155 @@ let firstReceipt = null;
       && after.ok === true && after.data.quarters.length === 0
       && invalid.ok === false,
     { archived, listed, restored, after, invalid, asked: asked.map((item) => item.title) });
+}
+
+// 6c. The history of changes: archive and restore are recorded; "Undo" asks first,
+// with the entry as the backend has it, and reverses the change by a new entry; an
+// undone entry and an undo are not undone again; the recipe never reaches the window.
+{
+  const project = "atlas-history-demo";
+  const { actions, asked } = actionsFor(root);
+  await actions.archiveProject({ projectId: project });
+  await actions.restoreProject({ projectId: project });
+  const history = await actions.readActionJournal({ projectId: project });
+  const [restored, archived] = history.ok ? history.data.entries : [];
+  const { actions: declining } = actionsFor(root, { answer: false });
+  const declined = await declining.undoAction({ projectId: project, entryId: restored?.entryId });
+  const askedBefore = asked.length;
+  const undone = await actions.undoAction({ projectId: project, entryId: restored?.entryId });
+  const dialog = asked[askedBefore];
+  const after = await actions.readActionJournal({ projectId: project });
+  const listed = await actions.listArchivedProjects();
+  const again = await actions.undoAction({ projectId: project, entryId: restored?.entryId });
+  const ofUndo = await actions.undoAction({ projectId: project, entryId: undone.ok ? undone.data.undo.entryId : "x" });
+  const invalid = await actions.undoAction({ projectId: project, entryId: "not-an-entry" });
+  check("history-is-read-and-a-change-is-undone-after-confirmation",
+    history.ok && history.data.entries.length === 2 && restored.action === "project.restore" && restored.undoable === true
+      && !("undo" in restored) && archived.action === "project.archive"
+      && declined.ok === false && declined.error.code === "user_declined"
+      && undone.ok === true && undone.data.undo.undoes === restored.entryId
+      && dialog?.title === "Undo change" && dialog.message.includes("Restored project atlas-history-demo")
+      && after.ok && after.data.entries[0].entryId === undone.data.undo.entryId && after.data.entries[1].undoable === false
+      && after.data.entries[1].undoneBy === undone.data.undo.entryId
+      && listed.ok && listed.data.projects.some((item) => item.projectId === project)
+      && again.ok === false && again.error.reasonCode === "journal_not_undoable"
+      && ofUndo.ok === false && ofUndo.error.reasonCode === "journal_not_undoable"
+      && invalid.ok === false,
+    { history, declined, undone, after, again, ofUndo, invalid, dialog });
+}
+
+// 6d. Names: renaming does not ask (the ID stays, the history can undo it), the
+// names are read back by project, null brings the ID back, an unknown object is
+// refused with the backend's code, and the rename is in the history.
+{
+  const project = "atlas-names-demo";
+  const { actions, asked } = actionsFor(root);
+  const before = await actions.readNames();
+  const named = await actions.renameObject({ projectId: project, kind: "project", objectId: project, name: "  Payment   gateway " });
+  const agent = await actions.renameObject({ projectId: project, kind: "agent", objectId: "studio", name: "Nova" });
+  const after = await actions.readNames();
+  const cleared = await actions.renameObject({ projectId: project, kind: "agent", objectId: "studio", name: null });
+  const final = await actions.readNames();
+  const missing = await actions.renameObject({ projectId: project, kind: "agent", objectId: "atlas-dev-fixture-missing", name: "x" });
+  const invalid = await actions.renameObject({ projectId: project, kind: "user", objectId: "studio", name: "x" });
+  const tooLong = await actions.renameObject({ projectId: project, kind: "agent", objectId: "studio", name: "x".repeat(121) });
+  const history = await actions.readActionJournal({ projectId: project });
+  check("names-are-renamed-read-and-journaled",
+    before.ok === true && before.data.projects[project] === undefined
+      && named.ok === true && named.data.response.name === "Payment gateway" && agent.ok === true
+      && after.ok === true && after.data.projects[project].project === "Payment gateway"
+      && after.data.projects[project].agents.studio === "Nova"
+      && cleared.ok === true && cleared.data.response.previous === "Nova" && final.data.projects[project].agents.studio === undefined
+      && missing.ok === false && missing.error.reasonCode === "name_object_not_found"
+      && invalid.ok === false && tooLong.ok === false && asked.length === 0
+      && history.ok === true && history.data.entries.filter((entry) => entry.action === "object.rename").length === 3,
+    { before, named, after, cleared, final, missing, invalid, tooLong, history, asked });
+}
+
+// 6g. The task board is read without asking; an agent becomes a desk agent only
+// after the person confirms (the confirmation says it is permanent); a refusal
+// keeps its own code; registering again changes nothing.
+{
+  const { actions: declining, asked: declinedAsk } = actionsFor(root, { answer: false });
+  const declined = await declining.registerDeskAgent({ agentId: "mobile-ui-1" });
+  const { actions, asked } = actionsFor(root);
+  const before = await actions.readTaskBoard();
+  const one = await actions.readTaskBoard({ agentId: "core-scheduler-1" });
+  const registered = await actions.registerDeskAgent({ agentId: "mobile-ui-1" });
+  const again = await actions.registerDeskAgent({ agentId: "mobile-ui-1" });
+  const after = await actions.readTaskBoard();
+  const conflict = await actions.registerDeskAgent({ agentId: "mobile-ui-3" });
+  const closed = await actions.registerDeskAgent({ agentId: "core-watch-1" });
+  const invalidId = await actions.registerDeskAgent({ agentId: "not an agent" });
+  const stages = new Set(before.ok ? before.data.tasks.map((task) => task.stage) : []);
+  check("desk-agent-is-registered-after-confirmation-and-shown-on-the-board",
+    declined.ok === false && declined.error.code === "user_declined" && declinedAsk.length === 1
+      && declinedAsk[0].detail.includes("The registration is permanent")
+      && before.ok === true && !before.data.sources.some((item) => item.agentId === "mobile-ui-1")
+      && ["dispatched", "started", "accepted", "planned", "in-progress", "reported", "accepted-by-code", "declined"]
+        .every((stage) => stages.has(stage))
+      && one.ok === true && one.data.tasks.length > 0 && one.data.tasks.every((task) => task.agentId === "core-scheduler-1")
+      && registered.ok === true && registered.data.status === "registered" && registered.data.sourceId === "desk-mobile-ui-1"
+      && again.ok === true && again.data.status === "already-registered"
+      && after.ok === true && after.data.sources.some((item) => item.agentId === "mobile-ui-1" && item.valid)
+      && conflict.ok === false && conflict.error.code === "cli_failed" && conflict.error.reasonCode === "desk_source_binding_conflict"
+      && closed.ok === false && closed.error.reasonCode === "memory_agent_closed"
+      && invalidId.ok === false && invalidId.error.reasonCode === "agent_id_invalid"
+      && asked.length === 4 && asked.every((item) => item.title === "Take tasks (desk agent)"),
+    { declined, registered, again, conflict, closed, invalidId, asked: asked.map((item) => item.title),
+      sources: after.data?.sources });
+}
+
+// 6h. The world lead in one confirmed flow: the person confirms once (the
+// controller folder and the role are named), the world project is bound to
+// the controller root, and the coordinator role is given only with that
+// confirmation's flowId, to that agent, once.
+{
+  const { actions: declining } = actionsFor(root, { answer: false });
+  const declined = await declining.prepareWorldLead({ agentId: "world-lead-test" });
+  const unbound = await declining.readProjectFolder({ projectId: "world" });
+  const { actions, asked } = actionsFor(root);
+  const prepared = await actions.prepareWorldLead({ agentId: "world-lead-test", model: "claude-sonnet-5-5" });
+  const bound = await actions.readProjectFolder({ projectId: "world" });
+  const controllerRoot = await realpath(root);
+  const noFlow = await actions.assignWorldLead({ agentId: "world-lead-test", flowId: "made-up", expectedRevision: 0 });
+  const otherAgent = await actions.assignWorldLead({ agentId: "someone-else", flowId: prepared.data?.flowId,
+    expectedRevision: 0 });
+  const assigned = await actions.assignWorldLead({ agentId: "world-lead-test", flowId: prepared.data?.flowId,
+    expectedRevision: 0 });
+  const reused = await actions.assignWorldLead({ agentId: "world-lead-test", flowId: prepared.data?.flowId,
+    expectedRevision: 1 });
+  const again = await actions.prepareWorldLead({ agentId: "world-lead-test" });
+  check("world-lead-one-confirmation-binds-the-controller-root-and-gives-the-role-once",
+    declined.ok === false && declined.error.code === "user_declined"
+      && unbound.ok === true && unbound.data.configured === false
+      && prepared.ok === true && prepared.data.newlyBound === true && typeof prepared.data.flowId === "string"
+      && prepared.data.projectId === "world" && prepared.data.quarterId === "hq"
+      && asked[0].title === "World lead" && asked[0].detail.includes(controllerRoot)
+      && asked[0].detail.includes("The binding is permanent") && asked[0].detail.includes("claude-sonnet-5-5")
+      && bound.ok === true && bound.data.configured === true && bound.data.workspacePath === controllerRoot
+      && noFlow.ok === false && noFlow.error.code === "world_flow_expired"
+      && otherAgent.ok === false && otherAgent.error.code === "world_flow_expired"
+      && assigned.ok === true && assigned.data.role === "coordinator" && assigned.data.revision === 1
+      && reused.ok === false && reused.error.code === "world_flow_expired"
+      && again.ok === true && again.data.newlyBound === false && asked[1].detail.includes("already bound"),
+    { declined, unbound, prepared, bound, noFlow, otherAgent, assigned, reused, again, asked });
+}
+
+// 6i. A world project bound to another folder is refused before asking anything.
+{
+  const otherRoot = await createRoot();
+  const elsewhere = path.join(otherRoot, "elsewhere");
+  await mkdir(elsewhere, { recursive: true });
+  const { actions, asked } = actionsFor(otherRoot, { folder: elsewhere });
+  const chosen = await actions.chooseWorkspace();
+  await actions.bindWorkspace({ projectId: "world", selectionId: chosen.data.selectionId });
+  const askedBefore = asked.length;
+  const refused = await actions.prepareWorldLead({ agentId: "world-lead-test" });
+  check("world-project-bound-elsewhere-is-refused-without-asking",
+    refused.ok === false && refused.error.code === "world_folder_conflict" && asked.length === askedBefore,
+    { refused, asked: asked.map((item) => item.title) });
+  await rm(otherRoot, { recursive: true, force: true });
 }
 
 // 7. No input file is left behind in the controller's private directory.

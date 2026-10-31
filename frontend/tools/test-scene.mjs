@@ -296,6 +296,20 @@ const projection = () => ({
 }
 
 {
+  // A ready answer is a calm mark; a failed turn waits for the person, like a state failure.
+  const rolled = core.aggregateAttention({
+    attention: [
+      { kind: "turn-finished", outcome: "completed", agentId: "ok", projectId: "alpha", quarterId: "q1" },
+      { kind: "turn-finished", outcome: "failed", agentId: "bad", projectId: "alpha", quarterId: "q1" },
+    ],
+  });
+  check("failed-turn-pulses-an-answer-does-not",
+    rolled.byAgent.get("ok").urgent === false && rolled.byAgent.get("ok").severity === 1
+      && rolled.byAgent.get("bad").urgent === true && rolled.byAgent.get("bad").severity === 2,
+    [...rolled.byAgent.entries()]);
+}
+
+{
   const bounds = { x: -200, y: -100, width: 1600, height: 900 };
   const transform = core.minimapTransform(bounds, { width: 190, height: 140 });
   const roundTrip = transform.toWorld(...Object.values(transform.toMap(500, 400)));
@@ -719,6 +733,48 @@ const overlap = (a, b) => a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.
   const scale = worldFitScale(null, viewport);
   check("whole-world-without-projects-also-world-level",
     levelFor({ x: 0, y: 0, scale }, viewport) === LEVEL.world, { scale });
+}
+
+{
+  // World HQ: the main base left of the projects, bigger than a project HQ; the map
+  // places it itself and moves it only when it rearranged the projects itself;
+  // once moved by the person, it stays; it is dragged by its corner and keeps its proportions.
+  const { autoPlaceWorldHeadquarters, resizeWorldHeadquarters, worldHeadquartersSize, WORLD_HQ_SCALE, GEOMETRY } = core;
+  const layout = { projects: { a: { x: 0, y: 0, width: 760, height: 560 }, b: { x: 910, y: 40, width: 760, height: 560 } } };
+  const boxes = () => [layout.projects.a, layout.projects.b];
+  const created = autoPlaceWorldHeadquarters(layout, "world", boxes());
+  const first = { ...layout.projects.world };
+  layout.projects.a.x = -300;
+  const draggedNeighbour = autoPlaceWorldHeadquarters(layout, "world", boxes());
+  const stayed = { ...layout.projects.world };
+  autoPlaceWorldHeadquarters(layout, "world", boxes(), { reflow: true });
+  const reflowed = { ...layout.projects.world };
+  delete layout.projects.world.auto;
+  layout.projects.world.x = 5000;
+  autoPlaceWorldHeadquarters(layout, "world", boxes(), { reflow: true });
+  const moved = { ...layout.projects.world };
+  const origin = { width: moved.width, height: moved.height };
+  resizeWorldHeadquarters(layout, "world", origin, -160, -140);
+  const half = { ...layout.projects.world };
+  resizeWorldHeadquarters(layout, "world", origin, 2000, 2000);
+  const big = { ...layout.projects.world };
+  resizeWorldHeadquarters(layout, "world", origin, 0, 0);
+  const back = { ...layout.projects.world };
+  const empty = { projects: {} };
+  autoPlaceWorldHeadquarters(empty, "world", []);
+  check("world-hq-left-of-projects-bigger-than-hq-and-resizes-by-corner",
+    created === true && draggedNeighbour === false
+      && first.x === -(GEOMETRY.worldHqWidth + GEOMETRY.columnGap) && first.y === 0 && first.auto === true
+      && first.width === 320 && first.height === 280
+      && GEOMETRY.worldHqWidth > GEOMETRY.hqWidth * 1.5 && GEOMETRY.worldHqHeight > GEOMETRY.hqHeight * 1.5
+      && stayed.x === first.x && reflowed.x === -300 - 320 - GEOMETRY.columnGap
+      && moved.x === 5000 && moved.auto === undefined
+      && half.hqScale === WORLD_HQ_SCALE.minimum && half.width === 160 && half.height === 140 && half.x === 5000
+      && big.hqScale === WORLD_HQ_SCALE.maximum && big.width === 480 && big.height === 420
+      && back.hqScale === undefined && back.width === 320 && back.height === 280
+      && JSON.stringify(worldHeadquartersSize({ hqScale: 9 })) === JSON.stringify({ width: 480, height: 420 })
+      && empty.projects.world.x === 0 && empty.projects.world.y === 0,
+    { first, stayed, reflowed, moved, half, big, back, empty });
 }
 
 const passed = cases.filter(({ status }) => status === "passed").length;

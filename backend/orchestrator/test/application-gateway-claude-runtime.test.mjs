@@ -90,11 +90,11 @@ test("a Claude runtime that cannot start leaves the Gateway's own resources read
   assert.deepEqual(runtime.providerStatus, { status: "unavailable", reasonCode: "claude_sdk_unavailable" });
   assert.equal(runtime.memoryStatus.execution, "unavailable");
   assert.equal(typeof runtime.handlers["query.memory.scopes.list"], "function");
-  await assert.rejects(createApplicationGatewayReadRuntime({ repoRoot: root, sourceId: SOURCE,
-    instanceId: "claude-runtime-owner", provider: "claude", providerSourceId: "worker", claude: claudeConfig() }),
-  { code: "source_unavailable" });
-  await assert.rejects(createApplicationGatewayReadRuntime({ repoRoot: root, sourceId: SOURCE,
-    instanceId: "claude-runtime-other", provider: "other" }), { code: "source_unavailable" });
+  // Claude Code is the Gateway's provider: another one, or none configured, is refused (the Codex path left).
+  for (const refused of [{ provider: "codex", claude: claudeConfig() }, { provider: "other" }, { provider: "claude" }]) {
+    await assert.rejects(createApplicationGatewayReadRuntime({ repoRoot: root, sourceId: SOURCE,
+      instanceId: "claude-runtime-other", ...refused }), { code: "source_unavailable" });
+  }
 });
 
 test("a signed-out Claude Code is reported, and the agents' provider stays in place for a later sign-in", async (t) => {
@@ -116,9 +116,14 @@ test("the machine-local Claude provider config is strict", async (t) => {
   assert.deepEqual(normalized.settingSources, ["project", "local"]);
   assert.equal(normalized.permissionMode, "acceptEdits");
   assert.deepEqual(normalized.models[0].efforts, ["default", "low", "medium", "high", "xhigh", "max"]);
+  // No list: the built-in documentation hosts; a list replaces them ([] asks before every fetch).
+  assert.equal(normalized.webFetchHosts, null);
+  assert.deepEqual(normalizeClaudeProviderConfig({ ...valid, webFetchHosts: ["intranet.example.com"] }).webFetchHosts,
+    ["intranet.example.com"]);
   for (const broken of [{ ...valid, schemaVersion: 2 }, { ...valid, sdkPath: "relative" },
     { ...valid, extra: true }, { ...valid, models: [] }, { ...valid, permissionMode: "bypassPermissions" },
-    { ...valid, models: [{ id: "x", efforts: ["huge"] }] }]) {
+    { ...valid, models: [{ id: "x", efforts: ["huge"] }] }, { ...valid, webFetchHosts: ["https://x.com"] },
+    { ...valid, webFetchHosts: "github.com" }]) {
     assert.throws(() => normalizeClaudeProviderConfig(broken), { code: /^claude_/u });
   }
   await mkdir(path.join(root, ".project-local", "application-gateway"), { recursive: true });

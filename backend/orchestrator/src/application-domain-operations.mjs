@@ -16,7 +16,7 @@ import { CONVERSATION_ARCHIVE_VERSION } from "./conversation-archive.mjs";
 import {
   APPLICATION_OWNER_CHAT_OPERATION_IDS,
   APPLICATION_OWNER_CHAT_VERSION,
-} from "./application-owner-chat.mjs";
+} from "./application-owner-chat-contract.mjs";
 import {
   APPLICATION_PROVIDER_INTERACTION_OPERATION_IDS,
   APPLICATION_PROVIDER_INTERACTION_VERSION,

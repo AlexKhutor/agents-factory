@@ -44,7 +44,7 @@ export function gatewayFailureDiagnostic(error, status, failedAtUtc) {
     phase: "heartbeat-publication", causeCode: CODES.has(error?.code) ? error.code : "unclassified",
     runtimeStage: STAGES.has(error?.runtimeStage) ? error.runtimeStage : null,
     renameAttempts: Number.isInteger(error?.renameAttempts)
-      && error.renameAttempts >= 1 && error.renameAttempts <= 3 ? error.renameAttempts : null,
+      && error.renameAttempts >= 1 && error.renameAttempts <= 8 ? error.renameAttempts : null,
     syscall: SYSCALLS.has(error?.syscall) ? error.syscall : null,
     errno: Number.isSafeInteger(error?.errno) ? error.errno : null,
     elapsedMs: Number.isFinite(error?.publicationElapsedMs) ? error.publicationElapsedMs : null,

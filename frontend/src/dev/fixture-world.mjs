@@ -171,6 +171,25 @@ export function fixtureWorld() {
     }
   }
 
+  // World: the world lead's service project, bound to the controller folder, and
+  // its HQ. The world lead is the controller's only coordinator (the
+  // coordinator role); on the map the World HQ building stands in for the project.
+  const worldScope = scope("world-memory", "project", "world", null, "World", 1, [
+    { id: "goal", title: "World goal", text: "Fixture: what matters across all projects at once." },
+  ]);
+  const worldHq = scope("world-hq-memory", "quarter", "world", "hq", "World HQ", 1, []);
+  scopes.push(worldScope, worldHq);
+  const worldManifest = manifest(worldScope, worldHq);
+  agents.push(agent({
+    agentId: "world-lead", projectId: "world", quarterId: "hq",
+    assignedManifest: worldManifest, requiredManifest: worldManifest, deliveredManifest: structuredClone(worldManifest),
+    settings: { role: "coordinator", writeZone: null, revision: 1, updatedAtUtc: "2026-10-20T07:55:00.000Z" },
+    lastOperation: {
+      schemaVersion: 1, operationId: "fixture-send-world-lead", kind: "send", state: "completed",
+      requestedAtUtc: "2026-10-20T08:00:00.000Z", updatedAtUtc: "2026-10-20T08:01:00.000Z",
+    },
+  }));
+
   // The catalog cannot resolve the ownership of this agent: it must land in
   // the “off the map” area, not vanish silently.
   agents.push(agent({

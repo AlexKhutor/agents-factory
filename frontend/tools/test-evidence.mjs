@@ -135,7 +135,8 @@ const missing = await channels["atlas:agent-read"]({ agentId: "no-such-agent" })
   const mutationChannels = ["atlas:bind-workspace", "atlas:rebind-workspace", "atlas:set-permission-mode", "atlas:init-project-git", "atlas:save-memory", "atlas:create-scope",
     "atlas:create-agent", "atlas:send", "atlas:send-receipt", "atlas:respond", "atlas:interrupt",
     "atlas:close-agent", "atlas:save-project-file", "atlas:reconcile-file-save", "atlas:resend-file-save",
-    "atlas:copy-project", "atlas:reconcile-project-copy", "atlas:steer", "atlas:unqueue", "atlas:set-profile"];
+    "atlas:copy-project", "atlas:reconcile-project-copy", "atlas:steer", "atlas:unqueue", "atlas:set-profile",
+    "atlas:settle-send"];
   const allowed = Object.keys(ALLOWED_OPERATIONS).sort();
   check("agent-read-via-bridge-and-nothing-more",
     exposed.get("agentRead") === "atlas:agent-read" && exposed.get("exportEvidence") === "atlas:evidence-export"

@@ -20,10 +20,10 @@ for coding agents**, a way to **limit which files an AI coding agent may
 edit**, or a **local, self-hosted control room built on the Claude Agent SDK** -
 this is what Agents Factory does.
 
-> **v0.1.0 - working alpha, under active development.** It is the tool its
+> **v0.2.0 - working alpha, under active development.** It is the tool its
 > author works with every day, so new features and fixes keep landing here -
 > see the [roadmap](ROADMAP.md) and [CHANGELOG.md](CHANGELOG.md).
-> Windows-first (PowerShell tools); Node.js 20+. Not affiliated with or
+> Windows-first; Node.js 22.13+. Not affiliated with or
 > endorsed by Anthropic.
 
 ![Atlas: the world map with six projects, their quarters, agents and attention badges](docs/screenshots/world-map.png)
@@ -102,7 +102,8 @@ makes that visible and enforceable:
 ## Quick start (Windows)
 
 Requirements: Windows 10/11, Windows PowerShell 5.1, Node.js 20+ (22
-recommended), Python 3 (its `sqlite3` module holds the memory database), Git,
+recommended; the memory database runs on its built-in `node:sqlite`, an older
+Node falls back to Python 3), Git,
 and an **Anthropic API key** ([Claude Console](https://platform.claude.com/)).
 The agents' usage is billed to that key.
 
@@ -116,33 +117,30 @@ cd frontend; npm install; cd ..
 # Try the UI first, on built-in fixture data (no controller, no model calls):
 #   frontend\start-atlas-fixture.bat
 
-# 2. A controller instance of your own: it holds the memory database,
-#    task packets and reports. Keep it outside the repository.
-Copy-Item -Recurse .\controller C:\agents-control
-cd C:\agents-control
-New-Item -ItemType Directory -Force .project-local\application-gateway, .project-local\orchestration
-Copy-Item config\claude-provider.example.json .project-local\application-gateway\claude-provider.json
-Copy-Item config\control-cycle.example.json .project-local\orchestration\control-cycle.json
-#    In claude-provider.json set sdkPath to <repo>/frontend/node_modules/@anthropic-ai/claude-agent-sdk
-#    and keep "keepProviderVariables": true, so the agents use your API key.
+# 2. A controller instance of your own: it holds the memory database, task
+#    packets and reports. The agents-factory CLI copies the template outside the
+#    repository and points it at the SDK Atlas ships.
+node controller\.orchestrator\runtime\agents-factory.mjs setup --template .\controller `
+  --instance C:\agents-control --sdk-path "$PWD\frontend\node_modules\@anthropic-ai\claude-agent-sdk" --no-start
 
-# 3. Start the Application Gateway with your API key in its environment
-#    (this PowerShell session only; redirect the output to a file, do not pipe it).
-$env:ANTHROPIC_API_KEY = Read-Host "Anthropic API key"
-powershell -NoProfile -ExecutionPolicy Bypass -File tools\application_gateway.ps1 `
-  -Command Start -RepoRoot C:\agents-control -Provider claude -AsJson > logs\gateway-start.json
+# 3. Your API key: typed hidden, kept in the system key store (DPAPI), passed
+#    only to the Gateway. (Atlas's readiness panel can do the same.)
+node C:\agents-control\.orchestrator\runtime\agents-factory.mjs key set
 
-# 4. Point Atlas to it: copy frontend\config\local.example.json to local.json,
-#    set controllerRoot and expectedWorkspace (from the controller's
-#    .project-local\application-gateway\status.v1.json), then:
-<repo>\frontend\start-atlas.bat
+# 4. Start the Gateway and point Atlas to it, then open Atlas.
+node C:\agents-control\.orchestrator\runtime\agents-factory.mjs setup `
+  --instance C:\agents-control --atlas-config frontend\config\local.json
+frontend\start-atlas.bat
 ```
+
+Atlas's readiness panel starts and stops the Gateway from then on, and can turn
+on its autostart at logon. `agents-factory doctor` checks the whole setup;
+the CLI reference is in [docs/distribution/cli.md](docs/distribution/cli.md).
 
 The controller's own [README](controller/README.md) covers desk agents, the
 coordinator and task contracts; [claude-code-provider.md](backend/orchestrator/docs/claude-code-provider.md)
-covers models, permission modes and the SDK settings. Entering the API key in
-Atlas (kept in the system keychain) and a one-file installer are in progress:
-see [docs/distribution](docs/distribution/README.md).
+covers models, permission modes and the SDK settings. A one-file installer is
+in progress: see [docs/distribution](docs/distribution/README.md).
 
 ## Repository layout
 
@@ -151,7 +149,8 @@ see [docs/distribution](docs/distribution/README.md).
 | `backend/orchestrator/src` | Application Gateway, memory service, Claude Agent SDK session host, write zones, task tools |
 | `backend/orchestrator/test` | Backend test suites (`node --test`) |
 | `backend/orchestrator/docs` | Guides: architecture, Claude Code provider, project memory, attention, security |
-| `backend/tools` | PowerShell tools for the Gateway's lifecycle |
+| `backend/orchestrator/src/agents-factory-*.mjs` | The `agents-factory` CLI: Gateway lifecycle, user service, key store, setup, SDK install |
+| `backend/tools` | PowerShell tools for the Gateway's lifecycle (the CLI does the same in Node) |
 | `controller/` | The controller instance template to copy |
 | `frontend/` | Atlas, the Electron desktop app, and its tests |
 | `docs/distribution` | The plan for the installer, the CLI, MCP and telemetry |
@@ -165,7 +164,7 @@ see [docs/distribution](docs/distribution/README.md).
 - Irreversible actions (archiving, folder binding, memory writes, "bypass"
   permission mode, git init) go through a confirmation of the trusted host.
 - Agents' commits are local; nothing is pushed anywhere by the system.
-- **No telemetry in v0.1.0.** When telemetry comes, it will be anonymous, used
+- **No telemetry in v0.2.0.** When telemetry comes, it will be anonymous, used
   only to improve the product, sent only if you agree, and you can turn it off
   at any time - see [PRIVACY.md](PRIVACY.md).
 
@@ -189,8 +188,7 @@ used for, and improvements land here regularly ([CHANGELOG.md](CHANGELOG.md)).
 Next: a **one-file installer** for Windows, macOS and Linux with a CLI and MCP
 ([plan](docs/distribution/README.md)), **Codex CLI agents** next to Claude
 ones, **local agents and harnesses** (DeepSeek-based harnesses, Hermes, Qoder
-and other local solutions), and a world lead that hands out tasks across
-projects. Later: a
+and other local solutions). Later: a
 **VR cockpit** - the agent map and chats in a headset, with a PlayStation VR2
 and SteamVR prototype from earlier research. The full list is in
 [ROADMAP.md](ROADMAP.md); ideas and bug reports are welcome in

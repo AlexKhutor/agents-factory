@@ -4,6 +4,7 @@ import { createReadStream } from "node:fs";
 import { lstat } from "node:fs/promises";
 import path from "node:path";
 
+import { claudeSecretHook } from "./agent-secret-paths.mjs";
 import { claudeWriteZoneHook, normalizeWriteZone } from "./agent-write-zone.mjs";
 import {
   claudeEnvironment, claudeProgramOf, loadClaudeSdk, loadClaudeZod, readClaudeAccount,
@@ -11,8 +12,8 @@ import {
 import { createClaudeCodeSessionJournal } from "./claude-code-session-journal.mjs";
 import { ClaudeCodeSessionHost } from "./claude-code-session-host.mjs";
 import { readClaudeProviderConfig } from "./claude-provider-config.mjs";
-import { CodexReviewProvider } from "./control-review-provider.mjs";
-import { CodexReportSummarizer } from "./report-presentation.mjs";
+import { ServiceReviewProvider } from "./control-review-provider.mjs";
+import { ServiceReportSummarizer } from "./report-presentation.mjs";
 
 // The controller's one-off model turns - the review of one child report and
 // the summary of one report - on Claude Code instead of the Codex App Server.
@@ -168,12 +169,13 @@ export class ClaudeCodeServiceClient extends EventEmitter {
     const host = this.#connected();
     const thread = this.#threads.get(threadId);
     if (!thread) fail("thread_not_found");
-    const hooks = this.#writeZone === null ? null
-      : { PreToolUse: [{ hooks: [claudeWriteZoneHook({ root: thread.cwd, patterns: this.#writeZone })] }] };
+    // Secrets first, then the write zone when the service has one (agent-secret-paths.mjs).
+    const hooks = { PreToolUse: [{ hooks: [claudeSecretHook({ root: thread.cwd }),
+      ...(this.#writeZone === null ? [] : [claudeWriteZoneHook({ root: thread.cwd, patterns: this.#writeZone })])] }] };
     const deskTools = this.#deskTools === null ? null : this.#deskTools(thread.cwd);
     return host.startTurn(threadId, [{ type: "text", text: String(prompt) }], {
       model: thread.model, effort: thread.effort, ...(deskTools ? { deskTools } : {}),
-      query: { ...(hooks === null ? {} : { hooks }), ...(thread.note === null ? {} : { systemNote: thread.note }) },
+      query: { hooks, ...(thread.note === null ? {} : { systemNote: thread.note }) },
     });
   }
 
@@ -248,7 +250,7 @@ export function reviewWriteZone(item) {
 /** The serialized reviewer of the control cycle, on Claude Code. */
 export function createClaudeReviewProvider({ controllerRoot, provider = {}, claude = null, onDiagnostic } = {}) {
   const createHost = claudeServiceHosts({ controllerRoot, tools: CLAUDE_REVIEW_TOOLS, claude, onDiagnostic });
-  return new CodexReviewProvider({
+  return new ServiceReviewProvider({
     cwd: controllerRoot,
     providerId: CLAUDE_CODE_SERVICE_PROVIDER_ID,
     serviceName: CLAUDE_REVIEW_SERVICE_NAME,
@@ -270,7 +272,7 @@ export function createClaudeReviewProvider({ controllerRoot, provider = {}, clau
 export function createClaudeReportSummarizer({ controllerRoot, turnTimeoutMs = 600_000, claude = null,
   onDiagnostic } = {}) {
   const createHost = claudeServiceHosts({ controllerRoot, tools: CLAUDE_SUMMARY_TOOLS, claude, onDiagnostic });
-  return new CodexReportSummarizer({
+  return new ServiceReportSummarizer({
     cwd: controllerRoot,
     providerId: CLAUDE_CODE_SERVICE_PROVIDER_ID,
     serviceName: CLAUDE_SUMMARY_SERVICE_NAME,

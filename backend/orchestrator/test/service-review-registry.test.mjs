@@ -1,11 +1,10 @@
 import assert from "node:assert/strict";
 import path from "node:path";
-import { createHash } from "node:crypto";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import test from "node:test";
 
-import { loadConfiguration } from "../src/control-cli.mjs";
+import { createProvider, loadConfiguration } from "../src/control-cli.mjs";
 import { SerializedControlCycle } from "../src/control-cycle.mjs";
 import { FakeReviewProvider } from "../src/control-review-provider.mjs";
 import { ServiceReviewRegistry } from "../src/service-review-registry.mjs";
@@ -38,141 +37,45 @@ function report(taskId) {
   };
 }
 
-test("reviewer configuration rejects the interactive CODEX_HOME", async (t) => {
+async function writeConfiguration(root, extra) {
+  const configPath = path.join(root, "control-cycle.json");
+  await writeFile(configPath, `${JSON.stringify({ schemaVersion: 1, controllerRoot: root, ...extra }, null, 2)}\n`, "utf8");
+  return configPath;
+}
+
+// Claude Code reviews the reports: the Codex App Server reviewer, its CODEX_HOME
+// and the executable found in the VS Code extensions left with the Codex path.
+test("the review provider is Claude Code; a Codex reviewer configuration is refused", async (t) => {
   const root = await fixture(t, "service-review-config-");
-  const configPath = path.join(root, "control-cycle.json");
-  await writeFile(configPath, `${JSON.stringify({
-    schemaVersion: 1,
-    controllerRoot: root,
-    interactiveCodexHome: ".project-runtime/codex-home",
-    provider: {
-      type: "codex-app-server",
-      codexHome: ".project-runtime/codex-home",
-    },
-  }, null, 2)}\n`, "utf8");
-  await assert.rejects(loadConfiguration(configPath), /must differ from the interactive controller CODEX_HOME/);
+  const codex = await writeConfiguration(root, { interactiveCodexHome: ".project-runtime/codex-home",
+    provider: { type: "codex-app-server", codexHome: ".project-runtime/reviewer-codex-home" } });
+  await assert.rejects(loadConfiguration(codex), /codex-app-server \(the Codex path left the product; use claude-code\)/u);
+  await assert.rejects(loadConfiguration(codex, { requireProvider: false }), /the Codex path left the product/u);
+  assert.throws(() => createProvider({ controllerRoot: root, provider: { type: "codex-app-server" } }),
+    /the Codex path left the product/u);
+  assert.throws(() => createProvider({ controllerRoot: root, provider: { type: "other" } }), /Unsupported review provider: other/u);
+
+  // No provider named: Claude Code, whose machine-local config is checked before a queue item is claimed.
+  const unnamed = await writeConfiguration(root, { interactiveCodexHome: ".project-runtime/codex-home" });
+  await assert.rejects(loadConfiguration(unnamed), { code: "claude_provider_config_missing" });
+  const configuration = await loadConfiguration(unnamed, { requireProvider: false });
+  assert.deepEqual(configuration.provider, { type: "claude-code" });
+  assert.equal(Object.hasOwn(configuration, "reviewerCodexHome"), false);
 });
 
-test("real reviewer configuration requires an explicit project-local CODEX_HOME", async (t) => {
-  const root = await fixture(t, "service-review-config-required-");
-  const missingPath = path.join(root, "missing-home.json");
-  await writeFile(missingPath, `${JSON.stringify({
-    schemaVersion: 1,
-    controllerRoot: root,
-    provider: { type: "codex-app-server" },
-  }, null, 2)}\n`, "utf8");
-  await assert.rejects(loadConfiguration(missingPath), /requires an explicit isolated provider\.codexHome/);
-
-  const escapingPath = path.join(root, "escaping-home.json");
-  await writeFile(escapingPath, `${JSON.stringify({
-    schemaVersion: 1,
-    controllerRoot: root,
-    provider: { type: "codex-app-server", codexHome: "../shared-codex-home" },
-  }, null, 2)}\n`, "utf8");
-  await assert.rejects(loadConfiguration(escapingPath), /must stay inside the controller workspace/);
-});
-
-test("reviewer configuration replaces a stale extension executable before queue claim", async (t) => {
-  const root = await fixture(t, "service-review-command-migration-");
-  const executablePath = path.join(
-    root,
-    ".project-runtime",
-    "vscode-extensions",
-    "openai.chatgpt-26.818.41705-win32-x64",
-    "bin",
-    "windows-x86_64",
-    "codex.exe",
-  );
-  await mkdir(path.dirname(executablePath), { recursive: true });
-  await writeFile(executablePath, "fixture", "utf8");
-  const configPath = path.join(root, "control-cycle.json");
-  await writeFile(configPath, `${JSON.stringify({
-    schemaVersion: 1,
-    controllerRoot: root,
-    interactiveCodexHome: ".project-runtime/codex-home",
-    provider: {
-      type: "codex-app-server",
-      codexHome: ".project-runtime/reviewer-codex-home",
-      command: path.join(
-        root,
-        ".project-runtime",
-        "vscode-extensions",
-        "openai.chatgpt-removed",
-        "bin",
-        "windows-x86_64",
-        "codex.exe",
-      ),
-    },
-  }, null, 2)}\n`, "utf8");
-
-  const configuration = await loadConfiguration(configPath);
-  assert.equal(configuration.provider.command, executablePath);
-  assert.equal(configuration.provider.commandResolution, "project-local-discovery");
-});
-
-test("reviewer configuration fails before queue claim when no isolated executable exists", async (t) => {
-  const root = await fixture(t, "service-review-command-missing-");
-  const configPath = path.join(root, "control-cycle.json");
-  await writeFile(configPath, `${JSON.stringify({
-    schemaVersion: 1,
-    controllerRoot: root,
-    interactiveCodexHome: ".project-runtime/codex-home",
-    provider: {
-      type: "codex-app-server",
-      codexHome: ".project-runtime/reviewer-codex-home",
-      command: path.join(root, ".project-runtime", "vscode-extensions", "removed", "codex.exe"),
-    },
-  }, null, 2)}\n`, "utf8");
-
-  await assert.rejects(loadConfiguration(configPath), /unavailable before queue claim/);
-});
-
-test("model-free report operations do not require a reviewer executable", async (t) => {
-  const root = await fixture(t, "model-free-report-config-");
-  const configPath = path.join(root, "control-cycle.json");
-  await writeFile(configPath, `${JSON.stringify({
-    schemaVersion: 1,
-    controllerRoot: root,
-    interactiveCodexHome: ".project-runtime/codex-home",
-    provider: {
-      type: "codex-app-server",
-      codexHome: ".project-runtime/reviewer-codex-home",
-      command: path.join(root, "missing", "codex.exe"),
-    },
-  }, null, 2)}\n`, "utf8");
-  const configuration = await loadConfiguration(configPath, { requireProvider: false });
-  assert.equal(configuration.provider.commandResolution, "not-required");
-  assert.match(configuration.provider.command, /missing[\\/]codex\.exe$/);
-});
-
-test("service review registry locates and hashes one provider rollout", async (t) => {
+test("service review registry looks for no Codex rollout and still reads an old record", async (t) => {
   const root = await fixture(t, "service-review-rollout-");
-  const codexHome = path.join(root, ".project-runtime", "reviewer-codex-home");
-  const sessions = path.join(codexHome, "sessions", "2026", "08", "17");
-  await mkdir(sessions, { recursive: true });
-  const threadId = "019c1234-1111-7222-8333-123456789abc";
-  const rolloutPath = path.join(sessions, `rollout-2026-08-17T12-00-00-${threadId}.jsonl`);
-  const rolloutText = [
-    JSON.stringify({ type: "session_meta", payload: {
-      id: threadId,
-      timestamp: "2026-08-17T12:00:00.000Z",
-      cli_version: "0.147.0",
-      model_provider: "openai",
-    } }),
-    JSON.stringify({ type: "event_msg", payload: { type: "task_started" } }),
-    "",
-  ].join("\n");
-  await writeFile(rolloutPath, rolloutText, "utf8");
   const registry = new ServiceReviewRegistry({
     indexPath: path.join(root, ".project-local", "orchestration", "service-review-index.v1.json"),
-    codexHome,
   });
   await registry.initialize();
-  const rawTrace = await registry.locateRawTrace(threadId, { attempts: 1 });
-  assert.equal(rawTrace.available, true);
-  assert.equal(rawTrace.locator, `sessions/2026/08/17/${path.basename(rolloutPath)}`);
-  assert.equal(rawTrace.cliVersion, "0.147.0");
-  assert.equal(rawTrace.sha256, createHash("sha256").update(rolloutText).digest("hex"));
+  assert.equal(typeof registry.locateRawTrace, "undefined");
+  const old = await registry.upsert({ serviceRunId: "review-old", provider: "codex-app-server", status: "completed",
+    rawTrace: { available: true, locator: "sessions/2026/08/17/rollout.jsonl", sha256: "d".repeat(64), bytes: 10,
+      archiveState: "live" } });
+  assert.equal(old.rawTrace.available, true);
+  assert.equal(old.rawTrace.home, "reviewer-codex-home");
+  assert.equal((await registry.get("review-old")).rawTrace.locator, "sessions/2026/08/17/rollout.jsonl");
 });
 
 test("serialized review publishes only a bounded diagnostic projection", async (t) => {
@@ -180,7 +83,6 @@ test("serialized review publishes only a bounded diagnostic projection", async (
   const store = new SqliteControlStore({ databasePath: path.join(root, "control.db") });
   const registry = new ServiceReviewRegistry({
     indexPath: path.join(root, ".project-local", "orchestration", "service-review-index.v1.json"),
-    codexHome: path.join(root, ".project-runtime", "reviewer-codex-home"),
   });
   const cycle = new SerializedControlCycle({
     store,

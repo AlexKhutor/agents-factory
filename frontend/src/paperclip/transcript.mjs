@@ -1,3 +1,4 @@
+import { tx } from "../host/i18n.mjs";
 // Turns a Paperclip run log into chat items.
 //
 // A run log is NDJSON rows of { ts, stream, chunk }. The chunks of stdout,
@@ -16,7 +17,7 @@
 const OUTPUT_LIMIT = 1200;
 export const CHANGE_TOOLS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
 
-const clip = (text, limit) => (text.length > limit ? `${text.slice(0, limit)}\n… (truncated)` : text);
+const clip = (text, limit) => (text.length > limit ? tx("{value}\n… (truncated)", { value: text.slice(0, limit) }) : text);
 
 export function describeTool(name, input) {
   const value = input !== null && typeof input === "object" ? input : {};
@@ -31,12 +32,12 @@ export function describeTool(name, input) {
 export function describeServiceCall(command) {
   if (typeof command !== "string" || !/\$\{?PAPERCLIP_(API|TASK|RUN)/.test(command)) return null;
   const said = [];
-  if (/\/comments\b/.test(command) && /-X\s+POST|--data|\s-d\s/.test(command)) said.push("comment in the task");
+  if (/\/comments\b/.test(command) && /-X\s+POST|--data|\s-d\s/.test(command)) said.push(tx("comment in the task"));
   const status = /\\?"status\\?"\s*:\s*\\?"([a-z_]+)\\?"/.exec(command);
-  if (status !== null) said.push(`task status → ${status[1]}`);
-  if (/\/interactions\b/.test(command)) said.push("question to the person");
+  if (status !== null) said.push(tx("task status → {value}", { value: status[1] }));
+  if (/\/interactions\b/.test(command)) said.push(tx("question to the person"));
   if (/\/documents\//.test(command)) said.push("task document");
-  return `Paperclip: ${said.length === 0 ? "internal call" : said.join(", ")}`;
+  return tx("Paperclip: {value}", { value: said.length === 0 ? tx("internal call") : said.join(", ") });
 }
 
 export function resultText(content) {

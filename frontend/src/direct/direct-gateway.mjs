@@ -28,6 +28,7 @@ import { normalizeZone, zoneProblem } from "./write-zone.mjs";
 import { openDirectStore } from "./direct-store.mjs";
 import { createProjectFiles } from "./project-files.mjs";
 import { CONTRACT_VERSION, Refusal, accepted, clipText, createTransport, iso, safeId, sha256 } from "./transport.mjs";
+import { tx } from "../host/i18n.mjs";
 
 const SOURCE_ID = "direct";
 const PROVIDER_ID = "claude";
@@ -76,7 +77,7 @@ const SYSTEM_NOTE = [
 const REASONING_HEAD = "Thinking";
 
 const debug = (line) => { if (process.env.ATLAS_BRIDGE_DEBUG) process.stderr.write(`[direct-bridge] ${line}\n`); };
-const clip = (text, limit) => (text.length > limit ? `${text.slice(0, limit)}\n… (truncated)` : text);
+const clip = (text, limit) => (text.length > limit ? tx("{value}\n… (truncated)", { value: text.slice(0, limit) }) : text);
 
 /** Config files of the direct mode, read in this order; a later one overrides an earlier one. */
 export const DIRECT_CONFIG_FILES = Object.freeze(["direct.json", "direct.local.json"]);
@@ -304,7 +305,7 @@ export async function createDirectGateway({ kit, config, startTurn = null } = {}
     if (interaction.kind !== "question") return interaction.prompt;
     return interaction.questions.map((question) => {
       const options = question.options.map((option) => option.label).join(" / ");
-      return options === "" ? question.prompt : `${question.prompt}\nOptions: ${options}`;
+      return options === "" ? question.prompt : tx("{prompt}\nOptions: {options}", { prompt: question.prompt, options });
     }).join("\n\n");
   }
 
@@ -312,7 +313,7 @@ export async function createDirectGateway({ kit, config, startTurn = null } = {}
   function itemsOfTurn(turn, interactions) {
     const memory = turn.said.memory;
     const memoryNote = memory === null ? ""
-      : `\n\n(${memory.update ? "updated " : ""}memory sent with the message: project — revision ${memory.project.revision}, quarter — revision ${memory.quarter.revision}${memory.notes ? `, agent — revision ${memory.notes.revision}` : ""})`;
+      : tx("\n\n({value}memory sent with the message: project — revision {revision}, quarter — revision {revision2}{value2})", { value: memory.update ? tx("updated ") : "", revision: memory.project.revision, revision2: memory.quarter.revision, value2: memory.notes ? tx(", agent — revision {revision}", { revision: memory.notes.revision }) : "" });
     const items = [{ kind: "user", at: turn.startedAtUtc, text: `${turn.said.text}${memoryNote}` }];
     const done = turn.items.map((item) => {
       if (item.kind !== "tool" && item.kind !== "change") return item;
@@ -320,12 +321,12 @@ export async function createDirectGateway({ kit, config, startTurn = null } = {}
       return { kind: item.kind, at: item.at, text: output === "" ? item.title : `${item.title}\n\n${clip(output, OUTPUT_LIMIT)}` };
     });
     const asked = interactions.filter((interaction) => interaction.turnId === turn.turnId).flatMap((interaction) => [
-      { kind: "question", at: interaction.createdAtUtc, text: `Question: ${questionText(interaction)}` },
+      { kind: "question", at: interaction.createdAtUtc, text: tx("Question: {value}", { value: questionText(interaction) }) },
       ...(interaction.answerText === null ? [] : [{ kind: "user", at: interaction.updatedAtUtc, text: interaction.answerText }]),
     ]);
     // Questions and their answers take their place among the agent's items by time.
     items.push(...[...done, ...asked].sort((a, b) => String(a.at).localeCompare(String(b.at))));
-    if (turn.state === "failed" && turn.error) items.push({ kind: "tool", at: turn.completedAtUtc ?? turn.startedAtUtc, text: `The turn ended with an error: ${turn.error}` });
+    if (turn.state === "failed" && turn.error) items.push({ kind: "tool", at: turn.completedAtUtc ?? turn.startedAtUtc, text: tx("The turn ended with an error: {error}", { error: turn.error }) });
     return items;
   }
 
@@ -498,7 +499,7 @@ export async function createDirectGateway({ kit, config, startTurn = null } = {}
         ? { kind: "user-input", title: clipText(interaction.title, 4096),
           fields: { questions: interaction.questions.map((item) => ({
             id: item.id,
-            prompt: `${item.prompt}${item.options.length === 0 ? "" : ` Options: ${item.options.map((option) => option.label).join(" / ")}`}`,
+            prompt: tx("{prompt}{value}", { prompt: item.prompt, value: item.options.length === 0 ? "" : tx(" Options: {value}", { value: item.options.map((option) => option.label).join(" / ") }) }),
           })) } }
         : { kind: "permission-approval", title: clipText(interaction.title, 4096),
           fields: { prompt: interaction.prompt, tool: interaction.toolName } },
@@ -525,7 +526,7 @@ export async function createDirectGateway({ kit, config, startTurn = null } = {}
   /** What Claude Code wants to do, in a line a person can decide on. */
   function permissionPrompt(toolName, input, details) {
     if (typeof details?.title === "string" && details.title.trim() !== "") return details.title;
-    if (toolName === "Bash" && typeof input?.command === "string") return `Run command: ${input.command}`;
+    if (toolName === "Bash" && typeof input?.command === "string") return tx("Run command: {command}", { command: input.command });
     if (typeof input?.file_path === "string") return `${toolName}: ${input.file_path}`;
     return `${toolName} ${clip(JSON.stringify(input ?? {}), 300)}`;
   }
@@ -538,11 +539,11 @@ export async function createDirectGateway({ kit, config, startTurn = null } = {}
     const interaction = {
       id: `ask-${randomUUID()}`, turnId: turn.turnId, status: "pending", createdAtUtc: at, updatedAtUtc: at, answerText: null,
       ...(asked
-        ? { kind: "question", title: "Agent question", questions: input.questions.map((question, index) => ({
+        ? { kind: "question", title: tx("Agent question"), questions: input.questions.map((question, index) => ({
           id: `q${index + 1}`, prompt: String(question.question ?? ""), key: String(question.question ?? ""),
           options: (question.options ?? []).map((option, position) => ({ id: `o${position + 1}`, label: String(option.label ?? "") })),
         })) }
-        : { kind: "permission", title: "Permission for an action", toolName, prompt: permissionPrompt(toolName, input, details) }),
+        : { kind: "permission", title: tx("Permission for an action"), toolName, prompt: permissionPrompt(toolName, input, details) }),
     };
     transcript.interactions.push(interaction);
     attentionSequence += 1;
@@ -594,17 +595,17 @@ export async function createDirectGateway({ kit, config, startTurn = null } = {}
         said.push(chosen);
       }
       decision = { behavior: "allow", updatedInput: { ...ask.input, answers } };
-      Object.assign(interaction, { status: "answered", answerText: `Answer to the question: ${said.join("; ")}` });
+      Object.assign(interaction, { status: "answered", answerText: tx("Answer to the question: {value}", { value: said.join("; ") }) });
     } else if (response.selectedResponse === "accept") {
       decision = { behavior: "allow", updatedInput: ask.input };
-      Object.assign(interaction, { status: "accepted", answerText: "Allowed." });
+      Object.assign(interaction, { status: "accepted", answerText: tx("Allowed.") });
     } else if (response.selectedResponse === "decline") {
       decision = { behavior: "deny", message: "The person declined this action." };
-      Object.assign(interaction, { status: "rejected", answerText: "Declined." });
+      Object.assign(interaction, { status: "rejected", answerText: tx("Declined.") });
     } else {
       // "cancel" on a question: the person chose not to answer it.
       decision = { behavior: "deny", message: "The person chose not to answer." };
-      Object.assign(interaction, { status: "expired", answerText: "The question was left unanswered." });
+      Object.assign(interaction, { status: "expired", answerText: tx("The question was left unanswered.") });
     }
     interaction.updatedAtUtc = now();
     entry.asks.delete(interaction.id);
@@ -719,18 +720,18 @@ export async function createDirectGateway({ kit, config, startTurn = null } = {}
 
   /** Which memories an agent may fill from an approved document. */
   function targetsOf(agent) {
-    const targets = [{ kind: "agent", id: agent.agentId, title: `memory of agent ${agent.agentId}` }];
+    const targets = [{ kind: "agent", id: agent.agentId, title: tx("memory of agent {agentId}", { agentId: agent.agentId }) }];
     const role = roleOf(agent);
     const project = projectOf(agent.projectId);
     const quarter = quarterOf(agent.projectId, agent.quarterId);
     if (role === "project-lead" && project !== null) {
-      targets.unshift({ kind: "project", id: projectScopeId(project.projectId), title: `memory of project ${project.title}` });
+      targets.unshift({ kind: "project", id: projectScopeId(project.projectId), title: tx("memory of project {title}", { title: project.title }) });
     }
     if (role === "quarter-lead" && quarter !== null) {
-      targets.unshift({ kind: "quarter", id: quarterScopeId(quarter.projectId, quarter.quarterId), title: `memory of quarter ${quarter.title}` });
+      targets.unshift({ kind: "quarter", id: quarterScopeId(quarter.projectId, quarter.quarterId), title: tx("memory of quarter {title}", { title: quarter.title }) });
       for (const other of world.agents) {
         if (other.agentId === agent.agentId || other.state === "archived" || other.projectId !== agent.projectId || other.quarterId !== agent.quarterId) continue;
-        targets.push({ kind: "agent", id: other.agentId, title: `memory of agent ${other.agentId}` });
+        targets.push({ kind: "agent", id: other.agentId, title: tx("memory of agent {agentId}", { agentId: other.agentId }) });
       }
     }
     return targets;

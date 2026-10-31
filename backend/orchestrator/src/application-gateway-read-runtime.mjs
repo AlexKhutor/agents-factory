@@ -1,45 +1,18 @@
 import { randomBytes } from "node:crypto";
 import path from "node:path";
 
-import {
-  classifyAppServerStartupFailure,
-} from "./app-server-failure-classification.mjs";
 import { BackendConsumerClient } from "./backend-consumer-api.mjs";
 import { createApplicationGatewayReadHandlers } from "./application-gateway-read-bridge.mjs";
 import {
   createApplicationGatewayDomainHandlers,
 } from "./application-gateway-domain-bridge.mjs";
-import {
-  createApplicationGatewayProviderMutationBridge,
-} from "./application-gateway-provider-mutation-bridge.mjs";
-import {
-  createApplicationOwnerChatBridge,
-  resolveApplicationOwnerChatTarget,
-} from "./application-owner-chat.mjs";
-import {
-  createApplicationProviderInteractionBridge,
-} from "./application-provider-interaction-bridge.mjs";
 import { ApplicationResourceReader } from "./application-resource-reader.mjs";
 import { ApplicationResourceService } from "./application-resource-service.mjs";
-import { createConversationArchive } from "./conversation-archive.mjs";
-import { CodexConversationArchive } from "./codex-conversation-archive.mjs";
-import { createApplicationConversationArchiveHandlers } from "./application-conversation-archive.mjs";
-import { CodexAppServerClient } from "./codex-app-server-client.mjs";
-import {
-  CodexAppServerConversationReadAdapter,
-} from "./codex-app-server-conversation-read-adapter.mjs";
-import {
-  CodexAppServerExecutionProviderAdapter,
-} from "./codex-app-server-execution-provider-adapter.mjs";
-import { projectApplicationProviderOperationState } from "./application-provider-state.mjs";
-import { resolveExtensionCodexCommand } from "./codex-executable-resolution.mjs";
 import { WorkProjectionV2Client } from "./work-projection-v2-client.mjs";
 import { createProjectMemoryService } from "./project-memory-service.mjs";
-import { createProjectMemoryCodex } from "./project-memory-codex.mjs";
-import { resolveProjectWorkspace } from "./project-workspace-binding.mjs";
 import { createApplicationAgentControlHandlers } from "./application-agent-control.mjs";
 import { createApplicationAgentConversationHandlers } from "./application-agent-conversation.mjs";
-import { createApplicationAgentEventBridge } from "./application-agent-events.mjs";
+import { combineApplicationAgentEventBridges } from "./application-agent-events.mjs";
 import { createApplicationProjectWorkspaceHandlers } from "./application-project-workspace.mjs";
 import { APPLICATION_PROJECT_WORKSPACE_SAVE_OPERATION,
   createApplicationProjectWorkspaceSaveHandler } from "./application-project-workspace-save.mjs";
@@ -49,9 +22,13 @@ import { APPLICATION_PROJECT_COPY_OPERATION,
   createApplicationProjectCopyHandler } from "./application-project-copy.mjs";
 import { ApplicationGatewayRuntimeFiles, applicationGatewayWorkspaceHash } from "./application-gateway-runtime.mjs";
 import { createClaudeProviderRuntime } from "./application-gateway-claude-runtime.mjs";
+import { createProjectMemoryProviderRouter } from "./project-memory-provider-router.mjs";
+import { journalGatewayHandlers } from "./action-journal-gateway.mjs";
 
-export const APPLICATION_GATEWAY_READ_RUNTIME_VERSION = "v0.13.0";
-export const APPLICATION_GATEWAY_PROVIDERS = Object.freeze(["codex", "claude"]);
+export const APPLICATION_GATEWAY_READ_RUNTIME_VERSION = "v0.14.0";
+// Desk agents run on Claude Code, and beside it on further providers (ACP). The Codex App Server runtime
+// and its owner chat left the product (roadmap step 1, owner 30.10): a future Codex comes as a provider.
+export const APPLICATION_GATEWAY_PROVIDERS = Object.freeze(["claude"]);
 
 const READ_PERMISSIONS = Object.freeze({
   "query.provider.models.list": "allowed",
@@ -60,9 +37,6 @@ const READ_PERMISSIONS = Object.freeze({
   "subscription.provider.turn.stream": "allowed",
   "query.provider.usage.read": "allowed",
 });
-const MUTATION_ADAPTER_FIELDS = new Set([
-  "createThreadOptions", "startExecutionHandler", "interruptExecutionHandler",
-]);
 const DOMAIN_AUTHORITY_FIELDS = new Set([
   "interactionAuthority", "reviewCommentAuthority", "keepCoordinator", "receiptAuthority",
 ]);
@@ -71,22 +45,6 @@ function invalid(message) {
   const error = new Error(message);
   error.code = "source_unavailable";
   throw error;
-}
-
-function mutationConfiguration(options, authorityFactory) {
-  if (options === null || options === undefined) {
-    if (authorityFactory !== null && authorityFactory !== undefined
-        && typeof authorityFactory !== "function") {
-      invalid("provider mutation authority factory is invalid");
-    }
-    return {};
-  }
-  if (!options || typeof options !== "object" || Array.isArray(options)
-      || Object.keys(options).some((field) => !MUTATION_ADAPTER_FIELDS.has(field))
-      || typeof authorityFactory !== "function") {
-    invalid("provider mutation configuration is invalid");
-  }
-  return { ...options };
 }
 
 function domainConfiguration(value) {
@@ -165,189 +123,17 @@ function gatewayVisibility({ repoRoot, instanceId, projectId, now }) {
   };
 }
 
-async function providerRuntime({
-  repoRoot,
-  sourceId,
-  instanceId,
-  now,
-  clientFactory,
-  mutationAdapterOptions,
-  mutationAuthorityFactory,
-  ownerChatTarget,
-  conversationArchive,
-  archiveBinding,
-  memoryService,
-}) {
-  const providerRoot = ownerChatTarget?.workspacePath ?? repoRoot;
-  const providerSourceId = ownerChatTarget?.sourceId ?? sourceId;
-  const command = process.env.CODEX_EXECUTABLE
-    ?? resolveExtensionCodexCommand(providerRoot)
-    ?? "codex";
-  const codexHome = ownerChatTarget?.codexHome
-    ?? path.join(repoRoot, ".project-runtime", "codex-home");
-  const client = clientFactory
-    ? clientFactory({ command, codexHome, cwd: providerRoot })
-    : new CodexAppServerClient({
-      command,
-      codexHome,
-      cwd: providerRoot,
-      clientVersion: "0.99.0",
-      requestTimeoutMs: 15_000,
-      serverRequestTimeoutMs: 24 * 60 * 60 * 1000,
-    });
-  let executionProvider = null;
-  let conversationCapture = null;
-  let interactionBridge = null;
-  let memoryProvider = null;
-  let agentEvents = null;
-  try {
-    await client.connect();
-    const observedAtUtc = clock(now).toISOString();
-    executionProvider = new CodexAppServerExecutionProviderAdapter({
-      client,
-      sourceId: providerSourceId,
-      runtimeInstanceId: `gateway-app-server-${instanceId}`,
-      capabilitiesObservedAtUtc: observedAtUtc,
-      now,
-      ...mutationAdapterOptions,
-    });
-    const conversationReader = new CodexAppServerConversationReadAdapter({
-      client,
-      descriptor: executionProvider.descriptor,
-      now,
-    });
-    const authentication = await conversationReader.readAuthentication();
-    const authenticated = authentication.data.state.status === "authenticated";
-    if (authenticated && conversationArchive !== null) {
-      conversationCapture = new CodexConversationArchive({
-        archive: conversationArchive, binding: archiveBinding, client,
-      });
-      await conversationCapture.synchronize({ limit: 32, maxPages: 64 });
-    }
-    const authorities = authenticated && typeof mutationAuthorityFactory === "function"
-      ? await mutationAuthorityFactory({ executionProvider, client })
-      : {};
-    const mutation = createApplicationGatewayProviderMutationBridge({
-      executionProvider: authenticated ? executionProvider : null,
-      authorities,
-    });
-    const ownerChat = authenticated && ownerChatTarget !== null
-      ? await createApplicationOwnerChatBridge({
-        controllerRoot: repoRoot,
-        gatewaySourceId: sourceId,
-        target: ownerChatTarget,
-        client,
-        descriptor: executionProvider.descriptor,
-        now,
-        conversationCapture,
-      }) : null;
-    interactionBridge = authenticated && ownerChatTarget !== null
-        && conversationCapture !== null
-      ? await createApplicationProviderInteractionBridge({
-        controllerRoot: repoRoot,
-        projectId: memoryService?.archive.projectId ?? sourceId,
-        client,
-        descriptor: executionProvider.descriptor,
-        target: { sourceId: ownerChatTarget.sourceId, threadId: ownerChatTarget.threadId },
-        conversationId: conversationCapture.conversationId,
-        archive: conversationCapture,
-        now,
-      }) : null;
-    const mutationPermissions = Object.fromEntries(mutation.operations
-      .filter(({ status }) => status === "enabled")
-      .map(({ operationId }) => [operationId, "allowed"]));
-    if (authenticated && memoryService) {
-      memoryProvider = await createProjectMemoryCodex({ client, controllerRoot: repoRoot,
-        sourceId: memoryService.archive.projectId, providerSourceId, workspacePath: providerRoot, instanceId,
-        archive: memoryService.archive,
-        descriptor: executionProvider.descriptor,
-        onInteractionChanged: (record) => agentEvents?.interactionChanged(record),
-        resolveWorkspace: (agent) => resolveProjectWorkspace(memoryService.store, agent.projectId),
-        assertVisible: gatewayVisibility({ repoRoot, instanceId,
-          projectId: memoryService.archive.projectId, now }),
-      });
-      memoryService.provider = memoryProvider;
-      agentEvents = createApplicationAgentEventBridge({ service: memoryService,
-        client, providerSourceId, instanceId, now });
-    }
-    return {
-      status: authenticated ? "available" : "unavailable",
-      reasonCode: authenticated ? "available" : "provider_authentication_required",
-      executionProvider: authenticated ? executionProvider : null,
-      conversationReader: authenticated ? conversationReader : null,
-      providerStates: authenticated ? [projectApplicationProviderOperationState({
-        descriptor: executionProvider.descriptor,
-        asOfUtc: clock(now).toISOString(),
-        permissions: { ...READ_PERMISSIONS, ...mutationPermissions },
-      })] : [],
-      authenticationStates: [authentication.data.state],
-      mutationHandlers: mutation.handlers,
-      mutationStatus: mutation.operations,
-      ownerChatHandlers: ownerChat?.handlers ?? {},
-      interactionHandlers: interactionBridge?.handlers ?? {},
-      agentEventHandlers: agentEvents?.handlers ?? {},
-      conversationCapture,
-      ownerChatStatus: Object.freeze({
-        configured: ownerChatTarget !== null,
-        status: ownerChat === null ? "disabled" : "available",
-        reasonCode: ownerChat === null ? "not_configured" : "available",
-        sourceId: ownerChat?.sourceId ?? null,
-      }),
-      close: async () => {
-        agentEvents?.close();
-        await memoryProvider?.close();
-        await interactionBridge?.close();
-        executionProvider?.dispose();
-        await client.close().catch(() => undefined);
-        await conversationCapture?.close();
-      },
-    };
-  } catch (error) {
-    agentEvents?.close();
-    await memoryProvider?.close();
-    await interactionBridge?.close();
-    executionProvider?.dispose();
-    await client.close().catch(() => undefined);
-    await conversationCapture?.close();
-    return {
-      status: "unavailable",
-      reasonCode: classifyAppServerStartupFailure(error, {
-        unavailableReason: "provider_app_server_unavailable",
-      }),
-      executionProvider: null,
-      conversationReader: null,
-      providerStates: [],
-      authenticationStates: [],
-      mutationHandlers: {},
-      mutationStatus: createApplicationGatewayProviderMutationBridge().operations,
-      ownerChatHandlers: {},
-      interactionHandlers: {},
-      agentEventHandlers: {},
-      conversationCapture: null,
-      ownerChatStatus: Object.freeze({
-        configured: ownerChatTarget !== null,
-        status: "unavailable",
-        reasonCode: ownerChatTarget === null
-          ? "not_configured" : "provider_app_server_unavailable",
-        sourceId: ownerChatTarget?.sourceId ?? null,
-      }),
-      close: async () => {},
-    };
-  }
-}
-
 export async function createApplicationGatewayReadRuntime({
   repoRoot,
   sourceId,
   instanceId,
   now = () => new Date(),
-  providerClientFactory,
-  providerMutationAdapterOptions = null,
-  providerMutationAuthorityFactory = null,
   domainAuthorities = null,
-  providerSourceId = null,
-  provider: providerKind = "codex",
+  provider: providerKind = "claude",
   claude = null,
+  // Factories of further desk-agent providers routed beside Claude Code
+  // (application-gateway-acp-runtime.mjs).
+  extraProviders = null,
   onDiagnostic = () => {},
   onProviderDiagnostic = () => {},
 } = {}) {
@@ -355,29 +141,11 @@ export async function createApplicationGatewayReadRuntime({
       || typeof sourceId !== "string" || sourceId.length < 1
       || typeof instanceId !== "string" || instanceId.length < 1
       || typeof now !== "function"
-      || (providerSourceId !== null
-        && (typeof providerSourceId !== "string" || providerSourceId.length < 1))
       || !APPLICATION_GATEWAY_PROVIDERS.includes(providerKind)
-      // Claude Code runs the desk agents; the owner chat stays on its own route.
-      || (providerKind === "claude" && (providerSourceId !== null || !claude || typeof claude !== "object"))) {
+      || !claude || typeof claude !== "object") {
     invalid("gateway read runtime configuration is invalid");
   }
-  const mutationAdapterOptions = mutationConfiguration(
-    providerMutationAdapterOptions,
-    providerMutationAuthorityFactory,
-  );
   const configuredDomainAuthorities = domainConfiguration(domainAuthorities);
-  const ownerChatTarget = providerSourceId === null ? null
-    : await resolveApplicationOwnerChatTarget({
-      controllerRoot: repoRoot,
-      sourceId: providerSourceId,
-    });
-  const archiveBinding = ownerChatTarget === null ? null : {
-    projectId: sourceId, sourceId: ownerChatTarget.sourceId,
-    providerId: "codex", threadId: ownerChatTarget.threadId,
-  };
-  const conversationArchive = ownerChatTarget === null ? null
-    : await createConversationArchive({ controllerRoot: repoRoot, projectId: sourceId, now });
   let memoryService = null;
   try { memoryService = await createProjectMemoryService({ controllerRoot: repoRoot, sourceId, now }); }
   catch { /* Memory availability does not disable existing independent read resources. */ }
@@ -390,29 +158,46 @@ export async function createApplicationGatewayReadRuntime({
     now,
   });
   const resource = await resourceService({ repoRoot, sourceId, instanceId, now });
-  const provider = providerKind === "claude" ? await createClaudeProviderRuntime({
-    repoRoot, sourceId, instanceId, now, claude, memoryService,
-    assertVisible: memoryService ? gatewayVisibility({ repoRoot, instanceId,
-      projectId: memoryService.archive.projectId, now }) : async () => invalid("observability_unavailable"),
-    readPermissions: READ_PERMISSIONS, onDiagnostic: onProviderDiagnostic,
-  }) : await providerRuntime({
-    repoRoot,
-    sourceId,
-    instanceId,
-    now,
-    clientFactory: providerClientFactory,
-    mutationAdapterOptions,
-    mutationAuthorityFactory: providerMutationAuthorityFactory,
-    ownerChatTarget,
-    conversationArchive,
-    archiveBinding,
-    memoryService,
+  const assertVisible = memoryService ? gatewayVisibility({ repoRoot, instanceId,
+    projectId: memoryService.archive.projectId, now }) : async () => invalid("observability_unavailable");
+  // Further desk-agent providers beside Claude Code (agents of several
+  // providers in one Gateway): each factory returns its memory provider,
+  // conversation route and event bridge, and the router picks per agent.
+  const extraFactories = memoryService ? (extraProviders ?? []) : [];
+  const extras = [];
+  for (const factory of extraFactories) {
+    extras.push(await factory({ repoRoot, sourceId, instanceId, now, memoryService, assertVisible,
+      readPermissions: READ_PERMISSIONS, onDiagnostic: onProviderDiagnostic }));
+  }
+  const routedExtras = extras.filter((extra) => extra?.memoryProvider);
+  const provider = await createClaudeProviderRuntime({
+    repoRoot, sourceId, instanceId, now, claude, memoryService, assertVisible,
+    readPermissions: READ_PERMISSIONS, onDiagnostic: onProviderDiagnostic, attach: routedExtras.length === 0,
   });
+  let agentEventHandlers = provider.agentEventHandlers;
+  let conversationOptions = provider.conversationProvider ?? {};
+  let closeRouted = async () => {};
+  if (routedExtras.length > 0) {
+    const members = [{ providerId: provider.conversationRoute?.providerId, memoryProvider: provider.memoryProvider,
+      conversationRoute: provider.conversationRoute, agentEventBridge: provider.agentEventBridge }, ...routedExtras]
+      .filter((member) => member.memoryProvider && member.conversationRoute?.providerId);
+    memoryService.provider = createProjectMemoryProviderRouter(Object.fromEntries(members
+      .map((member) => [member.conversationRoute.providerId, member.memoryProvider])));
+    const events = combineApplicationAgentEventBridges({ service: memoryService,
+      bridges: members.map((member) => ({ providerId: member.conversationRoute.providerId,
+        bridge: member.agentEventBridge })) });
+    agentEventHandlers = events.handlers;
+    conversationOptions = { routes: members.map((member) => member.conversationRoute) };
+    closeRouted = async () => { for (const extra of extras) await extra.close?.(); };
+  } else {
+    closeRouted = async () => { for (const extra of extras) await extra?.close?.(); };
+  }
   const readHandlers = createApplicationGatewayReadHandlers({
     workProjectionClient,
     backendConsumerClient,
     resourceService: resource,
     conversationReader: provider.conversationReader,
+    extraConversationReaders: routedExtras.map((extra) => extra.conversationRoute?.reader).filter(Boolean),
     executionProvider: provider.executionProvider,
   });
   const domainHandlers = createApplicationGatewayDomainHandlers({
@@ -431,40 +216,30 @@ export async function createApplicationGatewayReadRuntime({
   } : {};
   const artifacts = memoryService ? createAgentArtifactService({ service: memoryService, now,
     projectRead: projectResources["query.project-workspace.read"] }) : null;
-  const handlers = Object.freeze({
+  // The person's changes through Atlas go into the action journal (action-journal-gateway.mjs).
+  const handlers = Object.freeze(journalGatewayHandlers({
     ...projectResources,
     ...projectSave,
     ...projectCopy,
-    ...provider.agentEventHandlers,
+    ...agentEventHandlers,
     ...createApplicationAgentArtifactHandlers(artifacts),
     ...createApplicationAgentConversationHandlers({ service: memoryService,
       reader: provider.conversationReader, instanceId, now, onDiagnostic,
-      ...(provider.conversationProvider ?? {}) }),
+      ...conversationOptions }),
     ...createApplicationAgentControlHandlers(memoryService),
     ...(memoryService ? createApplicationProjectMemoryHandlers({ service: memoryService }) : {}),
     ...readHandlers,
     ...domainHandlers,
     ...provider.interactionHandlers,
     ...provider.mutationHandlers,
-    ...provider.ownerChatHandlers,
-    ...(conversationArchive === null ? {} : createApplicationConversationArchiveHandlers({
-      archive: conversationArchive, binding: archiveBinding,
-      captureStatus: () => provider.conversationCapture?.captureStatus
-        ?? {
-          status: "unavailable", reasonCode: "provider_unavailable",
-          synchronization: {
-            state: "not-started", pagesImported: 0, capturedRecords: 0,
-            checkpointRevision: 0, exhausted: false,
-          },
-        },
-    })),
-  });
+  }, { service: memoryService, controllerRoot: repoRoot, now, onDiagnostic }));
   return Object.freeze({
     schemaVersion: 1,
     contractVersion: APPLICATION_GATEWAY_READ_RUNTIME_VERSION,
     handlers,
-    providerStates: structuredClone(provider.providerStates),
-    authenticationStates: structuredClone(provider.authenticationStates),
+    providerStates: structuredClone([...provider.providerStates, ...extras.flatMap((extra) => extra?.providerStates ?? [])]),
+    authenticationStates: structuredClone([...provider.authenticationStates,
+      ...extras.flatMap((extra) => extra?.authenticationStates ?? [])]),
     provider: providerKind,
     providerStatus: Object.freeze({
       status: provider.status,
@@ -484,6 +259,9 @@ export async function createApplicationGatewayReadRuntime({
         value: `gateway-instance:${instanceId}`,
       }),
     }),
-    close: provider.close,
+    close: async () => {
+      await provider.close();
+      await closeRouted();
+    },
   });
 }

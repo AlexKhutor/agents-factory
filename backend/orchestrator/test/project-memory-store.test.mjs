@@ -1,4 +1,3 @@
-import test from "node:test";
 import assert from "node:assert/strict";
 import os from "node:os";
 import path from "node:path";
@@ -8,6 +7,7 @@ import {
   PROJECT_MEMORY_LIMITS,
   createProjectMemoryStore,
 } from "../src/project-memory-store.mjs";
+import { sqliteBackendOf, sqliteBackendTest as test } from "./fixtures/sqlite-backends/helpers.mjs";
 
 function entry(id, text = `text-${id}`) {
   return { id, title: `Title ${id}`, text };
@@ -23,7 +23,12 @@ async function fixture(t) {
     assert.ok(relative.startsWith("project-memory-test-") && !relative.includes(path.sep));
     await rm(root, { recursive: true, force: true });
   });
-  const open = () => createProjectMemoryStore({ controllerRoot: root, now });
+  const sqliteBackend = sqliteBackendOf(t);
+  const open = async () => {
+    const store = await createProjectMemoryStore({ controllerRoot: root, now, sqliteBackend });
+    assert.equal(store.sqliteBackend, sqliteBackend);
+    return store;
+  };
   return { root, open, store: await open() };
 }
 

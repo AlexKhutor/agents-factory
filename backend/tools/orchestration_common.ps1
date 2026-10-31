@@ -141,13 +141,18 @@ function Resolve-ControlSourceWorkspace {
         throw "Bound implementation source does not exist for '$SourceId': $sourcePath"
     }
 
-    $configuredLauncher = Get-ControlObjectPropertyValue -Object $source -Name "workspaceLauncher"
     $route = [string](Get-ControlObjectPropertyValue -Object $source -Name "providerRoute")
     $adapter = [string](Get-ControlObjectPropertyValue -Object $source -Name "executionAdapter")
     $profile = [string](Get-ControlObjectPropertyValue -Object $source -Name "coordinationProfile")
     $launcherRelativePath = $null
     $launcherPath = $null
-    if ($route -in @("claude-code", "codex-app-server")) {
+    # The Codex sources - an isolated VS Code window with its launcher (the
+    # default route) and the Codex App Server - left with the Codex path.
+    if ($route -in @("codex-vscode", "codex-app-server") -or ($route -eq '' -and
+        ($adapter -eq '' -or $adapter -eq 'handoff-file') -and ($profile -eq '' -or $profile -eq 'codex'))) {
+        throw "The Codex route of '$SourceId' left the product; the source needs a Claude Code route."
+    }
+    if ($route -eq "claude-code") {
         $validator = Join-Path $PSScriptRoot '../.orchestrator/runtime/control-source-route-validation.mjs'
         if (-not (Test-Path -LiteralPath $validator -PathType Leaf)) {
             $validator = Join-Path $PSScriptRoot '../orchestrator/src/control-source-route-validation.mjs'
@@ -170,14 +175,6 @@ function Resolve-ControlSourceWorkspace {
         if ($LASTEXITCODE -ne 0) { throw "Desk agent source validation failed for '$SourceId': $resultText" }
         $routeResult = ($resultText -join "`n") | ConvertFrom-Json
         if ($routeResult.status -ne 'valid' -or $routeResult.routeId -ne $route) { throw 'desk_source_result_mismatch' }
-    }
-    elseif (($route -eq '' -or $route -eq 'codex-vscode') -and
-        ($adapter -eq '' -or $adapter -eq 'handoff-file') -and ($profile -eq '' -or $profile -eq 'codex')) {
-        $launcherRelativePath = if ($configuredLauncher) { [string]$configuredLauncher } else { 'tools/open_isolated_vscode.ps1' }
-        $launcherPath = Resolve-ControlRelativePath -BasePath $workspacePath -RelativePath $launcherRelativePath
-        if (-not (Test-Path -LiteralPath $launcherPath -PathType Leaf)) {
-            throw "Workspace launcher does not exist for '$SourceId': $launcherPath"
-        }
     }
     else {
         throw "Unknown or contradictory provider route for '$SourceId'."

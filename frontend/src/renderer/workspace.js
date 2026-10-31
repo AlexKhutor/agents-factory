@@ -75,7 +75,7 @@ function atlasOpenWorkspace(node, { tab = "chat", camera = true } = {}) {
   document.getElementById("mapStage").classList.add("with-workspace");
   selectNode(node);
   sceneWorkspaceCamera(node);
-  atlasRecord("info", "workspace opened", node.agentId);
+  atlasRecord("info", tx("workspace opened"), node.agentId);
   renderWorkspace();
   startFeedTimer();
   atlasOnHudChanged();
@@ -135,7 +135,7 @@ function refreshWorkspace() {
 /** The head of the agent window: model and state from a fresh catalog, without rebuilding the tab. */
 function paintWorkspaceHead(agent) {
   const status = document.getElementById("workspaceAgentStatus");
-  if (status !== null) status.textContent = `${agent.state} · delivery ${agent.deliveryState}`;
+  if (status !== null) status.textContent = tx("{state} · delivery {deliveryState}", { state: agent.state, deliveryState: agent.deliveryState });
   const modelLine = document.getElementById("workspaceModel");
   if (modelLine !== null) modelLine.textContent = modelWords(agent);
 }
@@ -151,15 +151,15 @@ function agentOf() {
 }
 
 const TABS = Object.freeze([
-  ["chat", "Conversation"],
-  ["trace", "Trace"],
-  ["tasks", "Tasks"],
-  ["questions", "Questions"],
-  ["files", "Files"],
-  ["artifacts", "Artifacts"],
-  ["context", "Memory"],
-  ["skills", "Skills"],
-  ["notes", "Notes"],
+  ["chat", tx("Conversation")],
+  ["trace", tx("Trace")],
+  ["tasks", tx("Tasks")],
+  ["questions", tx("Questions")],
+  ["files", tx("Files")],
+  ["artifacts", tx("Artifacts")],
+  ["context", tx("Memory")],
+  ["skills", tx("Skills")],
+  ["notes", tx("Notes")],
 ]);
 
 function renderWorkspace() {
@@ -175,19 +175,21 @@ function renderWorkspace() {
   const head = el("div", "workspace-head");
   const top = el("div", "workspace-top");
   const ident = el("div");
-  const eyebrow = agent?.settings?.role === "project-lead" ? `PROJECT LEAD / ${node.projectId}`
-    : agent?.settings?.role === "quarter-lead" ? `QUARTER LEAD / ${node.quarterId}`
-      : `AGENT / ${node.quarterId}`;
+  const eyebrow = agent?.settings?.role === "coordinator" ? tx("WORLD LEAD")
+    : agent?.settings?.role === "project-lead" ? tx("PROJECT LEAD / {projectId}", { projectId: node.projectId })
+      : agent?.settings?.role === "quarter-lead" ? tx("QUARTER LEAD / {quarterId}", { quarterId: node.quarterId })
+        : tx("AGENT / {quarterId}", { quarterId: node.quarterId });
   ident.append(el("div", "eyebrow", eyebrow));
-  ident.append(el("h3", null, node.agentId));
+  // The agent's name (app.js displayName), the ID beside it where they differ.
+  ident.append(el("h3", null, typeof nameWithId === "function" ? nameWithId("agent", node.projectId, node.agentId) : node.agentId));
   // Who the conversation is with: the model and reasoning level of the agent, as in Codex and
   // Claude Code — in plain view, not in the “Memory” tab.
   const modelLine = el("div", "workspace-model", agent === null ? "" : modelWords(agent));
   modelLine.id = "workspaceModel";
   ident.append(modelLine);
   const agentStatus = el("div", "muted", agent === null
-    ? "agent not in the catalog"
-    : `${agent.state} · delivery ${agent.deliveryState}`);
+    ? tx("agent not in the catalog")
+    : tx("{state} · delivery {deliveryState}", { state: agent.state, deliveryState: agent.deliveryState }));
   agentStatus.id = "workspaceAgentStatus";
   ident.append(agentStatus);
   top.append(ident);
@@ -197,21 +199,21 @@ function renderWorkspace() {
   const full = atlasState.ui.workspaceFull === true;
   const expand = el("button", "icon-btn flat", full ? "⤡" : "⤢");
   expand.id = "workspaceExpand";
-  expand.title = full ? "Back to the side panel" : "Full screen";
+  expand.title = full ? tx("Back to the side panel") : tx("Full screen");
   expand.addEventListener("click", () => setWorkspaceFull(!full));
   top.append(expand);
   const close = el("button", "icon-btn flat", "×");
-  close.title = "Back to the quarter · Esc";
+  close.title = tx("Back to the quarter · Esc");
   close.addEventListener("click", () => closeWorkspace());
   top.append(close);
   head.append(top);
 
   const tabs = el("nav", "workspace-tabs");
-  // A lead also has a tab for what it is responsible for: the project or the quarter.
+  // A lead also has a tab for what it is responsible for: the world, the project or the quarter.
   const role = agent?.settings?.role ?? null;
-  const tabList = role === "project-lead" ? [...TABS.slice(0, 2), ["scope", "Project"], ...TABS.slice(2)]
-    : role === "quarter-lead" ? [...TABS.slice(0, 2), ["scope", "Quarter"], ...TABS.slice(2)] : TABS;
-  if (workspaceState.tab === "scope" && role !== "project-lead" && role !== "quarter-lead") workspaceState.tab = "chat";
+  const scopeTab = { coordinator: tx("World"), "project-lead": tx("Project"), "quarter-lead": tx("Quarter") }[role] ?? null;
+  const tabList = scopeTab === null ? TABS : [...TABS.slice(0, 2), ["scope", scopeTab], ...TABS.slice(2)];
+  if (workspaceState.tab === "scope" && scopeTab === null) workspaceState.tab = "chat";
   for (const [id, title] of tabList) {
     // Skills are a workspace tab, not a window beside it; their count is shown on the tab.
     const label = id === "skills" ? `${title} · ${sceneSkillsOf(node).length}` : title;
@@ -230,7 +232,7 @@ function renderWorkspace() {
 
   if (agent === null) {
     body.append(noteBlock("error",
-      "This agent is not in the current catalog. It may be closed, or the catalog is incomplete."));
+      tx("This agent is not in the current catalog. It may be closed, or the catalog is incomplete.")));
   } else if (workspaceState.tab === "chat") {
     renderChat(body, agent);
     // The conversation is on screen, so the agent's answer has been read.
@@ -256,9 +258,9 @@ function renderWorkspace() {
   }
 
   const foot = el("div", "workspace-foot");
-  foot.append(el("span", null, atlasState.info?.fixture ? "FIXTURE · no provider"
+  foot.append(el("span", null, atlasState.info?.fixture ? tx("FIXTURE · no provider")
     : atlasState.info?.mode === "paperclip" ? "Paperclip" : "Claude Code"));
-  foot.append(el("span", null, "Esc — back to the quarter"));
+  foot.append(el("span", null, tx("Esc — back to the quarter")));
   panel.append(foot);
   panel.append(workspaceResizer(panel));
   applyWorkspaceSize();
@@ -273,7 +275,7 @@ function renderWorkspace() {
 // option buttons and a field for a custom answer, as in Claude Code.
 
 const RESPONSE_WORDS = Object.freeze({
-  accept: "Allow", decline: "Decline", cancel: "Stop turn", grant: "Allow", deny: "Deny",
+  accept: tx("Allow"), decline: tx("Decline"), cancel: tx("Stop turn"), grant: tx("Allow"), deny: tx("Deny"),
 });
 
 /** Key of the agent's pending questions from world data: when it changes, read them again. */
@@ -304,7 +306,7 @@ async function loadChatQuestions(agent) {
  */
 function questionCard(agent, record, onAnswered) {
   const card = el("div", "chat-question");
-  const kind = record.display?.kind ?? "question";
+  const kind = record.display?.kind ?? tx("question");
   const fields = record.display?.fields ?? {};
   const outcome = el("div", "chat-question-outcome");
   const send = async (selectedResponse, answers = null) => {
@@ -312,21 +314,21 @@ function questionCard(agent, record, onAnswered) {
     const response = await window.atlas.respond({ agentId: agent.agentId, interactionId: record.interactionId,
       selectedResponse, ...(answers === null ? {} : { answers }) });
     if (response.ok) {
-      atlasRecord("ok", "answer to the agent", `${agent.agentId}: ${selectedResponse}`);
-      outcome.replaceChildren(noteBlock("note", "Answer sent: the agent continues its turn."));
+      atlasRecord("ok", tx("answer to the agent"), `${agent.agentId}: ${selectedResponse}`);
+      outcome.replaceChildren(noteBlock("note", tx("Answer sent: the agent continues its turn.")));
       onAnswered?.();
       return;
     }
-    const shown = outcomeMessage(response, "Answer sent.");
+    const shown = outcomeMessage(response, tx("Answer sent."));
     outcome.replaceChildren(noteBlock("error", response.error?.reasonCode === "answer_missing"
-      ? "Answer every question." : shown.text));
+      ? tx("Answer every question.") : shown.text));
     for (const button of card.querySelectorAll("button, input")) button.disabled = false;
   };
   if (kind === "user-input" && Array.isArray(fields.questions)) {
-    card.append(el("div", "chat-question-head", "The agent asks"));
+    card.append(el("div", "chat-question-head", tx("The agent asks")));
     const chosen = {};
     const single = fields.questions.length === 1;
-    const submit = el("button", "small primary", "Answer");
+    const submit = el("button", "small primary", tx("Answer"));
     const ready = () => { submit.disabled = !fields.questions.every((question) => (chosen[question.id] ?? "").trim() !== ""); };
     for (const question of fields.questions) {
       const block = el("div", "chat-question-block");
@@ -334,7 +336,7 @@ function questionCard(agent, record, onAnswered) {
       // A question where several options can be chosen, as in Claude Code: a click
       // checks and unchecks an option, the answer goes with the “Answer” button, options joined by “, ”.
       const several = question.multiSelect === true;
-      if (several) block.append(el("span", "chat-question-tag several", "you can choose several"));
+      if (several) block.append(el("span", "chat-question-tag several", tx("you can choose several")));
       block.append(el("div", "chat-question-text", question.question ?? ""));
       // Options as a numbered list, each with its description below; the last
       // item is a custom answer. This is how Claude Code shows a question.
@@ -368,7 +370,7 @@ function questionCard(agent, record, onAnswered) {
       });
       if (question.isOther !== false) {
         const own = el("input", "field chat-question-own");
-        own.placeholder = choices.length > 0 ? "Your own answer…" : "Your answer…";
+        own.placeholder = choices.length > 0 ? tx("Your own answer…") : tx("Your answer…");
         own.maxLength = 4096;
         own.addEventListener("input", () => {
           chosen[question.id] = own.value;
@@ -394,8 +396,8 @@ function questionCard(agent, record, onAnswered) {
     ready();
     card.append(submit);
   } else {
-    card.append(el("div", "chat-question-head", kind === "command-approval" ? "The agent asks permission to run a command"
-      : kind === "file-change-approval" ? "The agent asks permission to edit" : "The agent asks for permission"));
+    card.append(el("div", "chat-question-head", kind === "command-approval" ? tx("The agent asks permission to run a command")
+      : kind === "file-change-approval" ? tx("The agent asks permission to edit") : tx("The agent asks for permission")));
     const what = fields.command ?? fields.reason ?? record.display?.title ?? record.interactionId;
     card.append(el("pre", "chat-question-what", String(what)));
     const choices = el("div", "chat-question-options");
@@ -432,7 +434,7 @@ function paintChatQuestions(agent) {
   }
   if (records.length > 0) {
     box.append(el("div", "chat-compose-note",
-      "The agent is waiting for an answer to the question above: its turn is on hold, and it will read messages from the input field only after the answer."));
+      tx("The agent is waiting for an answer to the question above: its turn is on hold, and it will read messages from the input field only after the answer.")));
   }
 }
 
@@ -449,54 +451,88 @@ function syncChatQuestions(agent) {
 
 // --- what the lead is responsible for ------------------------------------------------
 
+/**
+ * The world lead's World tab: each project, its lead and agents - the same as what
+ * it gets as an overview - and the way into the World HQ with its tasks.
+ */
+function renderWorldScope(body) {
+  const world = atlasState.world;
+  const projects = world?.status === "ready"
+    ? world.projection.projects.filter((project) => project.projectId !== WORLD_PROJECT) : [];
+  body.append(el("div", "section-title", tx("World · {value}", { value: countWords(projects.length, PROJECT_FORMS) })));
+  const actions = el("div", "actions");
+  const hq = el("button", "small primary", tx("World HQ: tasks and desk agents"));
+  hq.addEventListener("click", () => atlasOpenWorldHeadquarters());
+  actions.append(hq);
+  body.append(actions);
+  if (projects.length === 0) body.append(el("div", "empty", tx("No projects yet.")));
+  for (const project of projects) {
+    const lead = leadOf(project.projectId);
+    const agents = project.quarters.flatMap((quarter) => quarter.agents).filter((other) => other.state !== "archived");
+    const row = el("div", "entry");
+    row.append(el("div", "entry-title", project.projectId));
+    row.append(el("div", "entry-text", [lead === null ? tx("no project lead") : tx("lead {agentId}", { agentId: lead.agentId }),
+      countWords(agents.length, AGENT_FORMS)].join(" · ")));
+    const go = el("button", "small", lead === null ? tx("Project HQ") : tx("Lead chat"));
+    go.addEventListener("click", () => (lead === null ? atlasOpenHeadquarters(project.projectId)
+      : atlasOpenWorkspace(leadNode(lead), { camera: false })));
+    row.append(go);
+    body.append(row);
+  }
+}
+
 /** The project (quarters and their agents) or quarter (its agents) of a lead: in brief, as the lead sees it. */
 function renderLeadScope(body, agent) {
+  if (agent.settings?.role === "coordinator") {
+    renderWorldScope(body);
+    return;
+  }
   const world = atlasState.world;
   const project = world?.status === "ready"
     ? world.projection.projects.find((item) => item.projectId === agent.projectId) ?? null : null;
   if (project === null) {
-    body.append(noteBlock("error", "The project has not been read."));
+    body.append(noteBlock("error", tx("The project has not been read.")));
     return;
   }
-  const agentLine = (other) => [other.settings?.role === "quarter-lead" ? "quarter lead"
-    : other.settings?.role === "project-lead" ? "project lead" : null,
+  const agentLine = (other) => [other.settings?.role === "quarter-lead" ? tx("quarter lead")
+    : other.settings?.role === "project-lead" ? tx("project lead") : null,
   modelOf(other.profile?.model)?.name ?? other.profile?.model ?? null,
-  other.currentOperationId ? "working" : other.state].filter(Boolean).join(" · ");
+  other.currentOperationId ? tx("working") : other.state].filter(Boolean).join(" · ");
   const agentRow = (other) => {
     const row = el("div", "entry");
     row.append(el("div", "entry-title", other.agentId));
     row.append(el("div", "entry-text", agentLine(other)));
-    const open = el("button", "small", "Chat");
+    const open = el("button", "small", tx("Chat"));
     open.addEventListener("click", () => atlasOpenWorkspace({ kind: "agent", projectId: other.projectId,
       quarterId: other.quarterId, agentId: other.agentId }));
     row.append(open);
     return row;
   };
   if (agent.settings?.role === "project-lead") {
-    body.append(el("div", "section-title", `Project · ${project.projectId}`));
+    body.append(el("div", "section-title", tx("Project · {projectId}", { projectId: project.projectId })));
     const actions = el("div", "actions");
-    actions.append(actionButton("Project memory", "query.memory.scope.read",
-      () => openMemorySheet(project.memory.scopeId, `Project memory · ${project.projectId}`)));
+    actions.append(actionButton(tx("Project memory"), "query.memory.scope.read",
+      () => openMemorySheet(project.memory.scopeId, tx("Project memory · {projectId}", { projectId: project.projectId }))));
     body.append(actions);
     for (const quarter of project.quarters.filter((item) => item.quarterId !== HEADQUARTERS_QUARTER)) {
-      body.append(el("div", "section-title", `Quarter ${quarter.quarterId} · ${countWords(quarter.agents.length, AGENT_FORMS)}`));
-      if (quarter.agents.length === 0) body.append(el("div", "empty", "No agents."));
+      body.append(el("div", "section-title", tx("Quarter {quarterId} · {value}", { quarterId: quarter.quarterId, value: countWords(quarter.agents.length, AGENT_FORMS) })));
+      if (quarter.agents.length === 0) body.append(el("div", "empty", tx("No agents.")));
       for (const other of quarter.agents) body.append(agentRow(other));
     }
     return;
   }
   const quarter = project.quarters.find((item) => item.quarterId === agent.quarterId) ?? null;
-  body.append(el("div", "section-title", `Quarter · ${agent.quarterId}`));
+  body.append(el("div", "section-title", tx("Quarter · {quarterId}", { quarterId: agent.quarterId })));
   const actions = el("div", "actions");
   if (quarter !== null) {
-    actions.append(actionButton("Quarter memory", "query.memory.scope.read",
-      () => openMemorySheet(quarter.memory.scopeId, `Quarter memory · ${agent.quarterId}`)));
+    actions.append(actionButton(tx("Quarter memory"), "query.memory.scope.read",
+      () => openMemorySheet(quarter.memory.scopeId, tx("Quarter memory · {quarterId}", { quarterId: agent.quarterId }))));
   }
-  actions.append(actionButton("Create agent…", "mutation.memory.agent.create",
+  actions.append(actionButton(tx("Create agent…"), "mutation.memory.agent.create",
     () => openCreateAgentSheet(agent.projectId, agent.quarterId)));
   body.append(actions);
   const others = (quarter?.agents ?? []).filter((other) => other.agentId !== agent.agentId);
-  if (others.length === 0) body.append(el("div", "empty", "No other agents in the quarter."));
+  if (others.length === 0) body.append(el("div", "empty", tx("No other agents in the quarter.")));
   for (const other of others) body.append(agentRow(other));
 }
 
@@ -510,7 +546,20 @@ function renderLeadScope(body, agent) {
 const TRACE_POLL_MS = 2500;
 
 const emptyTrace = (agentId) => ({ agentId, records: [], beforeCursor: null, afterCursor: null,
-  exhausted: false, loading: false, error: null, timer: null, older: false });
+  exhausted: false, loading: false, error: null, timer: null, older: false, toggled: new Map() });
+
+/** A trace record is the same in every redraw (the "Earlier" page shifts the numbers). */
+const traceKey = (record) => [record.atUtc ?? "", record.type, record.turnId ?? "", record.toolUseId ?? record.tool ?? ""].join("|");
+
+/**
+ * What the person expanded or collapsed stays so after a redraw: the trace
+ * is read every 2.5 s, and an expanded block used to collapse by itself.
+ */
+function keepTraceToggle(node, key, byDefault) {
+  const toggled = workspaceState.trace?.toggled ?? null;
+  node.open = key !== null && toggled?.has(key) ? toggled.get(key) : byDefault;
+  node.addEventListener("toggle", () => { if (key !== null) toggled?.set(key, node.open); });
+}
 
 async function readTrace(agent, { older = false } = {}) {
   const trace = workspaceState.trace;
@@ -556,13 +605,13 @@ function renderTrace(body, agent) {
   const trace = workspaceState.trace;
   body.classList.add("trace-mode");
   const bar = el("div", "trace-bar");
-  const older = el("button", "small", "Earlier");
+  const older = el("button", "small", tx("Earlier"));
   older.id = "traceOlder";
   older.addEventListener("click", () => readTrace(agent, { older: true }));
   const status = el("span", "muted");
   status.id = "traceStatus";
   bar.append(older, status, el("div", "spacer"),
-    el("span", "muted", "Full turn records: memory, assignments, tool input and output, diffs."));
+    el("span", "muted", tx("Full turn records: memory, assignments, tool input and output, diffs.")));
   const list = el("div", "trace-list");
   list.id = "traceList";
   body.append(bar, list);
@@ -576,33 +625,33 @@ function renderTrace(body, agent) {
 }
 
 const TRACE_LABELS = Object.freeze({
-  turn_started: "turn started", session: "session", user_input: "you → agent", user_queued: "queued",
-  user_cancelled: "withdrawn", assistant: "agent", thinking: "thinking", tool_use: "tool",
-  tool_result: "result", compacted: "context compacted", turn_finished: "turn finished",
+  turn_started: tx("turn started"), session: tx("session"), user_input: tx("you → agent"), user_queued: tx("queued"),
+  user_cancelled: tx("withdrawn"), assistant: tx("agent"), thinking: tx("workspace::thinking"), tool_use: tx("tool"),
+  tool_result: tx("result"), compacted: tx("context compacted"), turn_finished: tx("workspace::turn finished"),
 });
 
 function traceTime(record) {
   const at = Date.parse(record.atUtc ?? "");
-  return Number.isFinite(at) ? new Date(at).toLocaleTimeString("en-GB") : "";
+  return Number.isFinite(at) ? new Date(at).toLocaleTimeString(dateLocale()) : "";
 }
 
-function traceBlock(title, text, { open = false, className = "" } = {}) {
+function traceBlock(title, text, { open = false, className = "", key = null } = {}) {
   const node = el("details", `trace-details ${className}`.trim());
-  node.open = open;
+  keepTraceToggle(node, key, open);
   node.append(el("summary", null, title));
   node.append(el("pre", "trace-pre", text));
   return node;
 }
 
-function traceDiff(diff) {
+function traceDiff(diff, key = null) {
   const pre = el("pre", "trace-pre trace-diff");
   for (const line of diff.split("\n")) {
     pre.append(el("div", line.startsWith("+") ? "diff-add" : line.startsWith("-") ? "diff-del"
       : line.startsWith("@@") ? "diff-hunk" : null, line || " "));
   }
   const node = el("details", "trace-details");
-  node.open = true;
-  node.append(el("summary", null, "diff"), pre);
+  keepTraceToggle(node, key, true);
+  node.append(el("summary", null, tx("diff")), pre);
   return node;
 }
 
@@ -619,67 +668,94 @@ function traceRecord(record) {
   if (record.type === "turn_started") words.push([record.model, record.effort && record.effort !== "default" ? record.effort : null].filter(Boolean).join(" · "));
   if (record.type === "session") words.push([record.claudeCodeVersion ? `Claude Code ${record.claudeCodeVersion}` : null, record.model, record.cwd].filter(Boolean).join(" · "));
   if (record.type === "tool_use") words.push(record.tool ?? "");
-  if (record.type === "tool_result") words.push(record.isError ? "error" : "ok");
-  if (record.type === "user_input" || record.type === "user_queued") words.push(record.delivery === "steer" ? "steer" : record.delivery === "queue" ? "after the turn" : "");
-  if (record.type === "user_cancelled") words.push(record.reason === "turn_stopped" ? "turn stopped" : "by you");
-  if (record.type === "compacted") words.push([record.trigger, record.preTokens ? `${record.preTokens} tokens before compaction` : null].filter(Boolean).join(" · "));
+  if (record.type === "tool_result") words.push(record.isError ? tx("error") : tx("ok"));
+  if (record.type === "user_input" || record.type === "user_queued") words.push(record.delivery === "steer" ? "steer" : record.delivery === "queue" ? tx("after the turn") : "");
+  if (record.type === "user_cancelled") words.push(record.reason === "turn_stopped" ? tx("turn stopped") : tx("by you"));
+  if (record.type === "compacted") words.push([record.trigger, record.preTokens ? tx("{preTokens} tokens before compaction", { preTokens: record.preTokens }) : null].filter(Boolean).join(" · "));
   if (record.type === "assistant" && record.model) words.push(record.model);
   if (record.type === "turn_finished") {
     const usage = record.usage ?? null;
-    words.push([record.status, record.failure, record.durationMs ? `${(record.durationMs / 1000).toFixed(1)} s` : null,
-      usage ? `in ${usage.inputTokens + usage.cacheCreationInputTokens + usage.cacheReadInputTokens} (cache ${usage.cacheReadInputTokens}) · out ${usage.outputTokens}` : null,
+    words.push([record.status, record.failure, record.durationMs ? tx("{value} s", { value: (record.durationMs / 1000).toFixed(1) }) : null,
+      usage ? tx("in {cacheReadInputTokens} (cache {cacheReadInputTokens2}) · out {outputTokens}", { cacheReadInputTokens: usage.inputTokens + usage.cacheCreationInputTokens + usage.cacheReadInputTokens, cacheReadInputTokens2: usage.cacheReadInputTokens, outputTokens: usage.outputTokens }) : null,
       typeof record.costUsd === "number" ? `$${record.costUsd.toFixed(4)}` : null,
       record.models ? Object.keys(record.models).join(", ") : null].filter(Boolean).join(" · "));
   }
   if (words.some(Boolean)) head.append(el("span", "trace-words", words.filter(Boolean).join(" · ")));
   row.append(head);
+  const key = traceKey(record);
   if (record.type === "turn_started") {
     if (record.displayText) row.append(el("div", "trace-text", record.displayText));
-    if (record.text) row.append(traceBlock("full text sent to the agent (memory, role, assignment)", record.text));
+    if (record.text) row.append(traceBlock(tx("full text sent to the agent (memory, role, assignment)"), record.text, { key: `${key}|text` }));
   } else if (record.type === "user_input" || record.type === "user_queued") {
     row.append(el("div", "trace-text", record.displayText ?? record.text ?? ""));
   } else if (record.type === "assistant") {
     row.append(markdownNode(record.text ?? "", "trace-text"));
   } else if (record.type === "thinking") {
-    row.append(traceBlock("thinking text", record.text ?? ""));
+    row.append(traceBlock(tx("thinking text"), record.text ?? "", { key: `${key}|text` }));
   } else if (record.type === "tool_use") {
-    row.append(traceBlock("input", prettyJson(record.input), { open: true }));
+    row.append(traceBlock(tx("input"), prettyJson(record.input), { open: true, key: `${key}|input` }));
   } else if (record.type === "tool_result") {
-    if (record.output) row.append(traceBlock("output", record.output, { open: record.isError === true }));
-    if (record.diff) row.append(traceDiff(record.diff));
+    if (record.output) row.append(traceBlock(tx("output"), record.output, { open: record.isError === true, key: `${key}|output` }));
+    if (record.diff) row.append(traceDiff(record.diff, `${key}|diff`));
   }
   return row;
 }
 
+/** Appends records to the list with turn headings; returns the last one's turn. */
+function appendTraceRecords(list, records, lastTurn) {
+  let turn = lastTurn;
+  for (const record of records) {
+    if (record.turnId && record.turnId !== turn) {
+      turn = record.turnId;
+      list.append(el("div", "trace-turn", tx("turn {value}", { value: turn.slice(0, 8) })));
+    }
+    list.append(traceRecord(record));
+  }
+  return turn;
+}
+
+/**
+ * The trace list. A poll every 2.5 s most often brings nothing: then
+ * the list is not touched. New records are appended at the end; it is rebuilt
+ * only on the "Earlier" page and in a new window - what was expanded comes back by
+ * the record's key, the scroll stays in the same place.
+ */
 function paintTrace() {
   const trace = workspaceState.trace;
   const list = document.getElementById("traceList");
   if (trace === null || list === null) return;
-  const nearBottom = list.scrollTop + list.clientHeight >= list.scrollHeight - 40;
-  const firstPaint = list.childElementCount === 0;
-  list.replaceChildren();
   const status = document.getElementById("traceStatus");
   const older = document.getElementById("traceOlder");
   if (older) older.disabled = trace.exhausted || trace.beforeCursor === null || trace.loading;
   if (status) {
-    status.textContent = trace.error ? `trace not read: ${trace.error}`
-      : trace.loading && trace.records.length === 0 ? "reading…"
-        : `${trace.records.length} records${trace.exhausted ? " · from the start" : ""}`;
+    status.textContent = trace.error ? tx("trace not read: {error}", { error: trace.error })
+      : trace.loading && trace.records.length === 0 ? tx("reading…")
+        : tx("{length} records{value}", { length: trace.records.length, value: trace.exhausted ? tx(" · from the start") : "" });
   }
   if (trace.records.length === 0) {
-    list.append(el("div", "empty", trace.error ? "Trace unavailable: the backend did not return it."
-      : trace.loading ? "Reading the trace…" : "No records yet: they will appear with the first turn after the backend update."));
+    list.replaceChildren(el("div", "empty", trace.error ? tx("Trace unavailable: the backend did not return it.")
+      : trace.loading ? tx("Reading the trace…") : tx("No records yet: they will appear with the first turn after the backend update.")));
+    delete list.dataset.count;
     return;
   }
-  let turn = null;
-  for (const record of trace.records) {
-    if (record.turnId && record.turnId !== turn) {
-      turn = record.turnId;
-      list.append(el("div", "trace-turn", `turn ${turn.slice(0, 8)}`));
-    }
-    list.append(traceRecord(record));
+  const first = traceKey(trace.records[0]);
+  const shown = list.dataset.count === undefined ? 0 : Number(list.dataset.count);
+  const sameStart = shown > 0 && list.dataset.first === first;
+  if (sameStart && shown === trace.records.length) return;
+  const nearBottom = list.scrollTop + list.clientHeight >= list.scrollHeight - 40;
+  let lastTurn;
+  if (sameStart && shown < trace.records.length) {
+    lastTurn = appendTraceRecords(list, trace.records.slice(shown), list.dataset.lastTurn || null);
+  } else {
+    const fromBottom = list.scrollHeight - list.scrollTop;
+    list.replaceChildren();
+    lastTurn = appendTraceRecords(list, trace.records, null);
+    if (shown > 0 && !nearBottom) list.scrollTop = list.scrollHeight - fromBottom;
   }
-  if (firstPaint || nearBottom) list.scrollTop = list.scrollHeight;
+  list.dataset.count = String(trace.records.length);
+  list.dataset.first = first;
+  list.dataset.lastTurn = lastTurn ?? "";
+  if (shown === 0 || nearBottom) list.scrollTop = list.scrollHeight;
 }
 
 // --- agent model ------------------------------------------------------------------
@@ -715,10 +791,10 @@ const modelOf = (id) => (modelCatalog?.ok ? modelCatalog.data.models.find((item)
 function modelWords(agent) {
   loadModelCatalog();
   const profile = agent?.profile ?? null;
-  if (profile === null) return "model not reported";
+  if (profile === null) return tx("model not reported");
   const name = modelOf(profile.model)?.name ?? profile.model;
-  const effort = profile.reasoningEffort === "default" ? "default reasoning" : `reasoning ${profile.reasoningEffort}`;
-  const provider = profile.provider === "claude" ? "Claude Code" : profile.provider;
+  const effort = profile.reasoningEffort === "default" ? tx("default reasoning") : tx("reasoning {reasoningEffort}", { reasoningEffort: profile.reasoningEffort });
+  const provider = { claude: "Claude Code", acp: "DeepSeek Harness" }[profile.provider] ?? profile.provider;
   return `${provider} · ${name} · ${effort}`;
 }
 
@@ -738,8 +814,8 @@ window.addEventListener("resize", () => {
 // survive a restart (ui-state).
 
 const CHAT_SCALES = Object.freeze({
-  chatText: { title: "Font", min: 70, max: 150, step: 10 },
-  chatZoom: { title: "Zoom", min: 50, max: 150, step: 10 },
+  chatText: { title: tx("Font"), min: 70, max: 150, step: 10 },
+  chatZoom: { title: tx("Zoom"), min: 50, max: 150, step: 10 },
 });
 
 function chatScaleOf(name) {
@@ -771,7 +847,7 @@ function chatScaleControl() {
   const wrap = el("div", "chat-scale-wrap");
   const button = el("button", "icon-btn flat", "Aa");
   button.id = "chatScaleButton";
-  button.title = "Text size and zoom of the agent window · Ctrl+wheel over the window zooms";
+  button.title = tx("Text size and zoom of the agent window · Ctrl+wheel over the window zooms");
   const menu = el("div", "chat-scale-menu");
   menu.hidden = true;
   for (const [name, scale] of Object.entries(CHAT_SCALES)) {
@@ -785,12 +861,12 @@ function chatScaleControl() {
     row.append(el("span", null, scale.title), less, value, more);
     menu.append(row);
   }
-  const reset = el("button", "small", "Reset");
+  const reset = el("button", "small", tx("Reset"));
   reset.addEventListener("click", () => {
     setChatScale("chatText", 100);
     setChatScale("chatZoom", 100);
   });
-  menu.append(reset, el("div", "chat-scale-hint", "Ctrl+wheel over the agent window zooms it."));
+  menu.append(reset, el("div", "chat-scale-hint", tx("Ctrl+wheel over the agent window zooms it.")));
   button.addEventListener("click", (event) => {
     event.stopPropagation();
     menu.hidden = !menu.hidden;
@@ -834,7 +910,7 @@ function setWorkspaceFull(full) {
 /** The grip at the left edge: drag it to change the width; release it and the width is remembered. */
 function workspaceResizer(panel) {
   const grip = el("div", "workspace-resizer");
-  grip.title = "Drag to change the width";
+  grip.title = tx("Drag to change the width");
   grip.addEventListener("pointerdown", (event) => {
     if (event.button !== 0) return;
     event.preventDefault();
@@ -870,42 +946,56 @@ function workspaceResizer(panel) {
 // --- tabs -----------------------------------------------------------------------
 
 /**
- * Agent tasks. The backend does not report a task list or task readiness: the progress field
- * in the contract is always empty, and it must not be made up. So this shows only
- * what can be observed: the running operation, the last one, pending questions and what the person
- * assigned to the agent in the conversation.
+ * Agent tasks. First the controller tasks under the contract (the task board of
+ * the trusted host): for the world lead, all it gave out; for an agent, those
+ * given to it, and whether it takes tasks at all. Then what the catalog shows:
+ * the running operation, the last one, pending questions and what the person asked
+ * the agent to do in the conversation. The progress field in the catalog is always empty, and it must not be made up.
  */
 function renderTasks(body, agent) {
-  body.append(el("div", "section-title", "Now"));
-  body.append(infoRow("running operation", agent.currentOperationId));
-  body.append(infoRow("last operation", agent.lastOperation === null
+  if (agent.settings?.role === "coordinator") {
+    body.append(el("div", "section-title", tx("Tasks given out")));
+    const tasks = el("div");
+    body.append(tasks);
+    taskBoardList(tasks, { empty: tx("The world lead has not given desk agents any tasks yet.") });
+  } else {
+    deskAgentSection(body, agent);
+    body.append(el("div", "section-title", tx("Tasks from the world lead")));
+    const tasks = el("div");
+    body.append(tasks);
+    taskBoardList(tasks, { agentId: agent.agentId, showAgent: false,
+      empty: tx("This agent has not been given any controller tasks.") });
+  }
+  body.append(el("div", "section-title", tx("Now")));
+  body.append(infoRow(tx("running operation"), agent.currentOperationId));
+  body.append(infoRow(tx("last operation"), agent.lastOperation === null
     ? null : `${agent.lastOperation.operationId} · ${agent.lastOperation.state}`));
-  body.append(infoRow("state", agent.state));
-  body.append(infoRow("task progress", agent.taskProgress));
+  body.append(infoRow(tx("state"), agent.state));
+  body.append(infoRow(tx("task progress"), agent.taskProgress));
   renderAttentionFacts(body, agent.attention);
 
   // A separate read of the agent card (query.memory.agent.read), not a catalog row.
   const card = el("div");
-  const read = actionButton("Read agent details", "query.memory.agent.read", async () => {
+  const read = actionButton(tx("Read agent details"), "query.memory.agent.read", async () => {
     read.disabled = true;
     const response = await window.atlas.agentRead({ agentId: agent.agentId });
     read.disabled = false;
     if (!response.ok) {
-      card.replaceChildren(noteBlock("error", `Not read: ${response.error.code}`));
+      card.replaceChildren(noteBlock("error", tx("Not read: {code}", { code: response.error.code })));
       return;
     }
     const envelope = response.result;
     if (envelope.outcome !== "succeeded") {
-      card.replaceChildren(noteBlock("error", `Read: ${envelope.outcome} (${envelope.error?.code ?? "no code"})`));
+      card.replaceChildren(noteBlock("error", tx("Read: {outcome} ({value})", { outcome: envelope.outcome, value: envelope.error?.code ?? tx("no code") })));
       return;
     }
     const fresh = envelope.output;
     card.replaceChildren(
-      infoRow("read at", envelope.completedAtUtc),
-      infoRow("state", fresh.state),
-      infoRow("delivery", fresh.deliveryState),
-      infoRow("memory", fresh.contentState),
-      infoRow("archive coverage", fresh.coverage),
+      infoRow(tx("read at"), envelope.completedAtUtc),
+      infoRow(tx("state"), fresh.state),
+      infoRow(tx("delivery"), fresh.deliveryState),
+      infoRow(tx("memory"), fresh.contentState),
+      infoRow(tx("archive coverage"), fresh.coverage),
     );
   });
   const readActions = el("div", "actions");
@@ -921,20 +1011,20 @@ function renderTasks(body, agent) {
     body.append(actions, result);
   }
   body.append(noteBlock("note",
-    "“Running” does not mean “the task is being done”: the backend reports the life cycle of the operation, "
-    + "not the progress of the work. Progress stays empty until it starts being reported."));
+    tx("“Running” does not mean “the task is being done”: the backend reports the life cycle of the operation, ")
+    + tx("not the progress of the work. Progress stays empty until it starts being reported.")));
 
   const world = atlasState.world;
   const pending = world !== null && world.status === "ready"
     ? world.attention.filter((item) => item.agentId === agent.agentId && item.kind === "interaction")
     : [];
-  body.append(el("div", "section-title", `Waiting for an answer · ${pending.length}`));
-  if (pending.length === 0) body.append(el("div", "empty", "No questions are waiting for you."));
+  body.append(el("div", "section-title", tx("Waiting for an answer · {length}", { length: pending.length })));
+  if (pending.length === 0) body.append(el("div", "empty", tx("No questions are waiting for you.")));
   for (const item of pending) {
     const box = el("div", "entry");
     box.append(el("div", "entry-title", item.title || item.interactionId));
-    box.append(el("div", "entry-text", `due ${item.deadlineAtUtc ?? "not reported"}`));
-    const go = el("button", "small", "Go to questions");
+    box.append(el("div", "entry-text", tx("due {value}", { value: item.deadlineAtUtc ?? tx("workspace::not reported") })));
+    const go = el("button", "small", tx("Go to questions"));
     go.addEventListener("click", () => {
       workspaceState.tab = "questions";
       renderWorkspace();
@@ -943,97 +1033,97 @@ function renderTasks(body, agent) {
     body.append(box);
   }
 
-  body.append(el("div", "section-title", "What was assigned"));
+  body.append(el("div", "section-title", tx("What was assigned")));
   const feed = workspaceState.feed;
   if (feed === null || feed.agentId !== agent.agentId || feed.readAt === null) {
     const actions = el("div", "actions");
-    actions.append(actionButton("Read conversation", "query.memory.agent.archive", async () => {
+    actions.append(actionButton(tx("Read conversation"), "query.memory.agent.archive", async () => {
       await readFeed(agent);
       renderWorkspace();
     }));
     body.append(actions);
     body.append(el("div", "empty",
-      feed?.error ? `Conversation not read: ${feed.error}.`
-        : "Assignments are visible from the captured conversation, so read it first."));
+      feed?.error ? tx("Conversation not read: {error}.", { error: feed.error })
+        : tx("Assignments are visible from the captured conversation, so read it first.")));
     return;
   }
   const asked = feedEntries(feed).filter((entry) => entry.record.kind === "submission"
     || entry.record.role === "user");
   if (asked.length === 0) {
-    body.append(el("div", "empty", "No assignments are visible in the captured part of the conversation."));
+    body.append(el("div", "empty", tx("No assignments are visible in the captured part of the conversation.")));
   }
   for (const entry of asked.slice(-12).reverse()) {
     const box = el("div", "entry");
     box.append(el("div", "entry-title",
       `${timeOf(entry.record) ?? ""} · ${RECORD_STATE_LABELS[entry.record.state] ?? entry.record.state}`));
-    box.append(el("div", "entry-text", entry.record.text ?? "(text not captured)"));
+    box.append(el("div", "entry-text", entry.record.text ?? tx("(text not captured)")));
     body.append(box);
   }
   body.append(noteBlock("note",
-    "These are records the backend captured, not a task list: which of the assigned work is done, "
-    + "it does not report."));
+    tx("These are records the backend captured, not a task list: which of the assigned work is done, ")
+    + tx("it does not report.")));
 }
 
 /** Captured attention from the catalog: null means “no data”, never 0. */
 function renderAttentionFacts(body, attention) {
   const facts = attentionFacts(attention);
-  body.append(el("div", "section-title", "Attention in the catalog"));
-  body.append(infoRow("questions waiting", facts.questions));
-  body.append(infoRow("approvals waiting", facts.approvals));
-  body.append(infoRow("recovery needed", facts.recovery));
-  body.append(infoRow("observed", facts.observedAtUtc ?? "no data"));
+  body.append(el("div", "section-title", tx("Attention in the catalog")));
+  body.append(infoRow(tx("questions waiting"), facts.questions));
+  body.append(infoRow(tx("approvals waiting"), facts.approvals));
+  body.append(infoRow(tx("recovery needed"), facts.recovery));
+  body.append(infoRow(tx("observed"), facts.observedAtUtc ?? tx("no data")));
   body.append(el("div", "muted", facts.summary));
 }
 
 function renderContext(body, agent) {
-  body.append(el("div", "section-title", "Requested profile"));
+  body.append(el("div", "section-title", tx("Requested profile")));
   if (agent.profile === null || agent.profile === undefined) {
-    body.append(el("div", "empty", "The catalog did not report a profile."));
+    body.append(el("div", "empty", tx("The catalog did not report a profile.")));
   } else {
-    body.append(infoRow("provider", agent.profile.provider));
-    body.append(infoRow("model", agent.profile.model));
-    body.append(infoRow("effort", agent.profile.reasoningEffort));
-    body.append(infoRow("model fallback", agent.profile.fallbackPolicy === "deny" ? "denied" : agent.profile.fallbackPolicy));
+    body.append(infoRow(tx("provider"), agent.profile.provider));
+    body.append(infoRow(tx("model"), agent.profile.model));
+    body.append(infoRow(tx("effort"), agent.profile.reasoningEffort));
+    body.append(infoRow(tx("model fallback"), agent.profile.fallbackPolicy === "deny" ? tx("denied") : agent.profile.fallbackPolicy));
     body.append(noteBlock("note",
-      "This is the profile requested when the agent was created. What effort the provider actually applied, "
-      + "the backend does not report, and it does not follow from this."));
+      tx("This is the profile requested when the agent was created. What effort the provider actually applied, ")
+      + tx("the backend does not report, and it does not follow from this.")));
   }
-  body.append(el("div", "section-title", "Memory"));
-  body.append(infoRow("project", agent.projectId));
-  body.append(infoRow("quarter", agent.quarterId));
-  body.append(infoRow("current operation", agent.currentOperationId));
-  body.append(infoRow("required memory", agent.requiredManifest
-    ? `project rev. ${agent.requiredManifest.project.revision}, quarter rev. ${agent.requiredManifest.quarter.revision}`
+  body.append(el("div", "section-title", tx("Memory")));
+  body.append(infoRow(tx("project"), agent.projectId));
+  body.append(infoRow(tx("quarter"), agent.quarterId));
+  body.append(infoRow(tx("current operation"), agent.currentOperationId));
+  body.append(infoRow(tx("required memory"), agent.requiredManifest
+    ? tx("project rev. {revision}, quarter rev. {revision2}", { revision: agent.requiredManifest.project.revision, revision2: agent.requiredManifest.quarter.revision })
     : null));
-  body.append(infoRow("delivered memory", agent.deliveredManifest
-    ? `project rev. ${agent.deliveredManifest.project.revision}, quarter rev. ${agent.deliveredManifest.quarter.revision}`
+  body.append(infoRow(tx("delivered memory"), agent.deliveredManifest
+    ? tx("project rev. {revision}, quarter rev. {revision2}", { revision: agent.deliveredManifest.project.revision, revision2: agent.deliveredManifest.quarter.revision })
     : null));
   if (agent.deliveredManifest === null) {
     body.append(noteBlock("note",
-      "Memory has not been delivered yet. Edits apply to the next send; a running turn keeps its own."));
+      tx("Memory has not been delivered yet. Edits apply to the next send; a running turn keeps its own.")));
   }
   const actions = el("div", "actions");
   const shown = el("div");
-  actions.append(actionButton("Read agent memory", "query.memory.agent.context", async () => {
+  actions.append(actionButton(tx("Read agent memory"), "query.memory.agent.context", async () => {
     const response = await window.atlas.agentContext({ agentId: agent.agentId });
     shown.replaceChildren();
     if (!response.ok || response.result.outcome !== "succeeded") {
-      shown.append(noteBlock("error", "Agent memory not read. It is unknown, not empty."));
+      shown.append(noteBlock("error", tx("Agent memory not read. It is unknown, not empty.")));
       return;
     }
     const output = response.result.output;
-    shown.append(infoRow("content state", output.contentState));
-    shown.append(infoRow("delivery", output.deliveryState));
-    shown.append(infoRow("manifest fingerprint", String(output.manifestHash ?? "").slice(0, 16)));
+    shown.append(infoRow(tx("content state"), output.contentState));
+    shown.append(infoRow(tx("delivery"), output.deliveryState));
+    shown.append(infoRow(tx("manifest fingerprint"), String(output.manifestHash ?? "").slice(0, 16)));
     // The third one is the agent's own memory: only the agent receives it.
-    const scopes = [["Project memory", output.project], ["Quarter memory", output.quarter],
-      ...(output.agent ? [["Agent's own memory", output.agent]] : [])];
+    const scopes = [[tx("Project memory"), output.project], [tx("Quarter memory"), output.quarter],
+      ...(output.agent ? [[tx("Agent's own memory"), output.agent]] : [])];
     for (const [title, scope] of scopes) {
-      shown.append(el("div", "section-title", `${title} · ${scope ? scope.scopeId : "not reported"}`));
+      shown.append(el("div", "section-title", tx("{title} · {value}", { title, value: scope ? scope.scopeId : tx("workspace2::not reported") })));
       if (!scope) continue;
-      shown.append(infoRow("revision", scope.revision));
+      shown.append(infoRow(tx("revision"), scope.revision));
       const entries = scope.entries ?? [];
-      if (entries.length === 0) shown.append(el("div", "empty", "Empty. An empty memory is allowed."));
+      if (entries.length === 0) shown.append(el("div", "empty", tx("Empty. An empty memory is allowed.")));
       for (const entry of entries) {
         const box = el("div", "entry");
         box.append(el("div", "entry-title", entry.title || entry.id));
@@ -1044,34 +1134,34 @@ function renderContext(body, agent) {
   }));
   if (atlasState.info?.mode !== "direct" && typeof agent.agentScopeId === "string") {
     // The agent's own memory is edited with the same sheet as project and quarter memory.
-    actions.append(actionButton("Open agent memory", "query.memory.scope.read",
-      () => openMemorySheet(agent.agentScopeId, `Agent memory · ${agent.agentId}`)));
+    actions.append(actionButton(tx("Open agent memory"), "query.memory.scope.read",
+      () => openMemorySheet(agent.agentScopeId, tx("Agent memory · {agentId}", { agentId: agent.agentId }))));
   }
   body.append(actions, shown);
   if (atlasState.info?.mode === "direct") renderAgentNotes(body, agent);
   else renderLiveMemoryDocument(body, agent);
   body.append(noteBlock("note",
-    "“Context” here is the memory the agent works with: the entries of the project memory, "
-    + "the quarter memory and its own memory, and which revision of them was delivered to it. This is not the context window of the model, "
-    + "not the conversation and not the files it opened: the backend does not report those."));
+    tx("“Context” here is the memory the agent works with: the entries of the project memory, ")
+    + tx("the quarter memory and its own memory, and which revision of them was delivered to it. This is not the context window of the model, ")
+    + tx("not the conversation and not the files it opened: the backend does not report those.")));
 }
 
 const DOCUMENT_REFUSALS = Object.freeze({
-  memory_document_missing: "no document at this path",
-  memory_document_path_invalid: "the path must lead to a file inside the project folder",
-  memory_document_not_a_file: "this path is not a file",
-  memory_document_empty: "the document has no “## …” entries",
-  memory_document_too_large: "the document is too large",
-  memory_document_too_many_entries: "the document has more entries than memory can hold",
-  memory_document_changed: "the document changed while you were approving it — show it again",
-  memory_document_target_denied: "this agent may not write to this memory",
-  memory_revision_conflict: "this memory has changed — show the document again",
-  memory_workspace_required: "the project has no folder bound",
-  memory_agent_closed: "agent archived",
-  document_path_invalid: "the path must lead to a file inside the project folder",
+  memory_document_missing: tx("no document at this path"),
+  memory_document_path_invalid: tx("the path must lead to a file inside the project folder"),
+  memory_document_not_a_file: tx("this path is not a file"),
+  memory_document_empty: tx("the document has no “## …” entries"),
+  memory_document_too_large: tx("the document is too large"),
+  memory_document_too_many_entries: tx("the document has more entries than memory can hold"),
+  memory_document_changed: tx("the document changed while you were approving it — show it again"),
+  memory_document_target_denied: tx("this agent may not write to this memory"),
+  memory_revision_conflict: tx("this memory has changed — show the document again"),
+  memory_workspace_required: tx("the project has no folder bound"),
+  memory_agent_closed: tx("agent archived"),
+  document_path_invalid: tx("the path must lead to a file inside the project folder"),
 });
 const documentRefusal = (error) => DOCUMENT_REFUSALS[error?.reasonCode] ?? DOCUMENT_REFUSALS[error?.code]
-  ?? error?.reasonCode ?? error?.code ?? "no code";
+  ?? error?.reasonCode ?? error?.code ?? tx("no code");
 
 /**
  * Live mode: the memory document. The agent writes a memory draft into a file of the project
@@ -1080,13 +1170,13 @@ const documentRefusal = (error) => DOCUMENT_REFUSALS[error?.reasonCode] ?? DOCUM
  * or your “Approve and write” button.
  */
 function renderLiveMemoryDocument(body, agent) {
-  body.append(el("div", "section-title", "Memory document"));
-  body.append(el("div", "muted", "Path to the draft from the root of the project folder. “## …” headings become memory entries; "
-    + "approved entries will replace the current entries of the chosen memory."));
+  body.append(el("div", "section-title", tx("Memory document")));
+  body.append(el("div", "muted", tx("Path to the draft from the root of the project folder. “## …” headings become memory entries; ")
+    + tx("approved entries will replace the current entries of the chosen memory.")));
   const role = agent.settings?.role ?? "feature";
-  const targets = [["agent", "Agent's own memory"]];
-  if (role === "project-lead") targets.unshift(["project", "Project memory"]);
-  if (role === "quarter-lead") targets.unshift(["quarter", "Quarter memory"]);
+  const targets = [["agent", tx("Agent's own memory")]];
+  if (role === "project-lead") targets.unshift(["project", tx("Project memory")]);
+  if (role === "quarter-lead") targets.unshift(["quarter", tx("Quarter memory")]);
   workspaceState.documentPaths ??= new Map();
   const pathInput = el("input", "field");
   pathInput.placeholder = role === "quarter-lead" ? `docs/memory/${agent.quarterId}.md` : "docs/memory/project.md";
@@ -1103,30 +1193,30 @@ function renderLiveMemoryDocument(body, agent) {
   const result = el("div");
   const showPreview = async () => {
     result.replaceChildren();
-    shown.replaceChildren(el("div", "muted", "Reading the document…"));
+    shown.replaceChildren(el("div", "muted", tx("Reading the document…")));
     const answer = await window.atlas.previewMemoryDocument({ agentId: agent.agentId, path: pathInput.value.trim(),
       target: target.value });
     shown.replaceChildren();
     if (!answer.ok) {
-      shown.append(noteBlock("error", `Document not read: ${documentRefusal(answer.error)}.`));
+      shown.append(noteBlock("error", tx("Document not read: {value}.", { value: documentRefusal(answer.error) })));
       return;
     }
     const data = answer.data;
     const into = targets.find(([value]) => value === data.target.kind)?.[1] ?? data.target.kind;
-    shown.append(infoRow("document", data.path));
-    shown.append(infoRow("to", `${into}${data.target.revision === null ? "" : ` · now rev. ${data.target.revision}`}`));
-    shown.append(infoRow("size", data.bytes === null ? null : `${data.bytes} bytes`));
+    shown.append(infoRow(tx("document"), data.path));
+    shown.append(infoRow(tx("to"), tx("{into}{value}", { into, value: data.target.revision === null ? "" : tx(" · now rev. {revision}", { revision: data.target.revision }) })));
+    shown.append(infoRow(tx("size"), data.bytes === null ? null : tx("{bytes} bytes", { bytes: data.bytes })));
     shown.append(infoRow("SHA-256", `${data.contentSha256.slice(0, 16)}…`));
-    shown.append(el("div", "section-title", `Entries · ${data.entries.length}`));
+    shown.append(el("div", "section-title", tx("Entries · {length}", { length: data.entries.length })));
     for (const entry of data.entries) {
       const row = el("div", "entry");
-      row.append(el("div", "entry-title", entry.title || "(no heading)"));
-      if (entry.characters !== null) row.append(el("div", "entry-text", `${entry.characters} chars`));
+      row.append(el("div", "entry-title", entry.title || tx("(no heading)")));
+      if (entry.characters !== null) row.append(el("div", "entry-text", tx("{characters} chars", { characters: entry.characters })));
       shown.append(row);
     }
     if (data.excerpt !== "") {
       const start = el("details");
-      start.append(el("summary", null, "Start of the document"), el("pre", "feed-activity-text", data.excerpt));
+      start.append(el("summary", null, tx("Start of the document")), el("pre", "feed-activity-text", data.excerpt));
       shown.append(start);
     }
     const approve = (apply) => async () => {
@@ -1134,27 +1224,27 @@ function renderLiveMemoryDocument(body, agent) {
         target: data.target.kind, apply });
       if (!done.ok) {
         if (done.error?.code === "user_declined") return;
-        atlasRecord("bad", "memory document not approved", `${agent.agentId} · ${documentRefusal(done.error)}`);
-        result.replaceChildren(noteBlock("error", `Not approved: ${documentRefusal(done.error)}.`));
+        atlasRecord("bad", tx("memory document not approved"), `${agent.agentId} · ${documentRefusal(done.error)}`);
+        result.replaceChildren(noteBlock("error", tx("Not approved: {value}.", { value: documentRefusal(done.error) })));
         return;
       }
-      atlasRecord("ok", done.data.applied ? "memory document written" : "memory document approved",
-        `${agent.agentId} · ${data.path}${done.data.applied ? ` · revision ${done.data.revision}` : ""}`);
+      atlasRecord("ok", done.data.applied ? tx("memory document written") : tx("memory document approved"),
+        tx("{agentId} · {path}{value}", { agentId: agent.agentId, path: data.path, value: done.data.applied ? tx(" · revision {revision}", { revision: done.data.revision }) : "" }));
       result.replaceChildren(noteBlock("note", done.data.applied
-        ? `Written: ${into.toLowerCase()}, revision ${done.data.revision}. The agent will get it with the next message.`
-        : `Approved. The agent will write exactly this text with its write_memory_from_document tool.`));
+        ? tx("Written: {value}, revision {revision}. The agent will get it with the next message.", { value: into.toLowerCase(), revision: done.data.revision })
+        : tx("Approved. The agent will write exactly this text with its write_memory_from_document tool.")));
       await refresh();
     };
     const buttons = el("div", "actions");
-    const approveOnly = trustedButton("Approve", approve(false));
-    approveOnly.title = "The agent will write this document to memory itself with its tool — exactly this text.";
-    const approveWrite = trustedButton("Approve and write", approve(true), { primary: true });
-    approveWrite.title = "Write to memory now, without an agent turn.";
+    const approveOnly = trustedButton(tx("Approve"), approve(false));
+    approveOnly.title = tx("The agent will write this document to memory itself with its tool — exactly this text.");
+    const approveWrite = trustedButton(tx("Approve and write"), approve(true), { primary: true });
+    approveWrite.title = tx("Write to memory now, without an agent turn.");
     buttons.append(approveOnly, approveWrite);
     shown.append(buttons);
   };
   const actions = el("div", "actions");
-  actions.append(trustedButton("Show document", showPreview));
+  actions.append(trustedButton(tx("Show document"), showPreview));
   body.append(pathInput, target, actions, shown, result);
 }
 
@@ -1164,56 +1254,56 @@ function renderLiveMemoryDocument(body, agent) {
  * The desk code holds the zone: Claude Code will not edit a file outside it.
  */
 function renderAgentNotes(body, agent) {
-  body.append(el("div", "section-title", "Agent memory"));
+  body.append(el("div", "section-title", tx("Agent memory")));
   const box = el("div");
-  box.append(el("div", "muted", "Reading…"));
+  box.append(el("div", "muted", tx("workspace::Reading…")));
   body.append(box);
   window.atlas.agentNotes({ agentId: agent.agentId }).then((response) => {
     box.replaceChildren();
     if (!response.ok) {
-      box.append(noteBlock("error", `Agent memory not read: ${response.error?.reasonCode ?? response.error?.code ?? "no code"}. It is unknown, not empty.`));
+      box.append(noteBlock("error", tx("Agent memory not read: {value}. It is unknown, not empty.", { value: response.error?.reasonCode ?? response.error?.code ?? tx("no code") })));
       return;
     }
     const notes = response.data;
     const draft = workspaceState.notesDraft?.agentId === agent.agentId ? workspaceState.notesDraft.text : null;
-    box.append(infoRow("revision", notes.revision === 0 ? "not saved yet" : notes.revision));
-    box.append(infoRow("delivery", notes.delivered ? "the agent has received it" : "goes with the next message"));
-    box.append(el("div", "muted", "Notes: what this agent works on and how. Only this agent receives them."));
+    box.append(infoRow(tx("revision"), notes.revision === 0 ? tx("not saved yet") : notes.revision));
+    box.append(infoRow(tx("delivery"), notes.delivered ? tx("the agent has received it") : tx("goes with the next message")));
+    box.append(el("div", "muted", tx("Notes: what this agent works on and how. Only this agent receives them.")));
     const text = el("textarea");
     text.rows = 10;
     text.value = [notes.entries.map((entry) => entry.text).join("\n\n"), draft]
       .filter((part) => typeof part === "string" && part.trim() !== "").join("\n\n");
-    text.placeholder = "Its feature, key files, how things work, agreements with other agents.";
+    text.placeholder = tx("Its feature, key files, how things work, agreements with other agents.");
     box.append(text);
-    box.append(el("div", "muted", "Write zone: where the agent may change files, one path per line, from the root of the project folder. Empty means the whole folder."));
+    box.append(el("div", "muted", tx("Write zone: where the agent may change files, one path per line, from the root of the project folder. Empty means the whole folder.")));
     const zone = el("textarea");
     zone.rows = 4;
     zone.value = notes.writeZone.join("\n");
     zone.placeholder = "tools/jointsolver/**";
     box.append(zone);
     box.append(noteBlock("note",
-      "The desk itself refuses a file edit outside the zone, before it happens; the agent can read everything. "
-      + "While a zone is set, the agent runs every terminal command only with your permission: a command could change a file bypassing the zone."));
-    if (draft !== null) box.append(noteBlock("note", "The agent's answer was added to the end of the notes. Check it and save."));
+      tx("The desk itself refuses a file edit outside the zone, before it happens; the agent can read everything. ")
+      + tx("While a zone is set, the agent runs every terminal command only with your permission: a command could change a file bypassing the zone.")));
+    if (draft !== null) box.append(noteBlock("note", tx("The agent's answer was added to the end of the notes. Check it and save.")));
     const result = el("div");
     const actions = el("div", "actions");
-    const save = el("button", "primary", "Save agent memory");
+    const save = el("button", "primary", tx("Save agent memory"));
     save.addEventListener("click", async () => {
       save.disabled = true;
       const written = text.value.trim();
-      const entries = written === "" ? [] : [{ id: "agent-notes", title: "Agent notes", text: written }];
+      const entries = written === "" ? [] : [{ id: "agent-notes", title: tx("Agent notes"), text: written }];
       const writeZone = zone.value.split(/\r?\n/u).map((line) => line.trim()).filter((line) => line !== "");
       const saved = await window.atlas.saveAgentNotes({ agentId: agent.agentId, expectedRevision: notes.revision, entries, writeZone });
       save.disabled = false;
       if (!saved.ok) {
         if (saved.error?.code === "user_declined") return;
         result.replaceChildren(noteBlock("error", saved.error?.code === "stale_revision"
-          ? "Agent memory has already changed: reread the tab. Nothing was overwritten."
-          : `Not saved: ${saved.error?.reasonCode ?? saved.error?.code ?? "no code"}.`));
+          ? tx("Agent memory has already changed: reread the tab. Nothing was overwritten.")
+          : tx("Not saved: {value}.", { value: saved.error?.reasonCode ?? saved.error?.code ?? tx("no code") })));
         return;
       }
       if (workspaceState.notesDraft?.agentId === agent.agentId) workspaceState.notesDraft = null;
-      atlasRecord("ok", "agent memory saved", `${agent.agentId} · revision ${saved.data.revision}`);
+      atlasRecord("ok", tx("agent memory saved"), tx("{agentId} · revision {revision}", { agentId: agent.agentId, revision: saved.data.revision }));
       renderWorkspace();
     });
     actions.append(save);
@@ -1223,11 +1313,11 @@ function renderAgentNotes(body, agent) {
   });
 }
 
-const ROLE_LABELS = Object.freeze([["feature", "feature agent"], ["quarter-lead", "quarter lead"], ["project-lead", "project lead"]]);
+const ROLE_LABELS = Object.freeze([["feature", tx("feature agent")], ["quarter-lead", tx("workspace::quarter lead")], ["project-lead", tx("workspace::project lead")]]);
 
 /** Agent role: a feature agent or a lead, of the project (the whole project) or of a quarter (a tool and its agents). */
 function renderAgentRole(box, agent, notes) {
-  box.append(el("div", "section-title", "Role"));
+  box.append(el("div", "section-title", tx("Role")));
   const select = el("select");
   for (const [value, label] of ROLE_LABELS) {
     const option = el("option", null, label);
@@ -1236,7 +1326,7 @@ function renderAgentRole(box, agent, notes) {
   }
   select.value = notes.role;
   const result = el("div");
-  const save = el("button", null, "Save role");
+  const save = el("button", null, tx("Save role"));
   save.addEventListener("click", async () => {
     save.disabled = true;
     const saved = await window.atlas.setAgentRole({ agentId: agent.agentId, role: select.value });
@@ -1244,19 +1334,19 @@ function renderAgentRole(box, agent, notes) {
     if (!saved.ok) {
       if (saved.error?.code === "user_declined") return;
       result.replaceChildren(noteBlock("error", saved.error?.reasonCode === "lead_taken"
-        ? `A lead already exists: ${saved.error.message ?? ""}. Make it a feature agent first.`
-        : `Role not saved: ${saved.error?.reasonCode ?? saved.error?.code ?? "no code"}.`));
+        ? tx("A lead already exists: {value}. Make it a feature agent first.", { value: saved.error.message ?? "" })
+        : tx("Role not saved: {value}.", { value: saved.error?.reasonCode ?? saved.error?.code ?? tx("no code") })));
       return;
     }
-    atlasRecord("ok", "agent role", `${agent.agentId} · ${ROLE_LABELS.find(([value]) => value === saved.data.role)?.[1] ?? saved.data.role}`);
+    atlasRecord("ok", tx("agent role"), `${agent.agentId} · ${ROLE_LABELS.find(([value]) => value === saved.data.role)?.[1] ?? saved.data.role}`);
     renderWorkspace();
   });
   const row = el("div", "actions");
   row.append(select, save);
   box.append(row, result);
   box.append(noteBlock("note",
-    "The project lead receives the memory of all quarters; a quarter lead receives the notes and zones of the agents of its quarter. "
-    + "A lead does not change code: by default its zone is docs/memory/, where it writes memory documents."));
+    tx("The project lead receives the memory of all quarters; a quarter lead receives the notes and zones of the agents of its quarter. ")
+    + tx("A lead does not change code: by default its zone is docs/memory/, where it writes memory documents.")));
 }
 
 /**
@@ -1265,11 +1355,11 @@ function renderAgentRole(box, agent, notes) {
  * your button — and only the text you approved.
  */
 function renderMemoryDocument(box, agent, notes) {
-  box.append(el("div", "section-title", "Memory document"));
+  box.append(el("div", "section-title", tx("Memory document")));
   box.append(el("div", "muted",
-    "Path to the document from the root of the project folder. “## …” headings become separate memory entries."));
+    tx("Path to the document from the root of the project folder. “## …” headings become separate memory entries.")));
   const pathInput = el("input");
-  pathInput.placeholder = notes.role === "feature" ? "tools/my-feature/NOTES.md" : "docs/memory/project.md";
+  pathInput.placeholder = notes.role === "feature" ? tx("tools/my-feature/NOTES.md") : "docs/memory/project.md";
   const target = el("select");
   for (const item of notes.targets) {
     const option = el("option", null, item.title);
@@ -1284,31 +1374,31 @@ function renderMemoryDocument(box, agent, notes) {
     if (!answer.ok) {
       if (answer.error?.code === "user_declined") return;
       const why = {
-        document_missing: "no document at this path", document_path_invalid: "the path must lead to a file inside the project folder",
-        document_empty: "the document is empty", document_changed: "the document changed while you were approving it — open it again",
-        memory_changed: "this memory has changed — approve the document again", memory_target_not_allowed: "this agent may not write to this memory",
-      }[answer.error?.reasonCode] ?? (answer.error?.reasonCode ?? answer.error?.code ?? "no code");
-      result.replaceChildren(noteBlock("error", `Not approved: ${why}.`));
+        document_missing: tx("no document at this path"), document_path_invalid: tx("the path must lead to a file inside the project folder"),
+        document_empty: tx("the document is empty"), document_changed: tx("the document changed while you were approving it — open it again"),
+        memory_changed: tx("this memory has changed — approve the document again"), memory_target_not_allowed: tx("this agent may not write to this memory"),
+      }[answer.error?.reasonCode] ?? (answer.error?.reasonCode ?? answer.error?.code ?? tx("no code"));
+      result.replaceChildren(noteBlock("error", tx("Not approved: {why}.", { why })));
       return;
     }
-    atlasRecord("ok", answer.data.applied ? "memory document written" : "memory document approved",
-      `${agent.agentId} · ${pathInput.value.trim()}${answer.data.applied ? ` · revision ${answer.data.revision}` : ""}`);
+    atlasRecord("ok", answer.data.applied ? tx("memory document written") : tx("memory document approved"),
+      tx("{agentId} · {value}{value2}", { agentId: agent.agentId, value: pathInput.value.trim(), value2: answer.data.applied ? tx(" · revision {revision}", { revision: answer.data.revision }) : "" }));
     renderWorkspace();
   };
   const actions = el("div", "actions");
-  const approveOnly = el("button", null, "Approve");
-  approveOnly.title = "The agent will write this document to memory itself with its tool — exactly this text.";
+  const approveOnly = el("button", null, tx("Approve"));
+  approveOnly.title = tx("The agent will write this document to memory itself with its tool — exactly this text.");
   approveOnly.addEventListener("click", approve(false));
-  const approveWrite = el("button", "primary", "Approve and write");
-  approveWrite.title = "Write to memory now, without an agent turn.";
+  const approveWrite = el("button", "primary", tx("Approve and write"));
+  approveWrite.title = tx("Write to memory now, without an agent turn.");
   approveWrite.addEventListener("click", approve(true));
   actions.append(approveOnly, approveWrite);
   box.append(actions, result);
   if (notes.grants.length > 0) {
-    box.append(el("div", "muted", "Approvals of this agent"));
+    box.append(el("div", "muted", tx("Approvals of this agent")));
     for (const grant of [...notes.grants].reverse()) {
-      const state = grant.writtenRevision !== null ? `written, revision ${grant.writtenRevision}`
-        : grant.supersededAtUtc !== null ? "replaced by a newer approval" : "approved, waiting to be written";
+      const state = grant.writtenRevision !== null ? tx("written, revision {writtenRevision}", { writtenRevision: grant.writtenRevision })
+        : grant.supersededAtUtc !== null ? tx("replaced by a newer approval") : tx("approved, waiting to be written");
       box.append(infoRow(`${grant.path} → ${grant.targetTitle}`, state));
     }
   }
@@ -1329,32 +1419,34 @@ const FEED_PAGE_LIMIT = 50;
 const FEED_LIVE_PAGES = 10;
 const FEED_FULL_PAGES = 200;
 const FEED_REFRESH_MS = 5000;
+// While a turn runs - more often: the answer in the chat must not lag behind the trace (read every 2.5 s).
+const FEED_RUNNING_MS = 1500;
 
 const RECORD_STATE_LABELS = Object.freeze({
-  requested: "requested", accepted: "accepted", started: "started", completed: "completed",
-  failed: "failed", interrupted: "interrupted", uncertain: "uncertain", unknown: "unknown",
+  requested: tx("workspace::requested"), accepted: tx("workspace::accepted"), started: tx("workspace::started"), completed: tx("workspace::completed"),
+  failed: tx("failed"), interrupted: tx("workspace::interrupted"), uncertain: tx("workspace::uncertain"), unknown: tx("workspace::unknown"),
 });
 
 const OMISSION_LABELS = Object.freeze({
-  hidden_reasoning: "hidden reasoning — not kept",
-  unsupported_content: "content the archive cannot store",
-  oversized_content: "too large — not captured",
-  inline_media: "inline images",
-  private_content: "private content",
-  content_not_provided: "the provider did not supply the content",
-  history_not_imported: "history before recording started was not imported",
-  provider_unavailable: "the provider was unavailable — not captured",
-  private_provider_payload: "private provider data",
-  unsafe_content: "unsafe content — not shown",
-  media_bytes: "binary data and images",
-  raw_log: "raw log — not shown",
+  hidden_reasoning: tx("hidden reasoning — not kept"),
+  unsupported_content: tx("content the archive cannot store"),
+  oversized_content: tx("too large — not captured"),
+  inline_media: tx("inline images"),
+  private_content: tx("private content"),
+  content_not_provided: tx("the provider did not supply the content"),
+  history_not_imported: tx("history before recording started was not imported"),
+  provider_unavailable: tx("the provider was unavailable — not captured"),
+  private_provider_payload: tx("private provider data"),
+  unsafe_content: tx("unsafe content — not shown"),
+  media_bytes: tx("binary data and images"),
+  raw_log: tx("raw log — not shown"),
 });
 
 const LIVE_REASON_WORDS = Object.freeze({
-  agent_unbound: "the agent is not bound to a conversation thread",
-  agent_archived: "the agent is archived — showing the captured archive",
-  provider_unavailable: "the provider is unavailable right now",
-  provider_identity_mismatch: "the thread belongs to another provider instance",
+  agent_unbound: tx("the agent is not bound to a conversation thread"),
+  agent_archived: tx("the agent is archived — showing the captured archive"),
+  provider_unavailable: tx("the provider is unavailable right now"),
+  provider_identity_mismatch: tx("the thread belongs to another provider instance"),
 });
 
 const liveReadAvailable = () => ["query.agent-conversation.resolve", "query.agent-conversation.read"]
@@ -1396,7 +1488,7 @@ async function readLive(agent, { maxPages = null } = {}) {
   live.loading = false;
   if (!response.ok) {
     if (live.error !== response.error.code) {
-      atlasRecord("bad", "live conversation not read", `${agent.agentId} ${response.error.code}`);
+      atlasRecord("bad", tx("live conversation not read"), `${agent.agentId} ${response.error.code}`);
     }
     live.error = response.error.code;
   } else {
@@ -1428,7 +1520,7 @@ async function pollAgentEvents(agent) {
   workspaceState.eventsRestart = false;
   const response = await window.atlas.agentEvents({ agentId: agent.agentId, restart });
   if (live !== null && live.agentId === agent.agentId) {
-    live.eventsNote = response.ok ? null : `events not read: ${response.error.code}`;
+    live.eventsNote = response.ok ? null : tx("events not read: {code}", { code: response.error.code });
   }
   if (!response.ok) {
     // Without events a snapshot is still needed: the conversation is read directly.
@@ -1560,21 +1652,21 @@ function liveRecord(item, { answer = false } = {}) {
   if (kind === "hidden-reasoning") {
     const node = el("details", "feed-thinking hidden-text");
     const summary = el("summary");
-    summary.append(el("span", "feed-thinking-mark", "✻"), el("span", "feed-thinking-word", "thinking"),
-      el("span", "feed-thinking-first", "the provider did not pass its text"));
+    summary.append(el("span", "feed-thinking-mark", "✻"), el("span", "feed-thinking-word", tx("workspace::thinking")),
+      el("span", "feed-thinking-first", tx("the provider did not pass its text")));
     node.append(summary);
     summary.addEventListener("click", (event) => event.preventDefault());
     return node;
   }
   if (kind === "service") return el("div", "feed-service", liveItemBody(item));
-  const time = new Date(item.observedAtUtc).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+  const time = chatTime(item.observedAtUtc) ?? "";
   if (kind === "reasoning") {
     // As in Claude Code: thinking is not an action window but muted italics
     // with its own label; collapsed to the first line, it expands in full.
     const node = el("details", "feed-thinking");
     rememberOpen(node, `live:${id}`);
     const summary = el("summary");
-    summary.append(el("span", "feed-thinking-mark", "✻"), el("span", "feed-thinking-word", "thinking"),
+    summary.append(el("span", "feed-thinking-mark", "✻"), el("span", "feed-thinking-word", tx("workspace::thinking")),
       el("span", "feed-thinking-first", firstPlainLine(liveItemBody(item))));
     node.append(summary, markdownNode(liveItemBody(item), "feed-thinking-text"));
     return node;
@@ -1583,7 +1675,7 @@ function liveRecord(item, { answer = false } = {}) {
     const node = el("details", "feed-activity");
     rememberOpen(node, `live:${id}`);
     const summary = el("summary");
-    summary.append(el("span", "feed-activity-kind", kind === "change" ? "change" : "action"));
+    summary.append(el("span", "feed-activity-kind", kind === "change" ? tx("change") : tx("action")));
     summary.append(el("span", "feed-activity-first", item.text.split(/\r?\n/u)[0]));
     node.append(summary, el("pre", "feed-activity-text", item.text));
     return node;
@@ -1607,9 +1699,9 @@ function liveRecord(item, { answer = false } = {}) {
       node.append(head, list);
       return node;
     }
-    node.append(el("div", "feed-author", "Agent question"));
+    node.append(el("div", "feed-author", tx("Agent question")));
     node.append(el("div", "feed-text", item.text));
-    const go = el("button", "small", "Go to questions");
+    const go = el("button", "small", tx("Go to questions"));
     go.addEventListener("click", () => {
       workspaceState.tab = "questions";
       renderWorkspace();
@@ -1624,14 +1716,14 @@ function liveRecord(item, { answer = false } = {}) {
   const mine = kind === "user";
   const node = el("div", `feed-message ${mine ? "mine" : "agent"}`);
   const head = el("div", "feed-author");
-  head.append(el("span", null, mine ? "You" : "Agent"));
+  head.append(el("span", null, mine ? tx("You") : tx("Agent")));
   head.append(el("time", null, time));
   // Your own text is shown as typed; the agent's answer is shown with markup.
   node.append(head, mine ? el("div", "feed-text", item.text) : markdownNode(item.text, "feed-text"));
   if (!mine && answer && atlasState.info?.mode === "direct" && workspaceState.node !== null) {
     // The agent's answer about its feature can go into its memory: the person saves it on the “Memory” tab.
-    const keep = el("button", "small", "Add to agent memory");
-    keep.title = "Add this answer to the notes of the agent. Only the agent receives them; you save them.";
+    const keep = el("button", "small", tx("Add to agent memory"));
+    keep.title = tx("Add this answer to the notes of the agent. Only the agent receives them; you save them.");
     const agentId = workspaceState.node.agentId;
     keep.addEventListener("click", () => {
       workspaceState.notesDraft = { agentId, text: item.text };
@@ -1649,7 +1741,7 @@ function liveWork(items, turn, going) {
   rememberOpen(node, `work:${items[0].itemRef.authority.externalId}`, going);
   const summary = el("summary");
   const duration = going ? null : durationWords(turn?.startedAtUtc, turn?.completedAtUtc);
-  summary.append(el("span", "feed-work-title", going ? "The agent is working" : "Work log"));
+  summary.append(el("span", "feed-work-title", going ? tx("The agent is working") : tx("Work log")));
   const words = [workSummary(items), duration].filter((part) => part !== null && part !== "").join(" · ");
   if (words !== "") summary.append(el("span", "feed-work-words", words));
   const body = el("div", "feed-work-body");
@@ -1663,31 +1755,31 @@ function paintLive(container) {
   const data = live?.data ?? null;
   if (data === null) {
     container.append(el("div", "empty", live?.error
-      ? `Live conversation not read: ${live.error}. It is unknown, not empty.`
-      : "Reading the live conversation…"));
+      ? tx("Live conversation not read: {error}. It is unknown, not empty.", { error: live.error })
+      : tx("Reading the live conversation…")));
     return;
   }
   const traversal = data.traversal;
   if (traversal === null) {
-    container.append(el("div", "empty", "Reading the live conversation…"));
+    container.append(el("div", "empty", tx("Reading the live conversation…")));
     return;
   }
   if (traversal.status === "stale") {
     container.append(el("div", "empty",
-      "The conversation changed while it was being read. Different snapshots are not stitched together — read it again."));
+      tx("The conversation changed while it was being read. Different snapshots are not stitched together — read it again.")));
     return;
   }
   if (traversal.status === "invalid") {
-    container.append(el("div", "empty", "The backend returned a page of another conversation — it is not shown."));
+    container.append(el("div", "empty", tx("The backend returned a page of another conversation — it is not shown.")));
     return;
   }
   if (traversal.status === "failed") {
     container.append(el("div", "empty",
-      `Live conversation not read: ${traversal.code ?? traversal.reasonCode ?? "error"}. It is unknown, not empty.`));
+      tx("Live conversation not read: {value}. It is unknown, not empty.", { value: traversal.code ?? traversal.reasonCode ?? tx("error") })));
     return;
   }
   if (data.content.length === 0) {
-    container.append(el("div", "empty", "No records in the conversation yet."));
+    container.append(el("div", "empty", tx("No records in the conversation yet.")));
     return;
   }
   const turns = new Map(data.turns.map((turn) => [turn.turnRef.authority.externalId, turn]));
@@ -1701,7 +1793,7 @@ function paintLive(container) {
     const box = el("section", "feed-turn");
     const turn = turns.get(group.turnId);
     const state = turn?.state;
-    const head = el("div", "feed-turn-head", `Turn ${index + 1}`);
+    const head = el("div", "feed-turn-head", tx("Turn {value}", { value: index + 1 }));
     if (state && state !== "completed") head.append(el("span", `feed-state state-${state}`, RECORD_STATE_LABELS[state] ?? state));
     box.append(head);
     // As in Codex: message, collapsed work, answer. The split is in feed-core.js.
@@ -1725,17 +1817,17 @@ function livePulse(items, turn) {
   const last = items[items.length - 1] ?? null;
   const kind = last === null ? null : liveItemKind(last);
   const firstLine = last === null ? "" : String(last.text ?? "").split(/\r?\n/u)[0];
-  const running = kind === "action" && firstLine.includes(" · running");
+  const running = kind === "action" && firstLine.includes(tx(" · running"));
   const waiting = kind === "question" && questionEntries(last.text ?? "")?.state === "asking";
   const node = el("div", `feed-pulse${running ? " running" : waiting ? " waiting" : ""}`);
   node.append(el("span", "feed-pulse-mark", running ? "⏵" : waiting ? "?" : "✻"));
-  node.append(el("span", "feed-pulse-word", running ? "Running" : waiting ? "Waiting for your answer" : "Thinking…"));
+  node.append(el("span", "feed-pulse-word", running ? tx("Running") : waiting ? tx("Waiting for your answer") : tx("Thinking…")));
   const time = el("span", "feed-pulse-time");
   const since = Date.parse(turn?.startedAtUtc ?? items[0]?.observedAtUtc ?? "");
   time.dataset.since = String(Number.isFinite(since) ? since : Date.now());
-  time.textContent = `turn running ${elapsedWords(Date.now() - Number(time.dataset.since))}`;
+  time.textContent = tx("turn running {value}", { value: elapsedWords(Date.now() - Number(time.dataset.since)) });
   node.append(time);
-  if (running) node.append(el("span", "feed-pulse-what", firstLine.replace(" · running", "")));
+  if (running) node.append(el("span", "feed-pulse-what", firstLine.replace(tx(" · running"), "")));
   tickPulses();
   return node;
 }
@@ -1753,7 +1845,7 @@ function elapsedWords(ms) {
 let pulseTimer = null;
 function tickPulses() {
   const pulses = document.querySelectorAll(".feed-pulse-time");
-  for (const time of pulses) time.textContent = `turn running ${elapsedWords(Date.now() - Number(time.dataset.since))}`;
+  for (const time of pulses) time.textContent = tx("turn running {value}", { value: elapsedWords(Date.now() - Number(time.dataset.since)) });
   if (pulseTimer === null) {
     pulseTimer = setInterval(() => {
       if (document.querySelector(".feed-pulse-time") === null) {
@@ -1800,7 +1892,7 @@ async function readFeed(agent, { maxPages = FEED_LIVE_PAGES } = {}) {
     const response = await window.atlas.agentArchive({ agentId: agent.agentId, cursor, limit: FEED_PAGE_LIMIT });
     if (!response.ok || response.result.outcome !== "succeeded") {
       const error = response.ok ? response.result.error : response.error;
-      failure = error ? error.code : "unknown";
+      failure = error ? error.code : tx("workspace::unknown");
       break;
     }
     const output = response.result.output;
@@ -1818,7 +1910,7 @@ async function readFeed(agent, { maxPages = FEED_LIVE_PAGES } = {}) {
 
   feed.loading = false;
   if (failure !== null) {
-    if (feed.error !== failure) atlasRecord("bad", "conversation not read", `${agent.agentId} ${failure}`);
+    if (feed.error !== failure) atlasRecord("bad", tx("conversation not read"), `${agent.agentId} ${failure}`);
     feed.error = failure;
   } else if (movedDuringRead) {
     feed.restarted = true;
@@ -1840,7 +1932,7 @@ async function readFeed(agent, { maxPages = FEED_LIVE_PAGES } = {}) {
 
 function omissionMarker(omissions) {
   const marker = el("div", "feed-gap");
-  marker.append(el("span", "feed-gap-label", "omitted"));
+  marker.append(el("span", "feed-gap-label", tx("omitted")));
   marker.append(el("span", null, omissions.map((code) => OMISSION_LABELS[code] ?? code).join(" · ")));
   return marker;
 }
@@ -1848,9 +1940,18 @@ function omissionMarker(omissions) {
 const stateChip = (state) => (state === "completed" ? null
   : el("span", `feed-state state-${state}`, RECORD_STATE_LABELS[state] ?? state));
 
+/** A chat record's time: "14:05" today, "27.10 11:28" on another day. */
+function chatTime(atUtc) {
+  const at = new Date(atUtc ?? "");
+  if (!Number.isFinite(at.getTime())) return null;
+  const clock = at.toLocaleTimeString(dateLocale(), { hour: "2-digit", minute: "2-digit" });
+  if (at.toDateString() === new Date().toDateString()) return clock;
+  return `${at.toLocaleDateString(dateLocale(), { day: "2-digit", month: "2-digit" })} ${clock}`;
+}
+
 function timeOf(record) {
   if (!record.occurredAtUtc) return null;
-  return new Date(record.occurredAtUtc).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+  return chatTime(record.occurredAtUtc);
 }
 
 function feedRecord(entry) {
@@ -1870,44 +1971,44 @@ function feedRecord(entry) {
       else workspaceState.openActivities.delete(record.recordId);
     });
     const summary = el("summary");
-    summary.append(el("span", "feed-activity-kind", "action"));
+    summary.append(el("span", "feed-activity-kind", tx("action")));
     summary.append(el("span", "feed-activity-first",
-      text === null ? "output not captured" : text.split(/\r?\n/u)[0]));
+      text === null ? tx("output not captured") : text.split(/\r?\n/u)[0]));
     const chip = stateChip(record.state);
     if (chip) summary.append(chip);
     node.append(summary);
     if (text !== null) node.append(el("pre", "feed-activity-text", text));
   } else if (record.kind === "delivery") {
     node = el("div", "feed-system");
-    node.append(el("span", null, `delivery · ${RECORD_STATE_LABELS[record.state] ?? record.state}`));
+    node.append(el("span", null, tx("delivery · {state}", { state: RECORD_STATE_LABELS[record.state] ?? record.state })));
     if (text !== null) node.append(el("span", "muted", ` — ${text}`));
   } else if (record.kind === "interaction") {
     node = el("div", "feed-question");
     const head = el("div", "feed-author");
-    head.append(el("span", null, "Agent question"));
+    head.append(el("span", null, tx("Agent question")));
     const chip = stateChip(record.state);
     if (chip) head.append(chip);
     node.append(head);
-    node.append(el("div", "feed-text", text ?? "(text not captured)"));
-    const go = el("button", "small", "Go to questions");
+    node.append(el("div", "feed-text", text ?? tx("(text not captured)")));
+    const go = el("button", "small", tx("Go to questions"));
     go.addEventListener("click", () => {
       workspaceState.tab = "questions";
       renderWorkspace();
     });
     node.append(go);
   } else if (record.role === "system") {
-    node = el("div", "feed-system", text ?? "(text not captured)");
+    node = el("div", "feed-system", text ?? tx("(text not captured)"));
   } else {
     const mine = record.kind === "submission" || record.role === "user";
     node = el("div", `feed-message ${mine ? "mine" : "agent"}`);
     const head = el("div", "feed-author");
-    head.append(el("span", null, mine ? "You" : "Agent"));
+    head.append(el("span", null, mine ? tx("You") : tx("Agent")));
     const time = timeOf(record);
     if (time) head.append(el("time", null, time));
     const chip = stateChip(record.state);
     if (chip) head.append(chip);
     node.append(head);
-    node.append(el("div", "feed-text", text ?? "(text not captured)"));
+    node.append(el("div", "feed-text", text ?? tx("(text not captured)")));
   }
   if (omissions.length === 0) return node;
   const wrap = el("div");
@@ -1957,22 +2058,22 @@ function paintFeed(container) {
       container.scrollTop = container.scrollHeight;
       return;
     }
-    container.append(el("div", "empty", "Reading the agent's binding to the conversation…"));
+    container.append(el("div", "empty", tx("Reading the agent's binding to the conversation…")));
     return;
   }
   if (feed === null || (feed.records.size === 0 && feed.readAt === null)) {
     container.append(el("div", "empty", feed?.error
-      ? `Conversation not read: ${feed.error}. It is unknown, not empty.`
-      : "Reading the conversation…"));
+      ? tx("Conversation not read: {error}. It is unknown, not empty.", { error: feed.error })
+      : tx("Reading the conversation…")));
     return;
   }
   if (feed.records.size === 0) {
-    container.append(el("div", "empty", "The backend has not captured anything in this conversation yet."));
+    container.append(el("div", "empty", tx("The backend has not captured anything in this conversation yet.")));
     return;
   }
   for (const group of groupFeedByTurn(feedEntries(feed))) {
     const box = el("section", "feed-turn");
-    if (group.number !== null) box.append(el("div", "feed-turn-head", `Turn ${group.number}`));
+    if (group.number !== null) box.append(el("div", "feed-turn-head", tx("Turn {number}", { number: group.number })));
     for (const entry of group.entries) box.append(feedRecord(entry));
     container.append(box);
   }
@@ -1985,23 +2086,23 @@ function paintLiveStatus(status) {
   const live = workspaceState.live;
   const data = live?.data ?? null;
   let state = "";
-  if (live?.loading) state = "reading…";
-  else if (live?.error) state = `not read: ${live.error}`;
+  if (live?.loading) state = tx("reading…");
+  else if (live?.error) state = tx("not read: {error}", { error: live.error });
   else if (live?.readAt) {
-    state = `read at ${live.readAt.toLocaleTimeString("en-GB")} · `
-      + (eventsAvailable() ? "refreshes on events" : `refreshes every ${FEED_REFRESH_MS / 1000} s`);
+    state = tx("read at {value} · ", { value: live.readAt.toLocaleTimeString(dateLocale()) })
+      + (eventsAvailable() ? tx("refreshes on events") : tx("refreshes every {value} s", { value: FEED_REFRESH_MS / 1000 }));
   }
   status.append(el("span", "chat-state muted", state));
   if (live?.eventsNote) status.append(el("span", "chat-note", live.eventsNote));
   if (data === null || data.traversal === null) return;
   if (data.completeness !== null && data.completeness.status !== "complete") {
-    const chip = el("span", "chat-coverage", data.completeness.status === "partial" ? "incomplete" : "metadata only");
-    chip.title = `The backend marked the pages as ${data.completeness.status}: ${data.completeness.reasonCodes.join(", ") || "no reason given"}.`;
+    const chip = el("span", "chat-coverage", data.completeness.status === "partial" ? tx("incomplete") : tx("metadata only"));
+    chip.title = tx("The backend marked the pages as {status}: {value}.", { status: data.completeness.status, value: data.completeness.reasonCodes.join(", ") || tx("workspace::no reason given") });
     status.append(chip);
   }
   if (data.traversal.status === "partial") {
-    status.append(el("span", "chat-note", `pages read: ${data.traversal.pageCount} — not to the end`));
-    const more = el("button", "small", "Read the rest");
+    status.append(el("span", "chat-note", tx("pages read: {pageCount} — not to the end", { pageCount: data.traversal.pageCount })));
+    const more = el("button", "small", tx("Read the rest"));
     more.addEventListener("click", () => {
       const agent = agentOf();
       if (agent !== null) readLive(agent, { maxPages: 32 });
@@ -2009,7 +2110,7 @@ function paintLiveStatus(status) {
     status.append(more);
   }
   if (data.traversal.status === "stale" || data.traversal.status === "failed") {
-    const again = el("button", "small", "Reread");
+    const again = el("button", "small", tx("Reread"));
     again.addEventListener("click", () => {
       const agent = agentOf();
       if (agent !== null) readLive(agent);
@@ -2024,7 +2125,7 @@ function paintChatStatus() {
   if (status === null) return;
   status.replaceChildren();
   const route = chatRouteFor(agentOf());
-  const routeLine = el("span", "chat-route", `via ${route.title.replace(/^sending via /u, "")}`);
+  const routeLine = el("span", "chat-route", tx("via {via}", { via: route.via }));
   routeLine.title = route.reason;
   status.append(routeLine);
 
@@ -2032,7 +2133,7 @@ function paintChatStatus() {
   const binding = live?.data?.binding ?? null;
   if (live?.data?.route === "live") {
     // There is a live thread: you can switch to the captured archive and back.
-    for (const [source, label] of [["live", "live"], ["archive", "archive"]]) {
+    for (const [source, label] of [["live", tx("live")], ["archive", tx("archive")]]) {
       const button = el("button", `small${workspaceState.chatSource === source ? " primary" : ""}`, label);
       button.addEventListener("click", () => {
         workspaceState.chatSource = source;
@@ -2043,7 +2144,7 @@ function paintChatStatus() {
       status.append(button);
     }
   } else if (binding !== null) {
-    const note = el("span", "chat-note", `live read unavailable: ${LIVE_REASON_WORDS[binding.reasonCode] ?? binding.reasonCode}`);
+    const note = el("span", "chat-note", tx("live read unavailable: {reasonCode}", { reasonCode: LIVE_REASON_WORDS[binding.reasonCode] ?? binding.reasonCode }));
     status.append(note);
   }
   if (workspaceState.chatSource === "live") {
@@ -2052,23 +2153,23 @@ function paintChatStatus() {
   }
   if (feed === null) return;
   let state = "";
-  if (feed.loading) state = "reading…";
-  else if (feed.error) state = `not read: ${feed.error}`;
+  if (feed.loading) state = tx("reading…");
+  else if (feed.error) state = tx("not read: {error}", { error: feed.error });
   else if (feed.readAt) {
-    state = `updated at ${feed.readAt.toLocaleTimeString("en-GB")} · refreshes every ${FEED_REFRESH_MS / 1000} s`;
+    state = tx("updated at {value} · refreshes every {value2} s", { value: feed.readAt.toLocaleTimeString(dateLocale()), value2: FEED_REFRESH_MS / 1000 });
   }
   status.append(el("span", "chat-state muted", state));
   if (feed.coverage) {
-    const coverage = el("span", "chat-coverage", "captured only");
-    coverage.title = "Coverage “captured-only”: what the backend managed to capture, not the full history of the provider.";
+    const coverage = el("span", "chat-coverage", tx("captured only"));
+    coverage.title = tx("Coverage “captured-only”: what the backend managed to capture, not the full history of the provider.");
     status.append(coverage);
   }
   if (feed.restarted) {
-    status.append(el("span", "chat-note", "the archive changed revision — showing the new snapshot"));
+    status.append(el("span", "chat-note", tx("the archive changed revision — showing the new snapshot")));
   }
   if (!feed.loading && feed.readAt && !feed.exhausted) {
-    const more = el("button", "small", "Read the whole archive");
-    more.title = `One update reads ${FEED_LIVE_PAGES} pages of ${FEED_PAGE_LIMIT} records`;
+    const more = el("button", "small", tx("Read the whole archive"));
+    more.title = tx("One update reads {FEED_LIVE_PAGES} pages of {FEED_PAGE_LIMIT} records", { FEED_LIVE_PAGES, FEED_PAGE_LIMIT });
     more.addEventListener("click", () => {
       const agent = agentOf();
       if (agent !== null) readFeed(agent, { maxPages: FEED_FULL_PAGES });
@@ -2088,13 +2189,13 @@ function paintChat() {
   const agent = agentOf();
   if (stop !== null && agent !== null && operationStatus("mutation.agent-control.interrupt")?.status === "available") {
     stop.disabled = agent.currentOperationId === null;
-    stop.title = agent.currentOperationId === null ? "The agent has no current operation" : "";
+    stop.title = agent.currentOperationId === null ? tx("The agent has no current operation") : "";
   }
   const send = document.getElementById("chatSend");
   const sendReason = document.getElementById("chatSendReason");
   if (send !== null && sendReason !== null) paintSendAvailability(send, sendReason, agent);
   const status = document.getElementById("workspaceAgentStatus");
-  if (status !== null && agent !== null) status.textContent = `${agent.state} · delivery ${agent.deliveryState}`;
+  if (status !== null && agent !== null) status.textContent = tx("{state} · delivery {deliveryState}", { state: agent.state, deliveryState: agent.deliveryState });
   const queued = document.getElementById("chatQueued");
   if (queued !== null && agent !== null) paintQueued(queued, agent);
   if (agent !== null) syncChatQuestions(agent);
@@ -2158,7 +2259,7 @@ async function openChat(agent) {
   live.loading = false;
   if (!response.ok) {
     live.error = response.error.code;
-    atlasRecord("bad", "conversation binding not read", `${agent.agentId} ${response.error.code}`);
+    atlasRecord("bad", tx("conversation binding not read"), `${agent.agentId} ${response.error.code}`);
     workspaceState.chatSource = "archive";
     readFeed(agent);
     paintChat();
@@ -2190,12 +2291,70 @@ function paintSendAvailability(button, reasonNode, agent) {
   reasonNode.hidden = verdict.allowed;
 }
 
+/**
+ * A send whose outcome the Gateway does not know and that has no turn: it holds the agent,
+ * its project's folder and the provider's Gateway until the person checks it. null - there is none.
+ */
+function stuckSend(agent) {
+  const last = agent?.lastOperation ?? null;
+  return last !== null && last.state === "uncertain" && agent.currentOperationId === last.operationId ? last : null;
+}
+
+/** Why the Gateway answered writer_busy: who holds the agent or the project folder. null - not visible. */
+function writerBusyText(agent) {
+  if (stuckSend(agent) !== null) {
+    return tx("The Gateway does not know whether the previous message reached this agent, and does not let a new one through. Press \"Check the send…\" above.");
+  }
+  const world = atlasState.world;
+  if (world?.status !== "ready") return null;
+  const project = world.projection.projects.find((item) => item.projectId === agent.projectId) ?? null;
+  const holders = (project?.quarters ?? []).flatMap((quarter) => quarter.agents)
+    .filter((other) => other.agentId !== agent.agentId && other.currentOperationId);
+  if (holders.length === 0) return null;
+  return holders.map((other) => (stuckSend(other) !== null
+    ? tx("The project folder is held by {agentId}: the Gateway does not know whether its last message arrived. ", { agentId: other.agentId })
+      + tx("Open {agentId} and press \"Check the send…\".", { agentId: other.agentId })
+    : tx("The project folder is taken now by {agentId}: it is working. Wait for its turn to end.", { agentId: other.agentId }))).join(" ");
+}
+
+/** Checking a stuck send by the agent's session journal (trusted host, the Gateway stops for that time). */
+function paintStuckSend(box, agent) {
+  const last = stuckSend(agent);
+  if (last === null || typeof window.atlas?.settleSend !== "function") {
+    box.replaceChildren();
+    return;
+  }
+  const result = el("div");
+  const check = trustedButton(tx("Check the send…"), async () => {
+    const response = await window.atlas.settleSend({ agentId: agent.agentId, operationId: last.operationId });
+    if (response.ok) {
+      const data = response.data;
+      atlasRecord("ok", tx("send checked"), tx("{agentId} · {value}", { agentId: agent.agentId, value: data.went ? tx("arrived") : tx("was not sent") }));
+      result.replaceChildren(noteBlock("note", data.went
+        ? tx("The message arrived: the send has a turn, its outcome — {value}.", { value: data.operationState ?? tx("workspace2::unknown") })
+        : tx("The message was not sent") + (data.causeCode ? tx(" (cause: {causeCode})", { causeCode: data.causeCode }) : "")
+          + tx(": the send is marked as a failure, the agent is free. Send the message again.")));
+      await refresh();
+    } else if (response.error.code === "user_declined") {
+      result.replaceChildren(noteBlock("note", tx("Not checked: the confirmation was declined.")));
+    } else {
+      atlasRecord("bad", tx("send not checked"), response.error.reasonCode || response.error.code);
+      result.replaceChildren(noteBlock("error", tx("Not checked: {code}.", { code: response.error.reasonCode || response.error.code })));
+    }
+  });
+  box.replaceChildren(noteBlock("error", tx("The Gateway does not know whether the last message reached this agent. Until this is ")
+    + tx("checked, the agent is busy and the other agents of its project cannot work in the shared folder.")), check, result);
+}
+
 function renderCompose(agent) {
   const compose = el("div", "chat-compose");
+  const stuck = el("div", "chat-stuck");
+  paintStuckSend(stuck, agent);
+  compose.append(stuck);
   const text = el("textarea");
   text.rows = 3;
   text.maxLength = 16384;
-  text.placeholder = "Message to the agent";
+  text.placeholder = tx("Message to the agent");
   text.value = draftFor(agent.agentId);
   text.addEventListener("input", () => setDraft(agent.agentId, text.value));
   compose.append(text);
@@ -2212,7 +2371,7 @@ function renderCompose(agent) {
   // Not actionButton: a declared operation is not enough, the agent must also be in the
   // active state (sendAvailability). The check is repeated in the handler itself, against
   // a fresh catalog, so a refusal does not depend on whether the button has been disabled yet.
-  const send = el("button", "small primary", "Send");
+  const send = el("button", "small primary", tx("Send"));
   send.id = "chatSend";
   const sendReason = el("div", "chat-compose-note");
   sendReason.id = "chatSendReason";
@@ -2232,15 +2391,23 @@ function renderCompose(agent) {
   steerCheck.addEventListener("change", () => setPanel("steer", steerCheck.checked));
   steerBox.append(steerCheck, el("span", null, "Steer"));
   steerBox.title = steering
-    ? "On: the message goes to the agent at once, and it reads it after the current action.\n"
-      + "Off: the message waits for the end of the turn and goes on its own; until then you can withdraw it."
-    : "The backend cannot feed a message into a running turn: the agent will get it when it is idle.";
+    ? tx("On: the message goes to the agent at once, and it reads it after the current action.\n")
+      + tx("Off: the message waits for the end of the turn and goes on its own; until then you can withdraw it.")
+    : tx("The backend cannot feed a message into a running turn: the agent will get it when it is idle.");
   paintSendAvailability(send, sendReason, agent);
   send.addEventListener("click", async () => {
     if (send.dataset.busy === "1") return;
     send.dataset.busy = "1";
     send.disabled = true;
     const typed = text.value;
+    // The agent's model server does not answer now (host/model-health.mjs): the person decides.
+    const down = modelDown(freshAgent() ?? agent);
+    if (down !== null && !window.confirm(tx("The model {name} is not answering now ({address}). The turn may end as \"the model does not answer\". Send anyway?",
+      { name: down.name, address: down.address ?? "?" }))) {
+      delete send.dataset.busy;
+      paintSendAvailability(send, sendReason, freshAgent());
+      return;
+    }
     const mode = steerCheck.checked ? "steer" : "queue";
     const outcome = await guardedSend({
       agent: freshAgent(),
@@ -2264,9 +2431,11 @@ function renderCompose(agent) {
     const response = outcome.response;
     // A successful send is visible in the conversation itself; under the field only
     // a refusal or an unknown outcome remains.
-    const shown = outcomeMessage(response, "Sent.");
+    const shown = outcomeMessage(response, tx("Sent."));
+    // A bare writer_busy says nothing: Atlas names who holds the agent or the folder.
+    const busy = !response.ok && response.error?.code === "writer_busy" ? writerBusyText(freshAgent() ?? agent) : null;
     result.replaceChildren(...(response.ok ? []
-      : [noteBlock(shown.kind === "error" ? "error" : "note", shown.text)]));
+      : [noteBlock(shown.kind === "error" ? "error" : "note", busy === null ? shown.text : `${shown.text}. ${busy}`)]));
     const identity = response.ok ? response.data.identity : response.identity;
     if (identity !== undefined && identity !== null) workspaceState.lastSend = identity;
     if (response.ok) {
@@ -2280,25 +2449,29 @@ function renderCompose(agent) {
     paintSendAvailability(send, sendReason, freshAgent());
   });
 
-  const stop = actionButton("Stop turn", "mutation.agent-control.interrupt", async () => {
+  const stop = actionButton(tx("Stop turn"), "mutation.agent-control.interrupt", async () => {
     const response = await window.atlas.interrupt({
       agentId: agent.agentId, operationId: agent.currentOperationId,
     });
-    const shown = outcomeMessage(response, "Stop requested: accepted does not mean finished.");
+    const shown = outcomeMessage(response, tx("Stop requested: accepted does not mean finished."));
     result.replaceChildren(noteBlock(shown.kind === "error" ? "error" : "note", shown.text));
     await refresh();
   });
   stop.id = "chatStop";
   if (agent.currentOperationId === null) {
     stop.disabled = true;
-    stop.title = "The agent has no current operation";
+    stop.title = tx("The agent has no current operation");
   }
   actions.prepend(...renderModelPicker(agent, result), renderPermissionPicker(agent, result),
     el("div", "spacer"), steerBox);
   actions.append(stop);
   // “Send” goes on the right, last, as in Claude Code.
   actions.append(send);
-  compose.append(actions, sendReason, result);
+  // Whether the agent's model answers now: a line under the field, kept fresh (atlasPaintModelNote).
+  const modelNote = el("div", "chat-compose-note");
+  modelNote.id = "chatModelNote";
+  compose.append(actions, sendReason, modelNote, result);
+  atlasPaintModelNote();
   // Enter sends, Shift+Enter makes a new line, as in Claude Code and Codex.
   // While text is composed with an IME, Enter belongs to the composition. Shift+Tab
   // switches to the next permission mode, as in Claude Code (“bypass permissions” only from the list).
@@ -2313,8 +2486,8 @@ function renderCompose(agent) {
     if (!send.disabled && text.value.trim() !== "") send.click();
   });
   compose.append(el("div", "chat-compose-note",
-    "Enter — send · Shift+Enter — new line · Shift+Tab — permission mode. "
-      + "Sending starts a turn and uses quota."));
+    tx("Enter — send · Shift+Enter — new line · Shift+Tab — permission mode. ")
+      + tx("Sending starts a turn and uses quota.")));
   return compose;
 }
 
@@ -2326,14 +2499,14 @@ function renderCompose(agent) {
 // trusted host changes it, and it applies from the next turn.
 
 const PERMISSION_MODE_WORDS = Object.freeze({
-  default: { label: "Manual",
-    hint: "the agent asks you before file edits and commands that change something; reading needs no asking." },
-  acceptEdits: { label: "Accept edits",
-    hint: "file edits in the project folder go through on their own; commands that change something go through you." },
-  auto: { label: "Auto",
-    hint: "the Claude Code classifier approves or declines each action; when it is not sure, it asks you." },
-  bypassPermissions: { label: "Bypass permissions",
-    hint: "the agent asks nothing: any commands and edits in the project folder." },
+  default: { label: tx("Manual"),
+    hint: tx("the agent asks you before file edits and commands that change something; reading needs no asking.") },
+  acceptEdits: { label: tx("Accept edits"),
+    hint: tx("file edits in the project folder go through on their own; commands that change something go through you.") },
+  auto: { label: tx("Auto"),
+    hint: tx("the Claude Code classifier approves or declines each action; when it is not sure, it asks you.") },
+  bypassPermissions: { label: tx("Bypass permissions"),
+    hint: tx("the agent asks nothing: any commands and edits in the project folder.") },
 });
 // Shift+Tab cycles through three; “bypass permissions” is chosen only explicitly, from the list.
 const CYCLED_PERMISSION_MODES = Object.freeze(["default", "acceptEdits", "auto"]);
@@ -2361,22 +2534,22 @@ function renderPermissionPicker(agent, result) {
     select.append(option);
   }
   select.disabled = true;
-  select.title = "Permission mode: reading…";
+  select.title = tx("Permission mode: reading…");
   const paint = (modes) => {
     if (modes === null) {
-      select.title = "Permission mode unavailable: the trusted actions of this window do not work.";
+      select.title = tx("Permission mode unavailable: the trusted actions of this window do not work.");
       return;
     }
     const own = modes.byAgent.get(agent.agentId) ?? null;
     const current = own ?? modes.defaultMode ?? "acceptEdits";
     for (const option of select.options) {
       option.textContent = PERMISSION_MODE_WORDS[option.value].label
-        + (own === null && option.value === current ? " · default" : "");
+        + (own === null && option.value === current ? tx(" · default") : "");
     }
     select.value = current;
     select.dataset.current = current;
     select.disabled = agent.state === "archived";
-    select.title = `Permission mode: ${PERMISSION_MODE_WORDS[current].hint}\nShift+Tab in the input field: next mode.`;
+    select.title = tx("Permission mode: {hint}\nShift+Tab in the input field: next mode.", { hint: PERMISSION_MODE_WORDS[current].hint });
   };
   readPermissionModes().then(paint);
   select.addEventListener("change", async () => {
@@ -2384,13 +2557,13 @@ function renderPermissionPicker(agent, result) {
     select.disabled = true;
     const response = await window.atlas.setPermissionMode({ agentId: agent.agentId, permissionMode: mode });
     if (response.ok) {
-      atlasRecord("ok", "permission mode", `${agent.agentId}: ${mode}`);
+      atlasRecord("ok", tx("permission mode"), `${agent.agentId}: ${mode}`);
       result.replaceChildren(noteBlock("note",
-        `From the next turn — “${PERMISSION_MODE_WORDS[mode].label}”: ${PERMISSION_MODE_WORDS[mode].hint}`));
+        tx("From the next turn — “{label}”: {hint}", { label: PERMISSION_MODE_WORDS[mode].label, hint: PERMISSION_MODE_WORDS[mode].hint })));
     } else if (response.error?.code !== "user_declined") {
-      atlasRecord("bad", "permission mode", `${agent.agentId}: ${response.error?.reasonCode || response.error?.code}`);
+      atlasRecord("bad", tx("permission mode"), `${agent.agentId}: ${response.error?.reasonCode || response.error?.code}`);
       result.replaceChildren(noteBlock("error",
-        `Mode not changed: ${response.error?.reasonCode || response.error?.code || "error"}.`));
+        tx("Mode not changed: {value}.", { value: response.error?.reasonCode || response.error?.code || tx("error") })));
     }
     const modes = await readPermissionModes({ force: true });
     if (modes === null) select.value = select.dataset.current ?? mode;
@@ -2419,10 +2592,10 @@ function paintQueued(box, agent) {
   box.hidden = shown.length === 0;
   for (const item of shown) {
     const row = el("div", "chat-queued-item");
-    row.append(el("span", "chat-queued-mark", "after the turn"));
+    row.append(el("span", "chat-queued-mark", tx("after the turn")));
     row.append(el("span", "chat-queued-text", item.text.split(/\r?\n/u)[0]));
     const take = el("button", "icon-btn flat", "×");
-    take.title = "Withdraw the message: it will not be sent";
+    take.title = tx("Withdraw the message: it will not be sent");
     take.addEventListener("click", async () => {
       take.disabled = true;
       const response = await window.atlas.unqueue({ agentId: agent.agentId, operationId: item.operationId });
@@ -2437,9 +2610,9 @@ function paintQueued(box, agent) {
           input.value = item.text;
           setDraft(agent.agentId, item.text);
         }
-        atlasRecord("info", "message withdrawn", agent.agentId);
+        atlasRecord("info", tx("message withdrawn"), agent.agentId);
       } else {
-        atlasRecord("info", "message already sent to the agent", agent.agentId);
+        atlasRecord("info", tx("message already sent to the agent"), agent.agentId);
       }
       paintQueued(box, agentOf() ?? agent);
     });
@@ -2456,7 +2629,9 @@ function paintQueued(box, agent) {
 function renderModelPicker(agent, result) {
   const profile = agent.profile ?? null;
   const available = operationStatus("mutation.memory.agent.profile")?.status === "available";
-  const models = modelCatalog?.ok ? modelCatalog.data.models : [];
+  // Only a model of the same provider can be chosen: the agent's provider does not change.
+  const models = modelCatalog?.ok ? modelCatalog.data.models
+    .filter((item) => item.provider === undefined || item.provider === profile?.provider) : [];
   const model = el("select", "field chat-model");
   model.id = "chatModel";
   const effort = el("select", "field chat-effort");
@@ -2464,11 +2639,11 @@ function renderModelPicker(agent, result) {
   if (profile === null || models.length === 0 || !available) {
     model.disabled = true;
     effort.disabled = true;
-    model.title = !available ? "The backend does not offer model switching" : "The model list has not been read yet";
+    model.title = !available ? tx("The backend does not offer model switching") : tx("The model list has not been read yet");
   }
   const known = models.some((item) => item.id === profile?.model);
   for (const item of known || profile === null ? models : [{ id: profile.model, name: profile.model }, ...models]) {
-    const option = el("option", null, item.name ?? item.id);
+    const option = el("option", null, (item.name ?? item.id) + modelStateSuffix(item.id));
     option.value = item.id;
     model.append(option);
   }
@@ -2477,7 +2652,7 @@ function renderModelPicker(agent, result) {
     const chosen = models.find((item) => item.id === model.value);
     const efforts = chosen?.efforts ?? [profile?.reasoningEffort ?? "default"];
     effort.replaceChildren(...efforts.map((value) => {
-      const option = el("option", null, value === "default" ? "default" : value);
+      const option = el("option", null, value === "default" ? tx("default") : value);
       option.value = value;
       return option;
     }));
@@ -2485,7 +2660,7 @@ function renderModelPicker(agent, result) {
       ? profile.reasoningEffort : chosen?.defaultEffort ?? efforts[0];
   };
   fillEfforts();
-  effort.title = "Reasoning level of the next turns";
+  effort.title = tx("Reasoning level of the next turns");
   const apply = async () => {
     if (profile === null || (model.value === profile.model && effort.value === profile.reasoningEffort)) return;
     model.disabled = true;
@@ -2494,11 +2669,11 @@ function renderModelPicker(agent, result) {
       model: model.value, reasoningEffort: effort.value });
     if (response.ok) {
       result.replaceChildren(noteBlock("note",
-        "From the next turn — a new model. The conversation is the same; the first turn after the switch reads it without cache and costs more."));
-      atlasRecord("ok", "agent model", `${agent.agentId}: ${model.value} · ${effort.value}`);
+        tx("From the next turn — a new model. The conversation is the same; the first turn after the switch reads it without cache and costs more.")));
+      atlasRecord("ok", tx("agent model"), `${agent.agentId}: ${model.value} · ${effort.value}`);
       await refresh();
     } else {
-      result.replaceChildren(noteBlock("error", `Model not changed: ${response.error?.code ?? "error"}.`));
+      result.replaceChildren(noteBlock("error", tx("Model not changed: {value}.", { value: response.error?.code ?? tx("error") })));
       model.value = profile.model;
       fillEfforts();
       model.disabled = false;
@@ -2510,40 +2685,81 @@ function renderModelPicker(agent, result) {
   return [model, effort];
 }
 
+/** A turn the chat still shows as running. */
+const liveShowsRunning = (live) => (live?.data?.turns ?? []).some((turn) => turn.state === "active" || turn.state === "pending");
+
+/**
+ * Events are only a "read again" signal: one that did not come (the window behind other windows,
+ * a missed notification) must not leave a finished turn "running".
+ * The agent's record, which the world reads every few seconds, knows that
+ * its turn is over: then the conversation is read directly.
+ */
+function catchUpFinishedTurn(agent) {
+  const live = workspaceState.live;
+  if (live === null || live.agentId !== agent.agentId || live.loading || !liveShowsRunning(live)) return false;
+  if (agent.currentOperationId !== null && agent.currentOperationId !== undefined) return false;
+  if (live.readAt !== null && Date.now() - live.readAt.getTime() < 3000) return false;
+  readLive(agent);
+  return true;
+}
+
+/** One refresh step of the open chat: on the timer and when the window is visible again. */
+function tickChat() {
+  if (workspaceState.node === null || workspaceState.tab !== "chat") return;
+  if (document.visibilityState !== "visible") return;
+  const agent = agentOf();
+  if (agent === null) return;
+  if (workspaceState.chatSource === "live") {
+    if (catchUpFinishedTurn(agent)) return;
+    if (eventsAvailable()) pollAgentEvents(agent);
+    else readLive(agent);
+  } else if (workspaceState.chatSource === "archive") {
+    readFeed(agent);
+  }
+}
+
+// While the window was hidden the chat did not refresh: back, it looks at once, not after the interval.
+document.addEventListener("visibilitychange", tickChat);
+
+/** The agent's turn runs: the chat asks more often, so as not to lag behind the trace. */
+function chatBusy() {
+  const agent = agentOf();
+  if (agent === null) return false;
+  return (agent.currentOperationId !== null && agent.currentOperationId !== undefined) || liveShowsRunning(workspaceState.live);
+}
+
+// The next step is set after the current one: the interval depends on whether a turn runs.
 function startFeedTimer() {
   stopFeedTimer();
-  workspaceState.feedTimer = setInterval(() => {
-    if (workspaceState.node === null || workspaceState.tab !== "chat") return;
-    if (document.visibilityState !== "visible") return;
-    const agent = agentOf();
-    if (agent === null) return;
-    if (workspaceState.chatSource === "live") {
-      if (eventsAvailable()) pollAgentEvents(agent);
-      else readLive(agent);
-    } else if (workspaceState.chatSource === "archive") {
-      readFeed(agent);
-    }
-  }, FEED_REFRESH_MS);
+  const arm = () => {
+    const handle = setTimeout(() => {
+      if (workspaceState.feedTimer !== handle) return;
+      tickChat();
+      arm();
+    }, chatBusy() ? FEED_RUNNING_MS : FEED_REFRESH_MS);
+    workspaceState.feedTimer = handle;
+  };
+  arm();
 }
 
 function stopFeedTimer() {
   if (workspaceState.feedTimer === null) return;
-  clearInterval(workspaceState.feedTimer);
+  clearTimeout(workspaceState.feedTimer);
   workspaceState.feedTimer = null;
 }
 
 function receiptButton(identity, target) {
-  return actionButton("Operation receipt", "receipt.memory.agent.send", async () => {
+  return actionButton(tx("Operation receipt"), "receipt.memory.agent.send", async () => {
     const response = await window.atlas.sendReceipt(identity);
     if (response.ok) {
       const record = response.data.output;
-      atlasRecord("ok", "receipt read",
+      atlasRecord("ok", tx("receipt read"),
         `${identity.operationId}: ${record.state} / ${record.observation}`);
       target.append(noteBlock("note",
-        `Receipt: state ${record.state}, observation ${record.observation}. Retrying is not allowed.`));
+        tx("Receipt: state {state}, observation {observation}. Retrying is not allowed.", { state: record.state, observation: record.observation })));
     } else {
-      atlasRecord("bad", "receipt not read", response.error.code);
-      target.append(noteBlock("error", `Receipt unavailable: ${response.error.code}`));
+      atlasRecord("bad", tx("receipt not read"), response.error.code);
+      target.append(noteBlock("error", tx("Receipt unavailable: {code}", { code: response.error.code })));
     }
   });
 }
@@ -2551,11 +2767,11 @@ function receiptButton(identity, target) {
 // --- project files and artifacts: read only ------------------------------------
 
 const FILE_REASON_WORDS = Object.freeze({
-  artifact_not_registered: "artifact not registered",
-  file_changed: "the file changed after the first page — pages of different versions are not stitched together, open it again",
-  content_sha256_changed: "the file changed after the first page — open it again",
-  cursor_invalid: "the page cursor is outdated — open the file again",
-  stale_revision: "the file changed — open it again",
+  artifact_not_registered: tx("artifact not registered"),
+  file_changed: tx("the file changed after the first page — pages of different versions are not stitched together, open it again"),
+  content_sha256_changed: tx("the file changed after the first page — open it again"),
+  cursor_invalid: tx("the page cursor is outdated — open the file again"),
+  stale_revision: tx("the file changed — open it again"),
 });
 
 /**
@@ -2563,14 +2779,14 @@ const FILE_REASON_WORDS = Object.freeze({
  * (describeWorkspaceRefusal); without a reason it is unknown and is not guessed.
  */
 const failureWords = (error) => {
-  if (error === null || error === undefined) return "error";
+  if (error === null || error === undefined) return tx("error");
   if (error.code === "source_unavailable") return describeWorkspaceRefusal(error).title;
   const reason = FILE_REASON_WORDS[error.reasonCode] ?? FILE_REASON_WORDS[error.code] ?? error.reasonCode;
   return reason ? `${error.code}: ${reason}` : error.code;
 };
 
-const sizeWords = (bytes) => (bytes === null || bytes === undefined ? "size not reported"
-  : bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toFixed(bytes < 10240 ? 1 : 0)} KB`);
+const sizeWords = (bytes) => (bytes === null || bytes === undefined ? tx("size not reported")
+  : bytes < 1024 ? tx("{bytes} B", { bytes }) : tx("{value} KB", { value: (bytes / 1024).toFixed(bytes < 10240 ? 1 : 0) }));
 
 const fileDirty = (file) => file !== null && file.editing === true && file.draft !== file.original;
 
@@ -2578,7 +2794,7 @@ const fileDirty = (file) => file !== null && file.editing === true && file.draft
 function leaveBlocked(state) {
   if (!fileDirty(state.file)) return false;
   state.file.outcome = { tone: "conflict", keepDirty: true, reconcile: false,
-    title: "There is an unsaved edit.", details: ["Save it or cancel it first — navigating away does not discard it."] };
+    title: tx("There is an unsaved edit."), details: [tx("Save it or cancel it first — navigating away does not discard it.")] };
   renderWorkspace();
   return true;
 }
@@ -2599,7 +2815,7 @@ async function fetchProjectDirectory(state, path) {
   state.loading = false;
   state.listing = response.ok ? response.data : null;
   state.error = response.ok ? null : response.error;
-  if (!response.ok) atlasRecord("bad", "folder not read", `${state.projectId}/${path} ${response.error.code}`);
+  if (!response.ok) atlasRecord("bad", tx("folder not read"), `${state.projectId}/${path} ${response.error.code}`);
   if (workspaceState.tab === "files") renderWorkspace();
 }
 
@@ -2653,47 +2869,47 @@ function renderAgentCommits(body, agent) {
   const box = el("details", "agent-commits");
   box.open = workspaceState.commitsOpen === true;
   box.addEventListener("toggle", () => { workspaceState.commitsOpen = box.open; });
-  const summary = el("summary", "section-title", "Agent history · reading…");
+  const summary = el("summary", "section-title", tx("Agent history · reading…"));
   box.append(summary);
   body.append(box);
   window.atlas.agentCommits({ agentId: agent.agentId }).then((response) => {
     const rows = el("div");
     box.replaceChildren(summary, rows);
     if (!response.ok) {
-      summary.textContent = "Agent history";
-      rows.append(noteBlock("error", `Commits not read: ${response.error?.reasonCode || response.error?.code || "no code"}.`));
+      summary.textContent = tx("Agent history");
+      rows.append(noteBlock("error", tx("Commits not read: {value}.", { value: response.error?.reasonCode || response.error?.code || tx("no code") })));
       return;
     }
     const { versioned, commits } = response.data;
     if (!versioned) {
-      summary.textContent = "Agent history · folder not under git";
-      rows.append(noteBlock("note", "The project folder is not under git, so the work of agents is not committed. Make it a "
-        + "repository: from then on each agent turn becomes a separate commit on its behalf, with only the files of that turn."));
+      summary.textContent = tx("Agent history · folder not under git");
+      rows.append(noteBlock("note", tx("The project folder is not under git, so the work of agents is not committed. Make it a ")
+        + tx("repository: from then on each agent turn becomes a separate commit on its behalf, with only the files of that turn.")));
       const actions = el("div", "actions");
-      actions.append(trustedButton("Create a git repository…", async () => {
+      actions.append(trustedButton(tx("Create a git repository…"), async () => {
         const done = await window.atlas.initProjectGit({ projectId: agent.projectId });
         if (done.ok) {
-          atlasRecord("ok", "git for the project folder", agent.projectId);
+          atlasRecord("ok", tx("git for the project folder"), agent.projectId);
           workspaceState.commitsOpen = true;
           renderWorkspace();
         } else if (done.error?.code !== "user_declined") {
-          rows.append(noteBlock("error", `Repository not created: ${done.error?.reasonCode || done.error?.code || "no code"}.`));
+          rows.append(noteBlock("error", tx("Repository not created: {value}.", { value: done.error?.reasonCode || done.error?.code || tx("no code") })));
         }
       }));
       rows.append(actions);
       return;
     }
-    summary.textContent = `Agent history · ${commits.length} ${commits.length === 1 ? "commit" : "commits"}`;
+    summary.textContent = tx("Agent history · {length} {value}", { length: commits.length, value: commits.length === 1 ? tx("commit") : tx("commits") });
     if (commits.length === 0) {
-      rows.append(el("div", "empty", "This agent has no commits yet: they will appear after a turn in which it changes something."));
+      rows.append(el("div", "empty", tx("This agent has no commits yet: they will appear after a turn in which it changes something.")));
     }
     for (const commit of commits.slice(0, 20)) {
       const row = el("div", "entry");
-      const when = commit.atUtc ? new Date(commit.atUtc).toLocaleString("en-GB",
+      const when = commit.atUtc ? new Date(commit.atUtc).toLocaleString(dateLocale(),
         { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "";
       row.append(el("div", "entry-title", commit.subject || commit.sha.slice(0, 8)));
       row.append(el("div", "entry-text", [commit.sha.slice(0, 8), when,
-        commit.files === null ? null : `files: ${commit.files}`].filter(Boolean).join(" · ")));
+        commit.files === null ? null : tx("files: {files}", { files: commit.files })].filter(Boolean).join(" · ")));
       rows.append(row);
     }
   });
@@ -2703,7 +2919,7 @@ function renderFiles(body, agent) {
   renderAgentCommits(body, agent);
   const status = operationStatus("query.project-workspace.list");
   if (status?.status !== "available") {
-    body.append(noteBlock("error", `Project files unavailable: ${status ? status.reasonCode ?? status.status : "not checked"}.`));
+    body.append(noteBlock("error", tx("Project files unavailable: {value}.", { value: status ? status.reasonCode ?? status.status : tx("not checked") })));
     return;
   }
   let state = workspaceState.files;
@@ -2712,54 +2928,54 @@ function renderFiles(body, agent) {
     workspaceState.files = state;
     fetchProjectDirectory(state, "");
   }
-  body.append(el("div", "section-title", `Project ${state.projectId} · /${state.path}`));
+  body.append(el("div", "section-title", tx("Project {projectId} · /{path}", { projectId: state.projectId, path: state.path })));
   const nav = el("div", "actions");
   if (state.path !== "") {
-    const up = el("button", "small", "Up one level");
+    const up = el("button", "small", tx("Up one level"));
     up.addEventListener("click", () => openProjectDirectory(state, state.path.split("/").slice(0, -1).join("/")));
     nav.append(up);
   }
-  const reload = el("button", "small", "Reread folder");
+  const reload = el("button", "small", tx("Reread folder"));
   reload.addEventListener("click", () => openProjectDirectory(state, state.path));
   nav.append(reload);
   body.append(nav);
 
-  if (state.loading) body.append(el("div", "empty", "Reading the folder…"));
+  if (state.loading) body.append(el("div", "empty", tx("Reading the folder…")));
   else if (state.error !== null) {
-    body.append(noteBlock("error", `Folder not read. ${failureWords(state.error)} It is unknown, not empty.`));
+    body.append(noteBlock("error", tx("Folder not read. {value} It is unknown, not empty.", { value: failureWords(state.error) })));
   } else if (state.listing !== null) {
     const listing = state.listing;
-    if (listing.entries.length === 0) body.append(el("div", "empty", "The folder is empty."));
+    if (listing.entries.length === 0) body.append(el("div", "empty", tx("The folder is empty.")));
     for (const entry of listing.entries) {
       const row = el("div", "file-row");
       const child = state.path === "" ? entry.name : `${state.path}/${entry.name}`;
       const open = el("button", "small", entry.kind === "directory" ? `${entry.name}/` : entry.name);
       if (child.length > 256) {
         open.disabled = true;
-        open.title = "Path longer than 256 characters — the contract does not accept it";
+        open.title = tx("Path longer than 256 characters — the contract does not accept it");
       } else if (entry.kind === "directory") {
         open.addEventListener("click", () => openProjectDirectory(state, child));
       } else {
         open.addEventListener("click", () => openProjectFile(state, child));
       }
-      row.append(open, el("span", "muted", entry.kind === "directory" ? "folder" : sizeWords(entry.sizeBytes)));
+      row.append(open, el("span", "muted", entry.kind === "directory" ? tx("folder") : sizeWords(entry.sizeBytes)));
       body.append(row);
     }
     if (listing.truncated || listing.omissionCount > 0) {
       body.append(noteBlock("note",
-        `Showing ${listing.entries.length} of ${listing.totalEntries}, ${listing.omissionCount} omitted.`));
+        tx("Showing {length} of {totalEntries}, {omissionCount} omitted.", { length: listing.entries.length, totalEntries: listing.totalEntries, omissionCount: listing.omissionCount })));
     }
-    body.append(el("div", "muted", `read at ${listing.observedAtUtc}`));
+    body.append(el("div", "muted", tx("read at {observedAtUtc}", { observedAtUtc: listing.observedAtUtc })));
   }
 
   const file = state.file;
   if (file !== null) {
-    body.append(el("div", "section-title", `File ${file.path}`));
+    body.append(el("div", "section-title", tx("File {path}", { path: file.path })));
     const last = file.pages[file.pages.length - 1] ?? null;
     if (last !== null) {
       const shown = last.range.offsetBytes + last.range.returnedBytes;
-      body.append(infoRow("shown", `${sizeWords(shown)} of ${sizeWords(last.range.totalBytes)}`));
-      body.append(infoRow("file fingerprint", `${last.contentSha256.slice(0, 16)}…`));
+      body.append(infoRow(tx("shown"), tx("{value} of {value2}", { value: sizeWords(shown), value2: sizeWords(last.range.totalBytes) })));
+      body.append(infoRow(tx("file fingerprint"), `${last.contentSha256.slice(0, 16)}…`));
       const loaded = file.pages.map((page) => page.text).join("");
       if (file.editing === true) {
         renderEditor(body, state, file);
@@ -2769,36 +2985,36 @@ function renderFiles(body, agent) {
         renderEditEntry(body, file, loaded, last);
       }
       if (last.nextCursor !== null) {
-        const more = el("button", "small", "Next 64 KB");
+        const more = el("button", "small", tx("Next 64 KB"));
         more.disabled = file.loading;
         more.addEventListener("click", () => openProjectFile(state, file.path, last.nextCursor));
         body.append(more);
       }
     }
     if (file.outcome) renderFileOutcome(body, state, file);
-    if (file.loading) body.append(el("div", "empty", "Reading the file…"));
-    if (file.error !== null) body.append(noteBlock("error", `File not read: ${failureWords(file.error)}.`));
+    if (file.loading) body.append(el("div", "empty", tx("Reading the file…")));
+    if (file.error !== null) body.append(noteBlock("error", tx("File not read: {value}.", { value: failureWords(file.error) })));
   }
   body.append(noteBlock("note",
-    "Folders are not walked on their own: each one opens with your click. A path is up to 256 characters, a page up to 64 KB, "
-    + "a file up to 1 MB. Only a whole text file is saved, and only over the version that was read."));
+    tx("Folders are not walked on their own: each one opens with your click. A path is up to 256 characters, a page up to 64 KB, ")
+    + tx("a file up to 1 MB. Only a whole text file is saved, and only over the version that was read.")));
 }
 
 /** Search in the open file covers the loaded pages, and says so. */
 function renderFileSearch(body, file, loaded, last) {
   const row = el("div", "file-search");
   const field = el("input");
-  field.placeholder = "Find in file";
+  field.placeholder = tx("Find in file");
   field.value = file.search ?? "";
   const summary = el("div", "muted");
   const paint = () => {
     file.search = field.value;
     const found = findInText(loaded, field.value);
     const shown = last.range.offsetBytes + last.range.returnedBytes;
-    const scope = shown < last.range.totalBytes ? ` (in the loaded ${sizeWords(shown)} of ${sizeWords(last.range.totalBytes)})` : "";
+    const scope = shown < last.range.totalBytes ? tx(" (in the loaded {value} of {value2})", { value: sizeWords(shown), value2: sizeWords(last.range.totalBytes) }) : "";
     summary.textContent = field.value.trim() === "" ? ""
-      : found.count === 0 ? `Not found${scope}.`
-        : `Found: ${found.count}${found.truncated ? "+" : ""}${scope}; lines ${found.matches.slice(0, 20).map((match) => match.line).join(", ")}${found.count > 20 ? "…" : ""}.`;
+      : found.count === 0 ? tx("Not found{scope}.", { scope })
+        : tx("Found: {count}{value}{scope}; lines {value2}{value3}.", { count: found.count, value: found.truncated ? "+" : "", scope, value2: found.matches.slice(0, 20).map((match) => match.line).join(", "), value3: found.count > 20 ? "…" : "" });
   };
   field.addEventListener("input", paint);
   row.append(field);
@@ -2809,7 +3025,7 @@ function renderFileSearch(body, file, loaded, last) {
 /** The “Edit” button: only for a whole file that was read, and only when saving is declared. */
 function renderEditEntry(body, file, loaded, last) {
   const verdict = canEditFile(file.pages, operationStatus("mutation.project-workspace.save"));
-  const edit = el("button", "small", "Edit");
+  const edit = el("button", "small", tx("Edit"));
   edit.disabled = !verdict.allowed;
   edit.title = verdict.reason ?? "";
   edit.addEventListener("click", () => {
@@ -2836,7 +3052,7 @@ function renderEditor(body, state, file) {
   const dirtyLine = el("div", "editor-dirty");
   const paintDirty = () => {
     const dirty = fileDirty(file);
-    dirtyLine.textContent = dirty ? "● not saved" : "no changes";
+    dirtyLine.textContent = dirty ? tx("● not saved") : tx("no changes");
     dirtyLine.classList.toggle("dirty", dirty);
     save.disabled = !dirty || file.saving === true;
   };
@@ -2847,9 +3063,9 @@ function renderEditor(body, state, file) {
     file.draft = area.value;
     paintDirty();
   });
-  body.append(infoRow("edit base", `${file.baseSha256.slice(0, 16)}…`), dirtyLine, area);
+  body.append(infoRow(tx("edit base"), `${file.baseSha256.slice(0, 16)}…`), dirtyLine, area);
   const actions = el("div", "actions");
-  const save = el("button", "small primary", "Save with confirmation");
+  const save = el("button", "small primary", tx("Save with confirmation"));
   save.addEventListener("click", async () => {
     if (!fileDirty(file) || file.saving) return;
     file.saving = true;
@@ -2860,7 +3076,7 @@ function renderEditor(body, state, file) {
     file.saving = false;
     await afterSave(state, file, response);
   });
-  const discard = el("button", "small", file.discardArmed ? "Really discard the edit" : "Cancel edit");
+  const discard = el("button", "small", file.discardArmed ? tx("Really discard the edit") : tx("Cancel edit"));
   discard.addEventListener("click", () => {
     if (fileDirty(file) && !file.discardArmed) {
       file.discardArmed = true;
@@ -2883,7 +3099,7 @@ async function afterSave(state, file, response) {
   const described = describeSaveFileOutcome(response);
   file.outcome = described;
   file.lastOperationId = response.ok ? response.data.receipt.operationId : response.identity?.operationId ?? null;
-  atlasRecord(described.tone === "note" ? "ok" : "bad", "file save",
+  atlasRecord(described.tone === "note" ? "ok" : "bad", tx("file save"),
     `${state.projectId}/${file.path}: ${described.title} ${file.lastOperationId ?? ""}`);
   if (response.ok) {
     const fresh = await rereadWholeFile(state, file);
@@ -2894,10 +3110,10 @@ async function afterSave(state, file, response) {
       file.editing = false;
       file.draft = null;
       file.outcome = { ...described, details: [...described.details, matches
-        ? "Reread: the file matches the receipt."
-        : "Reread: the file no longer matches the receipt — it was changed after saving."] };
+        ? tx("Reread: the file matches the receipt.")
+        : tx("Reread: the file no longer matches the receipt — it was changed after saving.")] };
     } else {
-      file.outcome = { ...described, details: [...described.details, `Could not reread: ${failureWords(fresh.error)}.`] };
+      file.outcome = { ...described, details: [...described.details, tx("Could not reread: {value}.", { value: failureWords(fresh.error) })] };
     }
   }
   renderWorkspace();
@@ -2909,14 +3125,14 @@ function renderFileOutcome(body, state, file) {
   body.append(outcomeBlock(outcome));
   const actions = el("div", "actions");
   if (outcome.reconcile && file.lastOperationId) {
-    const check = el("button", "small", "Check by reading the file");
+    const check = el("button", "small", tx("Check by reading the file"));
     check.addEventListener("click", async () => {
       const response = await window.atlas.reconcileFileSave({ operationId: file.lastOperationId });
       if (!response.ok) {
-        file.outcome = { tone: "error", keepDirty: true, reconcile: true, title: `Check failed: ${failureWords(response.error)}.`, details: [] };
+        file.outcome = { tone: "error", keepDirty: true, reconcile: true, title: tx("Check failed: {value}.", { value: failureWords(response.error) }), details: [] };
       } else if (response.data.state === "applied") {
-        file.outcome = { tone: "note", keepDirty: false, reconcile: false, title: "Checked: the write happened.",
-          details: ["The file contains exactly the sent text."] };
+        file.outcome = { tone: "note", keepDirty: false, reconcile: false, title: tx("Checked: the write happened."),
+          details: [tx("The file contains exactly the sent text.")] };
         const fresh = await rereadWholeFile(state, file);
         if (fresh.ok) {
           file.pages = fresh.pages;
@@ -2925,18 +3141,18 @@ function renderFileOutcome(body, state, file) {
         }
       } else if (response.data.state === "not-applied") {
         file.outcome = { tone: "uncertain", keepDirty: true, reconcile: false, resend: true,
-          title: "Checked: the write did not happen, the file is unchanged.",
-          details: ["The edit is in the editor. The same request can be sent again — with the same identifier and the same base."] };
+          title: tx("Checked: the write did not happen, the file is unchanged."),
+          details: [tx("The edit is in the editor. The same request can be sent again — with the same identifier and the same base.")] };
       } else {
         file.outcome = { tone: "conflict", keepDirty: true, reconcile: false,
-          title: "Checked: the file was changed by someone else.", details: ["The edit stayed in the editor; reread the file and decide for yourself."] };
+          title: tx("Checked: the file was changed by someone else."), details: [tx("The edit stayed in the editor; reread the file and decide for yourself.")] };
       }
       renderWorkspace();
     });
     actions.append(check);
   }
   if (outcome.resend && file.lastOperationId) {
-    const again = el("button", "small", "Send the same request");
+    const again = el("button", "small", tx("Send the same request"));
     again.addEventListener("click", async () => {
       const response = await window.atlas.resendFileSave({ operationId: file.lastOperationId });
       await afterSave(state, file, response);
@@ -2944,17 +3160,17 @@ function renderFileOutcome(body, state, file) {
     actions.append(again);
   }
   if (outcome.tone === "conflict" && file.editing) {
-    const reread = el("button", "small", "Reread the file, keep the edit");
+    const reread = el("button", "small", tx("Reread the file, keep the edit"));
     reread.addEventListener("click", async () => {
       const fresh = await rereadWholeFile(state, file);
       if (!fresh.ok) {
-        file.outcome = { tone: "error", keepDirty: true, reconcile: false, title: `Not reread: ${failureWords(fresh.error)}.`, details: [] };
+        file.outcome = { tone: "error", keepDirty: true, reconcile: false, title: tx("Not reread: {value}.", { value: failureWords(fresh.error) }), details: [] };
       } else {
         file.pages = fresh.pages;
         file.original = fresh.pages.map((page) => page.text).join("");
         file.baseSha256 = fresh.pages[0].contentSha256;
-        file.outcome = { tone: "note", keepDirty: true, reconcile: false, title: "New version reread; the edit stayed.",
-          details: [`The base is now ${file.baseSha256.slice(0, 16)}… — saving will replace this version with your text.`] };
+        file.outcome = { tone: "note", keepDirty: true, reconcile: false, title: tx("New version reread; the edit stayed."),
+          details: [tx("The base is now {value}… — saving will replace this version with your text.", { value: file.baseSha256.slice(0, 16) })] };
       }
       renderWorkspace();
     });
@@ -2983,30 +3199,30 @@ async function loadArtifacts(agent) {
 function renderArtifacts(body, agent) {
   const status = operationStatus("query.agent-artifacts.list");
   if (status?.status !== "available") {
-    body.append(noteBlock("error", `Artifacts unavailable: ${status ? status.reasonCode ?? status.status : "not checked"}.`));
+    body.append(noteBlock("error", tx("Artifacts unavailable: {value}.", { value: status ? status.reasonCode ?? status.status : tx("not checked") })));
     return;
   }
   if (workspaceState.artifacts === null || workspaceState.artifacts.agentId !== agent.agentId) loadArtifacts(agent);
   const state = workspaceState.artifacts;
   if (state.loading) {
-    body.append(el("div", "empty", "Reading the artifact list…"));
+    body.append(el("div", "empty", tx("Reading the artifact list…")));
     return;
   }
   if (state.error !== null) {
-    body.append(noteBlock("error", `List not read: ${failureWords(state.error)}. It is unknown, not empty.`));
+    body.append(noteBlock("error", tx("List not read: {value}. It is unknown, not empty.", { value: failureWords(state.error) })));
     return;
   }
   const catalog = state.catalog;
-  body.append(el("div", "section-title", `Registered · ${catalog.records.length} · revision ${catalog.revision}`));
-  if (catalog.records.length === 0) body.append(el("div", "empty", "The agent has not registered any artifacts."));
+  body.append(el("div", "section-title", tx("Registered · {length} · revision {revision}", { length: catalog.records.length, revision: catalog.revision })));
+  if (catalog.records.length === 0) body.append(el("div", "empty", tx("The agent has not registered any artifacts.")));
   for (const record of catalog.records) {
     const box = el("div", "entry");
     box.append(el("div", "entry-title", record.path));
     box.append(el("div", "entry-text",
-      `${sizeWords(record.sizeBytes)} · registered ${record.registeredAtUtc} · hash ${record.sha256.slice(0, 12)}…`));
+      tx("{value} · registered {registeredAtUtc} · hash {value2}…", { value: sizeWords(record.sizeBytes), registeredAtUtc: record.registeredAtUtc, value2: record.sha256.slice(0, 12) })));
     const opened = state.opened.get(record.artifactId);
     const actions = el("div", "actions");
-    const open = actionButton(opened ? "Reread" : "Open", "query.agent-artifacts.read", async () => {
+    const open = actionButton(opened ? tx("Reread") : tx("Open"), "query.agent-artifacts.read", async () => {
       state.opened.set(record.artifactId, { loading: true });
       renderWorkspace();
       const response = await window.atlas.artifact({ agentId: agent.agentId, artifactId: record.artifactId });
@@ -3015,29 +3231,29 @@ function renderArtifacts(body, agent) {
     });
     actions.append(open);
     box.append(actions);
-    if (opened?.loading) box.append(el("div", "empty", "Reading…"));
-    else if (opened?.error) box.append(noteBlock("error", `Not read: ${failureWords(opened.error)}.`));
+    if (opened?.loading) box.append(el("div", "empty", tx("workspace2::Reading…")));
+    else if (opened?.error) box.append(noteBlock("error", tx("Not read: {value}.", { value: failureWords(opened.error) })));
     else if (opened?.verification === "hash-matches") {
-      box.append(el("div", "muted", `matches the registered hash · read at ${opened.observedAtUtc}`));
+      box.append(el("div", "muted", tx("matches the registered hash · read at {observedAtUtc}", { observedAtUtc: opened.observedAtUtc })));
       box.append(el("pre", "file-text", opened.text));
     } else if (opened?.verification === "hash-mismatch") {
       box.append(noteBlock("error",
-        "The file changed after registration: the hash does not match, it is no longer the same artifact. Content not shown."));
+        tx("The file changed after registration: the hash does not match, it is no longer the same artifact. Content not shown.")));
     } else if (opened?.verification === "incomplete") {
-      box.append(noteBlock("note", "The artifact was not read to the end — the hash cannot be checked, content not shown."));
+      box.append(noteBlock("note", tx("The artifact was not read to the end — the hash cannot be checked, content not shown.")));
     }
     body.append(box);
   }
   body.append(noteBlock("note",
-    "These are registered links to files with a hash — not the whole work result and not saved copies. "
-    + "Coverage: registered only."));
+    tx("These are registered links to files with a hash — not the whole work result and not saved copies. ")
+    + tx("Coverage: registered only.")));
 }
 
 function renderQuestions(body, agent) {
   const state = workspaceState.questions;
   if (state === null || state.agentId !== agent.agentId) {
     const actions = el("div", "actions");
-    actions.append(actionButton("Read questions", "query.agent-control.interactions", async () => {
+    actions.append(actionButton(tx("Read questions"), "query.agent-control.interactions", async () => {
       const response = await window.atlas.interactions({ agentId: agent.agentId, limit: 32 });
       const delivered = response.ok && response.result.outcome === "succeeded";
       workspaceState.questions = {
@@ -3055,31 +3271,31 @@ function renderQuestions(body, agent) {
     return;
   }
   if (state.failed) {
-    body.append(noteBlock("error", "Question list not read. It is unknown, not empty."));
+    body.append(noteBlock("error", tx("Question list not read. It is unknown, not empty.")));
     return;
   }
   renderAttentionFacts(body, state.attention);
   if (state.truncated === true || (state.omissionCount ?? 0) > 0) {
     body.append(noteBlock("note",
-      `Not all recent questions are shown: ${state.omissionCount ?? "an unknown number"} omitted. `
-      + "No completeness is claimed for the visible records."));
+      tx("Not all recent questions are shown: {value} omitted. ", { value: state.omissionCount ?? tx("an unknown number") })
+      + tx("No completeness is claimed for the visible records.")));
   } else if (state.truncated === null) {
-    body.append(el("div", "muted", "The backend did not report whether this list is complete."));
+    body.append(el("div", "muted", tx("The backend did not report whether this list is complete.")));
   }
   const pending = state.records.filter((record) => record.state === "awaiting-owner");
   if (pending.length === 0) {
-    body.append(el("div", "empty", "No question is waiting for an answer."));
+    body.append(el("div", "empty", tx("No question is waiting for an answer.")));
     return;
   }
   for (const record of pending) {
     // The same card as in the conversation: options as buttons and a custom answer.
     body.append(el("div", "muted",
-      `requested ${record.requestedAtUtc} · ${record.deadlineAtUtc ? `due ${record.deadlineAtUtc}` : "no deadline"}`));
+      tx("requested {requestedAtUtc} · {value}", { requestedAtUtc: record.requestedAtUtc, value: record.deadlineAtUtc ? tx("deadline {deadlineAtUtc}", { deadlineAtUtc: record.deadlineAtUtc }) : tx("no deadline") })));
     body.append(questionCard(agent, record, async () => {
       workspaceState.questions = null;
       await refresh();
     }));
   }
   body.append(noteBlock("note",
-    "Options come from the record itself. An outdated or already answered question cannot be revived."));
+    tx("Options come from the record itself. An outdated or already answered question cannot be revived.")));
 }

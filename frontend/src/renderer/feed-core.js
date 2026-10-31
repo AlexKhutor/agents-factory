@@ -10,10 +10,12 @@
 // order the backend returns the pages.
 
 (function (root, factory) {
-  const api = factory();
-  if (typeof module === "object" && module !== null && module.exports) module.exports = api;
+  const node = typeof module === "object" && module !== null && module.exports;
+  const api = factory(node ? require("./i18n-core.js") : root);
+  if (node) module.exports = api;
   else Object.assign(root, api);
-}(typeof globalThis === "undefined" ? this : globalThis, function () {
+}(typeof globalThis === "undefined" ? this : globalThis, function (i18n) {
+  const { tx, txn } = i18n;
   /** Merge entries into the `recordId → entry` map, keeping the freshest state. */
   function mergeFeedEntries(records, entries) {
     for (const entry of entries) {
@@ -56,18 +58,12 @@
   }
 
   const OPERATION_STATE_WORDS = Object.freeze({
-    requested: "requested", accepted: "accepted", started: "started", completed: "finished",
-    failed: "failed", interrupted: "interrupted", uncertain: "uncertain",
+    requested: tx("requested"), accepted: tx("feed-core::accepted"), started: tx("started"), completed: tx("finished"),
+    failed: tx("failed"), interrupted: tx("interrupted"), uncertain: tx("uncertain"),
   });
 
-  function questionsWord(count) {
-    const tens = count % 100;
-    const units = count % 10;
-    if (tens >= 11 && tens <= 14) return "questions";
-    if (count === 1) return "question";
-    if (units >= 2 && units <= 4) return "questions";
-    return "questions";
-  }
+  /** "3 questions": the count with its word, in the language's plural form. */
+  const questionsCount = (count) => txn("{count} questions", count);
 
   /**
    * One line about the state of an agent for the map, from the catalog and the question count.
@@ -76,18 +72,18 @@
    * cycle of the operation, not the progress of the task: the backend does not report that.
    */
   function agentContextLine(agent, questions = 0) {
-    if (agent.state === "archived") return { text: "archived", tone: "quiet" };
-    if (agent.problemCode !== null || agent.state === "failed") return { text: "failed", tone: "bad" };
+    if (agent.state === "archived") return { text: tx("feed-core::archived"), tone: "quiet" };
+    if (agent.problemCode !== null || agent.state === "failed") return { text: tx("failed"), tone: "bad" };
     if (agent.deliveryState === "uncertain" || agent.state === "uncertain") {
-      return { text: "uncertain", tone: "warn" };
+      return { text: tx("feed-core::uncertain"), tone: "warn" };
     }
-    if (questions > 0) return { text: `? ${questions} ${questionsWord(questions)}`, tone: "ask" };
-    if (agent.currentOperationId !== null) return { text: "turn running", tone: "busy" };
+    if (questions > 0) return { text: `? ${questionsCount(questions)}`, tone: "ask" };
+    if (agent.currentOperationId !== null) return { text: tx("turn running"), tone: "busy" };
     if (agent.lastOperation) {
       const word = OPERATION_STATE_WORDS[agent.lastOperation.state] ?? agent.lastOperation.state;
-      return { text: `turn ${word}`, tone: "plain" };
+      return { text: tx("turn {word}", { word }), tone: "plain" };
     }
-    return { text: "no turns yet", tone: "quiet" };
+    return { text: tx("no turns yet"), tone: "quiet" };
   }
 
   const SEND_OPERATION = "mutation.memory.agent.send";
@@ -95,11 +91,11 @@
   // Why sending to this agent is closed. Backend codes are not made up here:
   // the reason names the state from the catalog in its own words.
   const SEND_BLOCKED_BY_STATE = Object.freeze({
-    creating: "The agent is still being created — sending opens when it becomes active.",
-    failed: "The agent has failed — sending is unavailable.",
-    uncertain: "The agent state is uncertain — sending is unavailable.",
-    closing: "The agent is closing — you cannot send to it.",
-    archived: "The agent is archived — you cannot send to it.",
+    creating: tx("The agent is still being created — sending opens when it becomes active."),
+    failed: tx("The agent has failed — sending is unavailable."),
+    uncertain: tx("The agent state is uncertain — sending is unavailable."),
+    closing: tx("The agent is closing — you cannot send to it."),
+    archived: tx("The agent is archived — you cannot send to it."),
   });
 
   /**
@@ -109,19 +105,19 @@
    */
   function sendAvailability(agent, operation) {
     if (operation === null || operation === undefined) {
-      return { allowed: false, reason: `${SEND_OPERATION}: not checked` };
+      return { allowed: false, reason: tx("{SEND_OPERATION}: not checked", { SEND_OPERATION }) };
     }
     if (operation.status !== "available") {
       return { allowed: false, reason: `${SEND_OPERATION}: ${operation.status} (${operation.reasonCode})` };
     }
     const state = agent === null || agent === undefined ? null : agent.state;
     if (typeof state !== "string" || state === "") {
-      return { allowed: false, reason: "The agent state has not been read yet — sending is unavailable." };
+      return { allowed: false, reason: tx("The agent state has not been read yet — sending is unavailable.") };
     }
     if (state === "active") return { allowed: true, reason: null };
     return {
       allowed: false,
-      reason: SEND_BLOCKED_BY_STATE[state] ?? `Unknown agent state “${state}” — sending is unavailable.`,
+      reason: SEND_BLOCKED_BY_STATE[state] ?? tx("Unknown agent state “{state}” — sending is unavailable.", { state }),
     };
   }
 
@@ -141,7 +137,7 @@
    * “the backend looked and found none”, and null means “the backend did not say”.
    */
   function attentionFacts(attention) {
-    const word = (value) => (Number.isSafeInteger(value) ? String(value) : "no data");
+    const word = (value) => (Number.isSafeInteger(value) ? String(value) : tx("no data"));
     const available = attention !== null && attention !== undefined && attention.availability === "available";
     return {
       available,
@@ -149,7 +145,7 @@
       approvals: word(available ? attention.pendingApprovals : null),
       recovery: word(available ? attention.recoveryRequired : null),
       observedAtUtc: available ? attention.observedAtUtc : null,
-      summary: available ? "captured by the backend, not the whole provider history" : "not reported by the catalog",
+      summary: available ? tx("captured by the backend, not the whole provider history") : tx("not reported by the catalog"),
     };
   }
 
@@ -207,7 +203,7 @@
 
   /** The world counter in the map header. An unread world is not empty: there is no zero. */
   function worldCountLine(world) {
-    if (world === null || world === undefined || world.status !== "ready" || !world.projection) return "world not read";
+    if (world === null || world === undefined || world.status !== "ready" || !world.projection) return tx("world not read");
     const projects = world.projection.projects;
     const agents = projects.reduce((sum, project) => sum
       + project.quarters.reduce((inner, quarter) => inner + quarter.agents.length, 0), 0);
@@ -241,7 +237,8 @@
   // While the turn is running there is no answer yet: everything the agent said is part of the work.
 
   // The backend contract has no separate kind for thinking or for the backend's own
-  // internal calls: they come as actions, and the first line says what they are.
+  // internal calls: they come as actions, and the first line says what they are. These
+  // heads are data, English whatever the window's language (shown through the locale).
   const REASONING_HEAD = "Thinking";
   const SERVICE_HEAD = "Internal · ";
 
@@ -298,7 +295,7 @@
       if (line.startsWith("· ")) entries.push({ question: line.slice(2), answer: null });
       else if (line.startsWith("  → ") && entries.length > 0) entries[entries.length - 1].answer = line.slice(4);
     }
-    return entries.length === 0 ? null : { state, head: lines[0].slice(0, -1), entries };
+    return entries.length === 0 ? null : { state, head: tx(lines[0].slice(0, -1)), entries };
   }
 
   /** Plan items: `{ state: "done" | "doing" | "todo", text }`. */
@@ -354,18 +351,11 @@
     return segments;
   }
 
-  const plural = (count, [one, few, many]) => {
-    const tens = count % 100;
-    const units = count % 10;
-    // English has two forms: one for 1, the plural for any other count.
-    return count === 1 ? one : many;
-  };
-
-  /** “1 quarter”, “3 agents”, “5 projects”. */
-  const countWords = (count, forms) => `${count} ${plural(count, forms)}`;
-  const PROJECT_FORMS = Object.freeze(["project", "projects", "projects"]);
-  const QUARTER_FORMS = Object.freeze(["quarter", "quarters", "quarters"]);
-  const AGENT_FORMS = Object.freeze(["agent", "agents", "agents"]);
+  /** "1 quarter", "3 agents", "5 projects": the forms are the locale's (i18n-core.js txn). */
+  const countWords = (count, forms) => txn(forms, count);
+  const PROJECT_FORMS = "{count} projects";
+  const QUARTER_FORMS = "{count} quarters";
+  const AGENT_FORMS = "{count} agents";
 
   /** The line of folded work: “3 actions · 1 change · thinking”. Internal backend calls are not counted. */
   function workSummary(items) {
@@ -373,11 +363,11 @@
     const actions = count("action");
     const changes = count("change");
     const parts = [];
-    if (actions > 0) parts.push(`${actions} ${plural(actions, ["action", "actions", "actions"])}`);
-    if (changes > 0) parts.push(`${changes} ${plural(changes, ["change", "changes", "changes"])}`);
-    if (count("reasoning") + count("hidden-reasoning") > 0) parts.push("thinking");
-    if (parts.length === 0 && count("agent") > 0) parts.push("agent notes");
-    if (parts.length === 0 && count("service") > 0) parts.push("internal calls");
+    if (actions > 0) parts.push(txn("{count} actions", actions));
+    if (changes > 0) parts.push(txn("{count} changes", changes));
+    if (count("reasoning") + count("hidden-reasoning") > 0) parts.push(tx("thinking"));
+    if (parts.length === 0 && count("agent") > 0) parts.push(tx("agent notes"));
+    if (parts.length === 0 && count("service") > 0) parts.push(tx("internal calls"));
     return parts.join(" · ");
   }
 
@@ -387,9 +377,9 @@
     const to = Date.parse(completedAtUtc ?? "");
     if (!Number.isFinite(from) || !Number.isFinite(to) || to < from) return null;
     const seconds = Math.round((to - from) / 1000);
-    if (seconds < 60) return `${seconds} s`;
+    if (seconds < 60) return tx("{seconds} s", { seconds });
     const minutes = Math.floor(seconds / 60);
-    return minutes < 60 ? `${minutes} min ${seconds % 60} s` : `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
+    return minutes < 60 ? tx("{minutes} min {value} s", { minutes, value: seconds % 60 }) : tx("{value} h {value2} min", { value: Math.floor(minutes / 60), value2: minutes % 60 });
   }
 
   return {
@@ -416,7 +406,7 @@
     orderedFeedEntries,
     groupFeedByTurn,
     lastAgentMessage,
-    questionsWord,
+    questionsCount,
     agentContextLine,
     OPERATION_STATE_WORDS,
   };

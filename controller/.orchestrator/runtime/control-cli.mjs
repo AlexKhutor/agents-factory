@@ -1,16 +1,18 @@
 #!/usr/bin/env node
 import path from "node:path";
 import { spawn } from "node:child_process";
-import { readdir, readFile, stat } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { SqliteControlStore } from "./sqlite-control-store.mjs";
 import { SerializedControlCycle } from "./control-cycle.mjs";
-import { CodexReviewProvider, FakeReviewProvider } from "./control-review-provider.mjs";
+import { FakeReviewProvider } from "./control-review-provider.mjs";
 import {
   CLAUDE_CODE_SERVICE_PROVIDER_ID, createClaudeReportSummarizer, createClaudeReviewProvider,
 } from "./claude-code-service-client.mjs";
 import { readClaudeProviderConfig } from "./claude-provider-config.mjs";
-import { collectVerifiedReports } from "./control-report-collector.mjs";
+// A desk agent's reports are collected in-process (desk-task-collect.mjs);
+// other sources with the configured collector command.
+import { collectAllReportsByRoute, collectReportsByRoute } from "./desk-task-collect.mjs";
 import {
   clearWorkerEmergencyStop,
   collectWorkerProgress,
@@ -18,7 +20,7 @@ import {
 } from "./control-worker-bridge.mjs";
 import { compactToolRunHistory, createToolRun, readProjectVersions } from "./tool-run.mjs";
 import { ServiceReviewRegistry } from "./service-review-registry.mjs";
-import { CodexReportSummarizer, ReportPresentationService } from "./report-presentation.mjs";
+import { ReportPresentationService } from "./report-presentation.mjs";
 import { ReportOperationService, validateReportOperation } from "./report-operations.mjs";
 
 const CURRENT_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
@@ -49,75 +51,19 @@ function resolveFrom(root, value, fallback) {
   return path.resolve(root, value || fallback);
 }
 
-function pathInside(root, candidate) {
-  const relative = path.relative(root, candidate);
-  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
-}
+// Claude Code reviews the reports and writes their summaries ("fake" only in
+// tests). The Codex App Server reviewer, with its own CODEX_HOME and executable
+// found in the isolated VS Code extensions, left with the Codex path; an old
+// configuration that still names it is refused with that reason. An old
+// "interactiveCodexHome" key is ignored.
+const DEFAULT_REVIEW_PROVIDER = Object.freeze({ type: CLAUDE_CODE_SERVICE_PROVIDER_ID });
 
-function samePath(left, right) {
-  const normalize = (value) => path.resolve(value).replace(/[\\/]+$/, "").toLowerCase();
-  return normalize(left) === normalize(right);
-}
-
-async function existingFile(filePath) {
-  try {
-    return (await stat(filePath)).isFile();
-  } catch (error) {
-    if (error?.code === "ENOENT" || error?.code === "ENOTDIR") return false;
-    throw error;
+function reviewProvider(configuration) {
+  const provider = configuration.provider ?? DEFAULT_REVIEW_PROVIDER;
+  if (provider.type === "codex-app-server") {
+    throw new Error("Unsupported review provider: codex-app-server (the Codex path left the product; use claude-code)");
   }
-}
-
-async function discoverProjectLocalCodexExecutable(controllerRoot) {
-  const extensionRoot = path.join(controllerRoot, ".project-runtime", "vscode-extensions");
-  let extensionDirectories;
-  try {
-    extensionDirectories = await readdir(extensionRoot, { withFileTypes: true });
-  } catch (error) {
-    if (error?.code === "ENOENT" || error?.code === "ENOTDIR") return null;
-    throw error;
-  }
-
-  const candidates = [];
-  for (const entry of extensionDirectories) {
-    if (!entry.isDirectory() || !entry.name.startsWith("openai.chatgpt-")) continue;
-    const executablePath = path.join(
-      extensionRoot,
-      entry.name,
-      "bin",
-      "windows-x86_64",
-      "codex.exe",
-    );
-    if (!await existingFile(executablePath)) continue;
-    const executableStat = await stat(executablePath);
-    candidates.push({ executablePath, modifiedAtMs: executableStat.mtimeMs, extensionName: entry.name });
-  }
-
-  candidates.sort((left, right) => (
-    right.modifiedAtMs - left.modifiedAtMs
-    || right.extensionName.localeCompare(left.extensionName)
-  ));
-  return candidates[0]?.executablePath ?? null;
-}
-
-async function resolveReviewerCodexExecutable(controllerRoot, configuredCommand) {
-  const command = typeof configuredCommand === "string" ? configuredCommand.trim() : "";
-  const configuredPath = command && (path.isAbsolute(command) || /[\\/]/.test(command))
-    ? path.resolve(controllerRoot, command)
-    : null;
-  if (configuredPath && await existingFile(configuredPath)) {
-    return { command: configuredPath, resolution: "configured" };
-  }
-
-  const discovered = await discoverProjectLocalCodexExecutable(controllerRoot);
-  if (discovered) {
-    return { command: discovered, resolution: "project-local-discovery" };
-  }
-
-  throw new Error(
-    "Reviewer Codex executable is unavailable before queue claim. "
-    + "Install the OpenAI Codex extension in this isolated workspace or repair provider.command.",
-  );
+  return provider;
 }
 
 export async function loadConfiguration(configPath, { requireProvider = true } = {}) {
@@ -130,46 +76,17 @@ export async function loadConfiguration(configPath, { requireProvider = true } =
   if (!Number.isInteger(publicationIntervalMs) || publicationIntervalMs < 10_000 || publicationIntervalMs > 15_000) {
     throw new Error("publicationIntervalMs must be an integer between 10000 and 15000");
   }
-  const provider = configuration.provider ?? { type: "codex-app-server" };
-  if (requireProvider && provider.type === "codex-app-server" && !provider.codexHome) {
-    throw new Error("Codex review provider requires an explicit isolated provider.codexHome");
-  }
-  const interactiveCodexHome = resolveFrom(
-    controllerRoot,
-    configuration.interactiveCodexHome,
-    ".project-runtime/codex-home",
-  );
-  const reviewerCodexHome = resolveFrom(
-    controllerRoot,
-    provider.codexHome,
-    ".project-runtime/reviewer-codex-home",
-  );
-  if (!pathInside(controllerRoot, reviewerCodexHome)) {
-    throw new Error("Reviewer CODEX_HOME must stay inside the controller workspace for this machine-local proof of concept");
-  }
-  if (samePath(interactiveCodexHome, reviewerCodexHome)) {
-    throw new Error("Reviewer CODEX_HOME must differ from the interactive controller CODEX_HOME");
-  }
-  const resolvedProvider = requireProvider && provider.type === "codex-app-server"
-    ? await resolveReviewerCodexExecutable(controllerRoot, provider.command)
-    : { command: provider.command, resolution: "not-required" };
+  const provider = reviewProvider(configuration);
   if (requireProvider && provider.type === CLAUDE_CODE_SERVICE_PROVIDER_ID) {
-    // As the Codex executable above: a missing or broken Claude Code config is
-    // found before a queue item is claimed, not by a failed review.
+    // A missing or broken Claude Code config is found before a queue item is
+    // claimed, not by a failed review.
     await readClaudeProviderConfig(controllerRoot);
   }
   return {
     ...configuration,
-    provider: {
-      ...provider,
-      codexHome: reviewerCodexHome,
-      command: resolvedProvider.command,
-      commandResolution: resolvedProvider.resolution,
-    },
+    provider,
     configPath: resolvedConfigPath,
     controllerRoot,
-    interactiveCodexHome,
-    reviewerCodexHome,
     runtimeRoot,
     databasePath: resolveFrom(controllerRoot, configuration.databasePath, ".project-local/orchestration/control-queue.db"),
     backendCapabilitiesPath: resolveFrom(
@@ -263,7 +180,7 @@ async function monitorProjections({ cycle, configuration }) {
 }
 
 export function createProvider(configuration) {
-  const provider = configuration.provider ?? { type: "codex-app-server" };
+  const provider = reviewProvider(configuration);
   if (provider.type === "fake") {
     if (!configuration.allowFakeProvider) throw new Error("Fake provider requires allowFakeProvider=true");
     return new FakeReviewProvider({
@@ -272,27 +189,11 @@ export function createProvider(configuration) {
       spawnSubagent: Boolean(provider.spawnSubagent),
     });
   }
-  if (provider.type === CLAUDE_CODE_SERVICE_PROVIDER_ID) {
-    // Claude Code reads its machine-local config (SDK, models) from the controller when a review starts.
-    return createClaudeReviewProvider({ controllerRoot: configuration.controllerRoot, provider });
-  }
-  if (provider.type !== "codex-app-server") {
+  if (provider.type !== CLAUDE_CODE_SERVICE_PROVIDER_ID) {
     throw new Error(`Unsupported review provider: ${provider.type}`);
   }
-  return new CodexReviewProvider({
-    cwd: configuration.controllerRoot,
-    codexHome: provider.codexHome,
-    command: provider.command ?? "codex",
-    args: provider.args ?? ["app-server"],
-    model: provider.model,
-    reasoningEffort: provider.reasoningEffort,
-    approvalPolicy: provider.approvalPolicy ?? "never",
-    sandbox: provider.sandbox ?? "workspace-write",
-    pollIntervalMs: provider.pollIntervalMs ?? 1000,
-    heartbeatIntervalMs: provider.heartbeatIntervalMs ?? 60_000,
-    turnTimeoutMs: provider.turnTimeoutMs ?? 3_600_000,
-    interruptConfirmationTimeoutMs: provider.interruptConfirmationTimeoutMs ?? 10_000,
-  });
+  // Claude Code reads its machine-local config (SDK, models) from the controller when a review starts.
+  return createClaudeReviewProvider({ controllerRoot: configuration.controllerRoot, provider });
 }
 
 function runConfiguredCommand(specification, { cwd, env = {} }) {
@@ -450,17 +351,18 @@ async function main() {
     },
   });
   const logger = (event, data) => tool.log(event, data);
+  // node:sqlite in this process unless "sqliteBackend": "python" in the
+  // configuration or AGENTS_FACTORY_SQLITE=python; the Python bridge below is
+  // the fallback.
   const store = new SqliteControlStore({
     databasePath: configuration.databasePath,
     pythonCommand: configuration.pythonCommand ?? "python",
     bridgePath: configuration.sqliteBridgePath
       ? resolveFrom(configuration.controllerRoot, configuration.sqliteBridgePath)
       : path.join(CURRENT_DIRECTORY, "sqlite-control-store.py"),
+    sqliteBackend: configuration.sqliteBackend,
   });
-  const serviceReviewRegistry = new ServiceReviewRegistry({
-    indexPath: configuration.serviceReviewIndexPath,
-    codexHome: configuration.reviewerCodexHome,
-  });
+  const serviceReviewRegistry = new ServiceReviewRegistry({ indexPath: configuration.serviceReviewIndexPath });
   const cycle = new SerializedControlCycle({
     store,
     provider: command === "cycle" || selectedReportOperation === "review"
@@ -483,16 +385,6 @@ async function main() {
       controllerRoot: configuration.controllerRoot,
       turnTimeoutMs: summaryConfiguration.turnTimeoutMs ?? 600_000,
     })
-    : providerRequired && configuration.provider.type === "codex-app-server"
-    ? new CodexReportSummarizer({
-      cwd: configuration.controllerRoot,
-      codexHome: configuration.reviewerCodexHome,
-      command: configuration.provider.command,
-      args: configuration.provider.args ?? ["app-server"],
-      approvalPolicy: "never",
-      sandbox: "read-only",
-      turnTimeoutMs: summaryConfiguration.turnTimeoutMs ?? 600_000,
-    })
     : null;
   const presentation = new ReportPresentationService({
     controllerRoot: configuration.controllerRoot,
@@ -505,6 +397,7 @@ async function main() {
     controllerRoot: configuration.controllerRoot,
     collector: configuration.collector,
     presentation,
+    collectReports: collectReportsByRoute,
     logger,
   });
 
@@ -541,7 +434,7 @@ async function main() {
         const progress = await collectWorkerProgress({ controllerRoot: configuration.controllerRoot, logger });
         if (progress.length > 0) await cycle.observeWorkerProgress(progress);
       }
-      const reports = await collectVerifiedReports({
+      const reports = await collectAllReportsByRoute({
         controllerRoot: configuration.controllerRoot,
         collector: configuration.collector,
         logger,
@@ -588,7 +481,6 @@ async function main() {
       const limit = Number.parseInt(String(options.limit ?? "100"), 10);
       result = {
         schemaVersion: 1,
-        serviceHome: path.relative(configuration.controllerRoot, configuration.reviewerCodexHome).replaceAll(path.sep, "/"),
         records: await serviceReviewRegistry.list({
           sourceId: options["source-id"],
           taskId: options["task-id"],

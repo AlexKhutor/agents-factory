@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import { ApplicationGatewayDescriptorStore } from "../src/application-gateway-descriptor.mjs";
 import { ApplicationGatewayLifecycle } from "../src/application-gateway-lifecycle.mjs";
 import { createConversationArchive } from "../src/conversation-archive.mjs";
+import { loadNodeSqlite } from "../src/sqlite-backend.mjs";
 import {
   ApplicationGatewayRuntimeFiles,
   applicationGatewayWorkspaceHash,
@@ -30,14 +31,22 @@ test("distributed archive bridge works outside the source checkout and is requir
   await writeFile(path.join(root, ".orchestrator", "contract.json"), JSON.stringify({ sourceId: "controller" }));
   const bridgePath = path.join(root, "conversation-archive-store.py");
   await copyFile(path.join(orchestratorRoot, "dist", "conversation-archive-store.py"), bridgePath);
-  const archive = await createConversationArchive({ controllerRoot: root, projectId: "controller", bridgePath });
+  const archive = await createConversationArchive({ controllerRoot: root, projectId: "controller", bridgePath,
+    sqliteBackend: "python" });
   const binding = { projectId: "controller", sourceId: "child", providerId: "test", threadId: "opaque" };
   await archive.append(binding, { recordId: "one", kind: "message", role: "assistant", state: "completed",
     text: "Standalone archive", providerTurnId: null, providerItemId: null, requestId: null,
     occurredAtUtc: null, omissions: [] });
   assert.equal((await archive.read(binding)).items[0].record.text, "Standalone archive");
   await assert.rejects(createConversationArchive({ controllerRoot: root, projectId: "controller",
-    bridgePath: path.join(root, "not-installed.py") }), { code: "archive_unavailable" });
+    bridgePath: path.join(root, "not-installed.py"), sqliteBackend: "python" }), { code: "archive_unavailable" });
+  // node:sqlite, the default where the runtime has it, needs no bridge script.
+  if (await loadNodeSqlite()) {
+    const inProcess = await createConversationArchive({ controllerRoot: root, projectId: "controller",
+      bridgePath: path.join(root, "not-installed.py"), sqliteBackend: "node" });
+    assert.equal(inProcess.sqliteBackend, "node");
+    assert.equal((await inProcess.read(binding)).items[0].record.text, "Standalone archive");
+  }
 });
 
 test("checked-in Application Gateway bundle matches source", () => {
@@ -104,32 +113,15 @@ test("bundled descriptor status is bounded when no gateway is ready", async (con
   assert.equal(result.stdout.includes("bearer"), false);
 });
 
-test("bundled owner chat status fails closed without a ready gateway", async (context) => {
+// The Codex owner chat left with the Codex path: its status command is gone.
+test("bundled CLI no longer knows the Codex owner chat status", async (context) => {
   const fixture = await mkdtemp(path.join(os.tmpdir(), "gateway-owner-chat-bundle-"));
   context.after(() => rm(fixture, { recursive: true, force: true }));
   const result = spawnSync(process.execPath, [
-    bundlePath,
-    "owner-chat-status",
-    "--repo-root", fixture,
-    "--project-id", "controller-fixture",
-    "--provider-source-id", "sample-app-development",
-    "--json",
-  ], {
-    cwd: fixture,
-    encoding: "utf8",
-    windowsHide: true,
-    timeout: 15_000,
-  });
-  assert.equal(result.status, 0, result.stderr || result.stdout);
-  assert.deepEqual(JSON.parse(result.stdout), {
-    schemaVersion: 1,
-    command: "owner-chat-status",
-    availability: "unavailable",
-    reasonCode: "status_missing",
-    ready: false,
-    sourceId: "sample-app-development",
-  });
-  assert.equal(result.stdout.includes("bearer"), false);
+    bundlePath, "owner-chat-status", "--repo-root", fixture, "--project-id", "controller-fixture", "--json",
+  ], { cwd: fixture, encoding: "utf8", windowsHide: true, timeout: 15_000 });
+  assert.equal(result.status, 1, result.stderr || result.stdout);
+  assert.deepEqual(JSON.parse(result.stderr), { status: "failed", code: "unsupported_command" });
 });
 
 test("bundled descriptor status verifies matching live descriptor without secrets", async (context) => {

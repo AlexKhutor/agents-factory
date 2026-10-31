@@ -12,7 +12,8 @@ import { renameOver } from "./rename-over.mjs";
 export const CLAUDE_USAGE_VERSION = "v0.1.0";
 export const CLAUDE_USAGE_PATH = path.join(".project-local", "application-gateway", "claude-usage.v1.json");
 
-// The fixed windows of a plan, in the order Claude Code shows them.
+// The fixed windows of a plan, in the order Claude Code shows them. Labels are English; the window
+// shows them in the person's language by `id` (Atlas locales).
 const WINDOWS = Object.freeze([["five_hour", "Session (5 h)"], ["seven_day", "Week (7 days)"],
   ["seven_day_opus", "Opus · week"], ["seven_day_sonnet", "Sonnet · week"]]);
 const RATE_LIMIT_STATUS = new Set(["allowed", "allowed_warning", "rejected"]);

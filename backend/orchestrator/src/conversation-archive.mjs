@@ -5,7 +5,11 @@ import { fileURLToPath } from "node:url";
 import { applicationCanonicalSha256 } from "./application-contract.mjs";
 import { SqliteControlStore } from "./sqlite-control-store.mjs";
 import { PersistentSqliteBridge, persistentSqliteBridgeEnabled } from "./sqlite-bridge-server.mjs";
+import { resolveSqliteBackend, sqliteBackendOption } from "./sqlite-backend.mjs";
+import { NodeConversationArchiveBridge } from "./conversation-archive-store-node.mjs";
 import { resolveProviderMutationProjectId } from "./provider-mutation-lease-store.mjs";
+import { openSplitMemoryBridge } from "./project-memory-store.mjs";
+import { SplitConversationArchiveBridge } from "./project-memory-split.mjs";
 
 export const CONVERSATION_ARCHIVE_VERSION = "v0.2.0";
 export const CONVERSATION_ARCHIVE_IMPLEMENTATION_VERSION = "v0.3.1";
@@ -118,7 +122,7 @@ export class ConversationArchive {
     if (value.projectId !== this.projectId) fail("archive_identity_conflict");
     return { conversationId, binding: structuredClone(value) };
   }
-  /** Ends the archive's bridge process after the calls already sent. */
+  /** Ends the archive's bridge process after the calls already sent; with node:sqlite, only later calls fail. */
   async close() {
     if (typeof this.store.close === "function") await this.store.close();
   }
@@ -188,12 +192,29 @@ export class ConversationArchive {
   }
 }
 
+/**
+ * `sqliteBackend` ("node" | "python") overrides AGENTS_FACTORY_SQLITE and the
+ * default: node:sqlite in this process when the runtime has it, else the
+ * Python bridge (`bridgePath`, `pythonCommand`).
+ */
 export async function createConversationArchive({
-  controllerRoot, projectId, now, pythonCommand, bridgePath,
+  controllerRoot, projectId, now, pythonCommand, bridgePath, sqliteBackend,
 }) {
   id(projectId);
+  try { sqliteBackendOption(sqliteBackend); } catch { fail(); }
   const root = await realpath(controllerRoot);
   if (await resolveProviderMutationProjectId(root) !== projectId) fail("archive_identity_conflict");
+  let split;
+  try { split = await openSplitMemoryBridge(root, sqliteBackend); } catch { fail("archive_unavailable"); }
+  if (split !== null) {
+    // One archive per project beside its memory (project-memory-split.mjs).
+    const { sqlite } = await resolveSqliteBackend({ backend: "node" });
+    const archive = new ConversationArchive({ projectId, now,
+      store: new SplitConversationArchiveBridge({ controllerRoot: root, sqlite, memory: split }) });
+    Object.defineProperty(archive, "sqliteBackend", { value: "node" });
+    await archive.invoke("init", {});
+    return archive;
+  }
   const directory = path.join(root, ".project-local", "orchestration", "conversation-archive");
   await mkdir(directory, { recursive: true });
   const canonical = await realpath(directory);
@@ -209,15 +230,20 @@ export async function createConversationArchive({
     });
     if (info !== null && (!info.isFile() || info.isSymbolicLink())) fail("archive_identity_conflict");
   }
+  const { backend, sqlite } = await resolveSqliteBackend({ backend: sqliteBackend });
   const script = bridgePath ?? fileURLToPath(new URL("conversation-archive-store.py", import.meta.url));
   const archive = new ConversationArchive({
     projectId, now,
-    // One long-lived bridge (sqlite-bridge-server.mjs), as for project memory.
-    store: persistentSqliteBridgeEnabled()
-      ? new PersistentSqliteBridge({ databasePath, pythonCommand, bridgePath: script,
-        unavailableCode: "archive_unavailable" })
-      : new SqliteControlStore({ databasePath, pythonCommand, bridgePath: script }),
+    // In this process with node:sqlite; else one long-lived Python bridge
+    // (sqlite-bridge-server.mjs), as for project memory.
+    store: backend === "node"
+      ? new NodeConversationArchiveBridge({ databasePath, sqlite })
+      : persistentSqliteBridgeEnabled()
+        ? new PersistentSqliteBridge({ databasePath, pythonCommand, bridgePath: script,
+          unavailableCode: "archive_unavailable" })
+        : new SqliteControlStore({ databasePath, pythonCommand, bridgePath: script }),
   });
+  Object.defineProperty(archive, "sqliteBackend", { value: backend });
   await archive.invoke("init", {});
   return archive;
 }

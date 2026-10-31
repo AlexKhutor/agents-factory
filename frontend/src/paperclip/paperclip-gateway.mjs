@@ -37,6 +37,7 @@ import {
   operationMarker, operationOf, sha256, splitEmbeddedMemory,
 } from "./memory-format.mjs";
 import { parseRunLog } from "./transcript.mjs";
+import { tx } from "../host/i18n.mjs";
 
 const CONTRACT_VERSION = "v0.1.0";
 const CAPABILITY_VERSION = "v0.2.0";
@@ -591,7 +592,7 @@ export function createPaperclipGateway({
     if (questions.length === 0) return interaction.payload?.prompt ?? interaction.title ?? interaction.kind;
     return questions.map((question) => {
       const options = (question.options ?? []).map((option) => option.label).join(" / ");
-      return options === "" ? question.prompt : `${question.prompt}\nOptions: ${options}`;
+      return options === "" ? question.prompt : tx("{prompt}\nOptions: {options}", { prompt: question.prompt, options });
     }).join("\n\n");
   }
 
@@ -625,7 +626,7 @@ export function createPaperclipGateway({
         const said = messagesOf(issue, comments).map((message) => {
           // The first memory a task carries is "given"; any later one is an update.
           const memoryNote = message.delivered === null ? ""
-            : `\n\n(${carried ? "updated " : ""}memory sent ${message.commentId === null ? "with the task" : "with the message"}: project — revision ${message.delivered.project.revision}, quarter — revision ${message.delivered.quarter.revision})`;
+            : tx("\n\n({value}memory sent {value2}: project — revision {revision}, quarter — revision {revision2})", { value2: message.commentId === null ? tx("with the task") : tx("with the message"), value: carried ? tx("updated ") : "", revision: message.delivered.project.revision, revision2: message.delivered.quarter.revision });
           if (message.delivered !== null) carried = true;
           if (message.commentId !== null) return { kind: "user", at: message.at, key: `comment:${message.commentId}`, text: `${message.text}${memoryNote}` };
           // A message sent from the desk is shown as it was typed; any other task with its number and title.
@@ -654,7 +655,7 @@ export function createPaperclipGateway({
           for (const interaction of interactions) {
             if (interaction.resolvedAt && String(interaction.resolvedAt) > from && String(interaction.resolvedAt) <= started) {
               items.push({ kind: "user", at: interaction.resolvedAt,
-                text: `Answer to the question “${interaction.title ?? interaction.kind}”: ${answerText(interaction)}` });
+                text: tx("Answer to the question “{kind}”: {value}", { kind: interaction.title ?? interaction.kind, value: answerText(interaction) }) });
             }
           }
           const finished = !ACTIVE_RUN.has(run.status);
@@ -671,11 +672,11 @@ export function createPaperclipGateway({
           }
           const detail = snapshot.runById.get(run.runId);
           if ((run.status === "failed" || run.status === "timed_out") && typeof detail?.error === "string") {
-            items.push({ kind: "tool", at: run.finishedAt ?? run.createdAt, text: `The run ended with an error: ${detail.error}` });
+            items.push({ kind: "tool", at: run.finishedAt ?? run.createdAt, text: tx("The run ended with an error: {error}", { error: detail.error }) });
           }
           for (const interaction of interactions) {
             if (interaction.sourceRunId === run.runId) {
-              items.push({ kind: "question", at: interaction.createdAt, text: `Question: ${questionText(interaction)}` });
+              items.push({ kind: "question", at: interaction.createdAt, text: tx("Question: {value}", { value: questionText(interaction) }) });
             }
           }
           turns.push({ key: run.runId, state: TURN_STATE[run.status] ?? "unknown",
@@ -846,10 +847,10 @@ export function createPaperclipGateway({
         allowedResponses: question ? ["submit-text", "cancel"] : ["accept", "decline"],
       },
       display: question
-        ? { kind: "user-input", title: clipText(interaction.title ?? "Agent question", 4096),
+        ? { kind: "user-input", title: clipText(interaction.title ?? tx("Agent question"), 4096),
           fields: { questions: (interaction.payload?.questions ?? []).map((item) => ({
             id: item.id,
-            prompt: `${item.prompt}${(item.options ?? []).length === 0 ? "" : ` Options: ${item.options.map((option) => option.label).join(" / ")}`}`,
+            prompt: tx("{prompt}{value}", { prompt: item.prompt, value: (item.options ?? []).length === 0 ? "" : tx(" Options: {value}", { value: item.options.map((option) => option.label).join(" / ") }) }),
           })) } }
         : { kind: "permission-approval", title: clipText(interaction.title ?? interaction.kind, 4096),
           fields: { prompt: interaction.payload?.prompt ?? interaction.summary ?? null, paperclipKind: interaction.kind } },

@@ -38,13 +38,13 @@ test("a turn's work in the agent's zone becomes one commit by the agent; others'
   await mkdir(path.join(root, "docs"), { recursive: true });
   await writeFile(path.join(root, "docs", "plan.md"), "# plan\n");
   const outcome = await commits.commitTurn({ folder: root, before, zone: ["tools/**"], agent,
-    operationId: "op-1", turnId: "turn-1", displayText: "Lay out the tools\nin detail" });
+    operationId: "op-1", turnId: "turn-1", displayText: "Разложи инструменты\nподробно" });
   assert.equal(outcome.state, "committed");
   assert.deepEqual(outcome.files, ["tools/new.py", "tools/old.py"]);
   assert.equal(git(root, "log", "-1", "--format=%an <%ae>"), `studio-lead-2 <${agentCommitEmail("studio-lead-2")}>`);
   assert.equal(git(root, "log", "-1", "--format=%cn"), "Atlas Gateway");
   const message = git(root, "log", "-1", "--format=%B");
-  assert.match(message, /^studio-lead-2: Lay out the tools\n/u);
+  assert.match(message, /^studio-lead-2: Разложи инструменты\n/u);
   assert.match(message, /Atlas-Operation: op-1/u);
   assert.deepEqual(git(root, "show", "--name-only", "--format=", "HEAD").split(/\r?\n/u).sort(), ["tools/new.py", "tools/old.py"]);
   // What was not the turn's, or not in its zone, is untouched: still staged, untracked, uncommitted.

@@ -3,16 +3,19 @@ import { lstat, mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { readDeskAgentSource } from "./desk-agent-sources.mjs";
+import { runDeskKitScript } from "./desk-task-kit.mjs";
 
 // The child side of the controller's task workflow for a desk agent: desk
-// tools that run the owner's child kit scripts (accept_task, update_task_progress,
+// tools that run the owner's child kit (accept_task, update_task_progress,
 // confirm_task_plan, submit_report) in the agent's coordination folder. The
-// scripts keep their own checks, files and hashes; the tools only pass bounded
-// arguments as an array and return what the scripts said. Every agent carries
-// them, so the tool list stays the same; an agent that is not a controller
-// source is told so.
+// kit's operations run in this process (desk-task-kit.mjs, the Node port of
+// the kit's PowerShell scripts, with the same checks, files and hashes); the
+// tools only pass bounded arguments and return what the kit said. Every agent
+// carries them, so the tool list stays the same; an agent that is not a
+// controller source is told so. `run` can still be the PowerShell runner
+// (runKitScriptWithPowerShell) where powershell.exe exists.
 
-export const DESK_AGENT_TASK_TOOLS_VERSION = "v0.4.0";
+export const DESK_AGENT_TASK_TOOLS_VERSION = "v0.5.0";
 const SCRIPTS = ".agents/skills/execute-orchestrated-task/scripts";
 const TASK_ID = /^[a-z0-9][a-z0-9.-]{2,95}$/u;
 const MAX_TEXT = 16_384;
@@ -50,6 +53,9 @@ function runPowerShell(script, parameters, { cwd, timeoutMs = 120_000 }) {
   });
 }
 
+/** The kit's PowerShell scripts, run by powershell.exe (Windows only). */
+export const runKitScriptWithPowerShell = runPowerShell;
+
 function git(args, { cwd, env }) {
   return new Promise((resolve) => {
     execFile("git", ["-c", "safe.directory=*", ...args], { cwd, env, windowsHide: true, timeout: 20_000 },
@@ -76,7 +82,7 @@ export async function projectRevision(projectFolder, { env = process.env } = {})
     : `uncommitted (base ${head.slice(0, 12)}${where})`;
 }
 
-/** The last lines a script printed, without PowerShell's error decoration. */
+/** The last lines a script printed, without PowerShell's error decoration (the kit in Node prints none). */
 function said(output, lines = 24) {
   return String(output ?? "").replace(/\r/gu, "").split("\n")
     .filter((line) => line.trim() && !/^\s*(\+|At |CategoryInfo|FullyQualifiedErrorId|#< CLIXML|<Objs )/u.test(line))
@@ -110,7 +116,7 @@ function taskId(value) {
  * `tools(agent)` gives the task tools for one agent, in the host's desk tool
  * shape: { name, description, inputSchema(zod), handler(args) -> text }.
  */
-export function createDeskTaskTools({ controllerRoot, run = runPowerShell, onReportSubmitted = null,
+export function createDeskTaskTools({ controllerRoot, run = runDeskKitScript, onReportSubmitted = null,
   onTaskDeclined = null, revisionOf = projectRevision }) {
   const sourceOf = async (agent) => readDeskAgentSource({ controllerRoot, agentId: agent.agentId });
   const script = (source, name) => path.join(source.folder, ...SCRIPTS.split("/"), `${name}.ps1`);

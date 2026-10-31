@@ -59,8 +59,8 @@ const sentinelLine = (value) => `\nglobalThis.${SENTINEL} = "${value}";\n`;
     verified.status === "verified" && verified.releaseId === "claude-port-backend-20261003"
       && ACCEPTED_DELIVERY.releaseId === "claude-port-backend-20261003"
       && verified.version === "v0.21.0"
-      && verified.manifestSha256 === "5cad60679cfd898c48e76368275bcac4738ccef5e02d76ee09df1c3caf1c5039"
-      && verified.lockSha256 === "6d3b8f17f039fa141008bddf03a683b141f51a983b1bab5064eb87c437015975"
+      && verified.manifestSha256 === "7af45f5786001616cd4e1eddb3f107d8da9ee2fc81684bfae55948c0582c817a"
+      && verified.lockSha256 === "8db06673b053049d13725697ef4c34111e661f5336bd72af7d61708aff69da35"
       && verified.filesChecked === 73,
     verified);
 

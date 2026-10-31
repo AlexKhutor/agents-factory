@@ -1,4 +1,3 @@
-import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
 import os from "node:os";
@@ -14,6 +13,7 @@ import {
 import { CodexConversationArchive } from "../src/codex-conversation-archive.mjs";
 import { createApplicationConversationArchiveHandlers } from "../src/application-conversation-archive.mjs";
 import { createApplicationGatewayBackend } from "../src/application-gateway-backend.mjs";
+import { sqliteBackendOf, sqliteBackendTest as test } from "./fixtures/sqlite-backends/helpers.mjs";
 
 const binding = { projectId: "controller", sourceId: "worker", providerId: "codex", threadId: "thread/opaque" };
 function message(recordId, text = "visible message") {
@@ -62,7 +62,12 @@ async function fixture(t) {
   });
   await mkdir(path.join(root, ".orchestrator"));
   await writeFile(path.join(root, ".orchestrator/contract.json"), JSON.stringify({ sourceId: "controller" }));
-  const open = () => createConversationArchive({ controllerRoot: root, projectId: "controller" });
+  const sqliteBackend = sqliteBackendOf(t);
+  const open = async () => {
+    const archive = await createConversationArchive({ controllerRoot: root, projectId: "controller", sqliteBackend });
+    assert.equal(archive.sqliteBackend, sqliteBackend);
+    return archive;
+  };
   return { root, open, archive: await open() };
 }
 

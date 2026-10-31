@@ -89,6 +89,19 @@ try {
       && asking[0].question === "Which option interests you?"
       && again.length === 1 && reads === 2 && answered.length === 0,
     { asking, again, reads, answered });
+
+  // An action refused in the last turn (by the person or the desk's rules) is
+  // attention until the next message, with or without a question.
+  const turns = { r1: { text: "The command was refused. Tell me what to do.", refused: 1 },
+    r2: { text: "Refused. Try again?", refused: 2 }, r3: { text: "Done.", refused: 0 } };
+  const refusedItems = await store.questionsFor(projectionOf([
+    { agentId: "r1", lastOperation: { operationId: "op-21", state: "completed" } },
+    { agentId: "r2", lastOperation: { operationId: "op-22", state: "completed" } },
+    { agentId: "r3", lastOperation: { operationId: "op-23", state: "completed" } },
+  ]), async (agentId) => turns[agentId] ?? null);
+  const kinds = refusedItems.map((item) => `${item.agentId}:${item.kind}${item.count ? `:${item.count}` : ""}`).sort();
+  check("refused-action-is-attention",
+    kinds.join(",") === "r1:refused:1,r2:asks-you,r2:refused:2", kinds);
 } finally {
   await rm(folder, { recursive: true, force: true });
 }

@@ -1,11 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
-import { spawn } from "node:child_process";
 import { lstat, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { renameOver } from "./rename-over.mjs";
 import path from "node:path";
 
 import { DESK_AGENT_PROFILE, DESK_AGENT_ROUTE, validateDeskAgentSource } from "./desk-agent-source-validation.mjs";
 import { resolveProjectWorkspace } from "./project-workspace-binding.mjs";
+import { installDeskAgentKit } from "./desk-task-controller.mjs";
 
 // Desk agents as controller sources (one agent model, claude-code-controller.md):
 // the controller's task workflow reaches an agent of the desk the way it
@@ -13,7 +13,7 @@ import { resolveProjectWorkspace } from "./project-workspace-binding.mjs";
 // report outboxes, the child kit) live in a controller-owned folder per agent,
 // never in the project folder the agent works in and shares with others.
 
-export const DESK_AGENT_SOURCES_VERSION = "v0.2.0";
+export const DESK_AGENT_SOURCES_VERSION = "v0.3.0";
 export const DESK_AGENT_FOLDER = path.join(".project-local", "desk-agents");
 
 function fail(code) { throw Object.assign(new Error(code), { code }); }
@@ -69,20 +69,6 @@ async function writeJsonAtomic(file, value) {
   }
 }
 
-function runPowerShell(script, args, { cwd, timeoutMs = 120_000 }) {
-  return new Promise((resolve) => {
-    const child = spawn("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
-      "-File", script, ...args], { cwd, windowsHide: true });
-    let output = "";
-    const collect = (chunk) => { if (output.length < 64 * 1024) output += chunk; };
-    child.stdout.on("data", collect);
-    child.stderr.on("data", collect);
-    const timer = setTimeout(() => child.kill(), timeoutMs);
-    child.on("error", () => { clearTimeout(timer); resolve({ code: -1, output }); });
-    child.on("close", (code) => { clearTimeout(timer); resolve({ code, output }); });
-  });
-}
-
 /**
  * Registers a desk agent as a controller source. A trusted local command (the
  * memory CLI after the person's confirmation): it changes the controller's
@@ -90,8 +76,9 @@ function runPowerShell(script, args, { cwd, timeoutMs = 120_000 }) {
  * anything that differs is a conflict, never overwritten.
  */
 export async function registerDeskAgentSource({ controllerRoot, service, agentId,
-  installKit = (root, sourceId) => runPowerShell(path.join(root, "tools", "install_child_coordination_kit.ps1"),
-    ["-SourceId", sourceId, "-RepoRoot", root], { cwd: root }),
+  // The kit is installed in this process (desk-task-controller.mjs, the same files
+  // install_child_coordination_kit.ps1 writes), so registration needs no PowerShell.
+  installKit = installDeskAgentKit,
   now = () => new Date() } = {}) {
   if (typeof controllerRoot !== "string" || !path.isAbsolute(controllerRoot)) fail("desk_source_root_invalid");
   const root = path.resolve(controllerRoot);

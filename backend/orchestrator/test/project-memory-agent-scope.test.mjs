@@ -3,9 +3,9 @@ import { spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import test from "node:test";
 
 import { createProjectMemoryStore } from "../src/project-memory-store.mjs";
+import { sqliteBackendOf, sqliteBackendTest as test } from "./fixtures/sqlite-backends/helpers.mjs";
 
 // The memory database as schema 1 created it (before agent scopes), so the
 // migration is tested against the real old layout, not a description of it.
@@ -84,7 +84,9 @@ db.commit()
 
 test("a schema-1 memory database moves to schema 2 with its scopes, revisions and documents", async (t) => {
   const { root, database } = await oldDatabase(t);
-  const store = await createProjectMemoryStore({ controllerRoot: root });
+  const sqliteBackend = sqliteBackendOf(t);
+  const store = await createProjectMemoryStore({ controllerRoot: root, sqliteBackend });
+  assert.equal(store.sqliteBackend, sqliteBackend);
   assert.equal(python(`
 import sqlite3, sys
 db = sqlite3.connect(sys.argv[1])
@@ -109,13 +111,13 @@ print(db.execute("PRAGMA user_version").fetchone()[0], db.execute("PRAGMA foreig
   await assert.rejects(store.createScope({ scopeId: "agent-memory:x", kind: "agent", projectId: "robotarm",
     quarterId: "missing-quarter", title: "x", operationId: "create-x" }), { code: "memory_scope_not_found" });
   // Opening again leaves a schema-2 database as it is.
-  await createProjectMemoryStore({ controllerRoot: root });
+  await createProjectMemoryStore({ controllerRoot: root, sqliteBackend });
   assert.equal((await store.readScope({ scopeId: own.scopeId })).revision, 2);
 });
 
 test("a project copy takes project and quarter memory, never agents' own", async (t) => {
   const { root } = await oldDatabase(t);
-  const store = await createProjectMemoryStore({ controllerRoot: root });
+  const store = await createProjectMemoryStore({ controllerRoot: root, sqliteBackend: sqliteBackendOf(t) });
   await store.createScope({ scopeId: "agent-memory:solver", kind: "agent", projectId: "robotarm",
     quarterId: "tools", title: "solver", operationId: "create-agent-memory" });
   const copy = await store.copyProject({ sourceProjectId: "robotarm", targetProjectId: "robotarm-2",

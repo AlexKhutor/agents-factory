@@ -129,9 +129,9 @@ const DRAIN_REGISTERED = `export async function drain(queue, lock) {
   queue.markEmpty();
 }
 `;
-const REPORT = `# Analysis of drain() — fixture
+const REPORT = `# Review of drain() — fixture
 
-Under load the queue was drained twice: the lock was released before
+Under load the queue was emptied twice: the lock was released before
 the queue was marked empty. The order is fixed in src/queue/drain.mjs.
 `;
 

@@ -1,6 +1,6 @@
 {
   "name": "agents-factory-atlas",
-  "version": "0.30.0",
+  "version": "0.32.0",
   "private": true,
   "description": "Desktop client for the Agents Factory Application Gateway: World, Project, Feature and Agent",
   "license": "AGPL-3.0-only",
@@ -26,6 +26,7 @@
     "test:trusted-actions": "node tools/test-trusted-actions.mjs",
     "test:mutations": "node tools/test-mutations.mjs",
     "test:layout": "node tools/test-layout.mjs",
+    "test:layout-split": "node tools/test-layout-split.mjs",
     "test:scene": "node tools/test-scene.mjs",
     "test:fixture": "node tools/test-fixture-shape.mjs",
     "test:world-view": "node tools/test-world-view.mjs",
@@ -35,10 +36,16 @@
     "test:outcomes": "node tools/test-outcomes.mjs",
     "test:provider-models": "node tools/test-provider-models.mjs",
     "test:move-over": "node tools/test-move-over.mjs",
+    "test:ui-state": "node tools/test-ui-state.mjs",
+    "test:claude-account-cache": "node tools/test-claude-account-cache.mjs",
     "test:agent-workspace": "node tools/test-agent-workspace.mjs",
     "test:ui": "node tools/test-ui-scenes.mjs",
     "test:ui-status": "node tools/test-ui-status.mjs",
-    "test": "node tools/verify-kit.mjs && node tools/test-delivery.mjs && node tools/run-kit-conformance.mjs && node tools/test-trusted-actions.mjs && node tools/test-mutations.mjs && node tools/test-layout.mjs && node tools/test-scene.mjs && node tools/test-fixture-shape.mjs && node tools/test-world-view.mjs && node tools/test-feed.mjs && node tools/test-evidence.mjs && node tools/test-contract.mjs && node tools/test-outcomes.mjs && node tools/test-provider-models.mjs && node tools/test-move-over.mjs && node tools/test-turn-seen.mjs && node tools/test-agent-workspace.mjs && node tools/test-ui-status.mjs && node tools/test-paperclip-bridge.mjs && node tools/test-chat-view.mjs && node tools/test-direct-bridge.mjs && node tools/probe-connection.mjs --dev-fixture"
+    "test:gateway-control": "node tools/test-gateway-control.mjs",
+    "test:i18n": "node tools/test-i18n.mjs",
+    "test:model-health": "node tools/test-model-health.mjs",
+    "test:object-ids": "node tools/test-object-ids.mjs",
+    "test": "node tools/verify-kit.mjs && node tools/test-i18n.mjs && node tools/test-object-ids.mjs && node tools/test-model-health.mjs && node tools/test-delivery.mjs && node tools/run-kit-conformance.mjs && node tools/test-trusted-actions.mjs && node tools/test-mutations.mjs && node tools/test-layout.mjs && node tools/test-layout-split.mjs && node tools/test-scene.mjs && node tools/test-fixture-shape.mjs && node tools/test-world-view.mjs && node tools/test-feed.mjs && node tools/test-evidence.mjs && node tools/test-contract.mjs && node tools/test-outcomes.mjs && node tools/test-provider-models.mjs && node tools/test-move-over.mjs && node tools/test-ui-state.mjs && node tools/test-claude-account-cache.mjs && node tools/test-turn-seen.mjs && node tools/test-agent-workspace.mjs && node tools/test-ui-status.mjs && node tools/test-gateway-control.mjs && node tools/test-paperclip-bridge.mjs && node tools/test-chat-view.mjs && node tools/test-direct-bridge.mjs && node tools/probe-connection.mjs --dev-fixture"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.3.288"

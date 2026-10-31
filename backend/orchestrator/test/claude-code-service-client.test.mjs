@@ -53,12 +53,19 @@ test("the Claude reviewer writes only its decision, and its turn reads like the 
     risks: [], humanApprovalRequired: false, decidedAtUtc: "2026-10-02T12:00:00.000Z" };
   const sdk = createFakeClaudeSdk({ turns: [async function* review({ sessionId, options, ask }) {
     yield init(sessionId);
-    const hook = options.hooks.PreToolUse[0].hooks[0];
+    // Every hook runs; the secret hook comes first, then the write zone.
+    const hooks = options.hooks.PreToolUse[0].hooks;
+    assert.equal(hooks.length, 2);
     for (const file of [path.join(root, "knowledge", "notes.md"), path.join(root, ...DECISION.split("/")),
       path.join(root, "coordination", "reviews", "other-task", "decision.json")]) {
-      const verdict = await hook({ tool_name: "Write", tool_input: { file_path: file } });
-      verdicts.push(verdict.hookSpecificOutput?.permissionDecision ?? "pass");
+      let verdict = "pass";
+      for (const hook of hooks) {
+        verdict = (await hook({ tool_name: "Write", tool_input: { file_path: file } })).hookSpecificOutput?.permissionDecision ?? verdict;
+      }
+      verdicts.push(verdict);
     }
+    const secret = await hooks[0]({ tool_name: "Read", tool_input: { file_path: path.join(root, ".project-local", "x", ".credentials.json") } });
+    assert.equal(secret.hookSpecificOutput.permissionDecision, "deny");
     // Nobody watches the turn: a read anywhere is allowed, a command never runs.
     answers.push((await ask("Read", { file_path: "Q:/elsewhere/source.md" }, "toolu_read1")).behavior);
     answers.push((await ask("Bash", { command: "git push" }, "toolu_bash1")).behavior);
@@ -143,21 +150,22 @@ test("the Claude summarizer has no tools and returns what Claude wrote", async (
   const root = await controller(t);
   const sdk = createFakeClaudeSdk({ turns: [async function* summary({ sessionId }) {
     yield init(sessionId);
-    yield say(sessionId, [{ type: "text", text: "Damping is set up; no risks named." }]);
+    yield say(sessionId, [{ type: "text", text: "Damping tuned; no risks named." }]);
     yield fakeResult(sessionId);
   }] });
   const summarizer = createClaudeReportSummarizer({ controllerRoot: root, claude: claudeOf(sdk) });
   assert.deepEqual((await summarizer.listModels()).data.map((model) => model.id), [FAKE_MODEL]);
   const report = { sourceId: "desk-solver", taskId: TASK, sha256: "b".repeat(64), text: "## Outcome\n\nTuned." };
-  const generated = await summarizer.summarize(report, { model: FAKE_MODEL, reasoningEffort: "low", language: "Russian" });
-  assert.equal(generated.summary, "Damping is set up; no risks named.");
+  const generated = await summarizer.summarize(report, { model: FAKE_MODEL, reasoningEffort: "low", language: "English" });
+  assert.equal(generated.summary, "Damping tuned; no risks named.");
   assert.equal(generated.provider, "claude-code");
   assert.equal(generated.serviceName, "claude_code_report_summarizer");
   assert.equal(generated.model, FAKE_MODEL);
   const call = sdk.calls.at(-1);
   assert.deepEqual(call.options.tools, []);
   assert.match(call.options.systemPrompt.append, /read-only report summarizer/u);
-  assert.equal(call.options.hooks, undefined);
+  // No write zone; the secret hook goes with every Claude session.
+  assert.equal(call.options.hooks.PreToolUse[0].hooks.length, 1);
   assert.match(call.prompt.message.content, /<immutable-report>/u);
   await assert.rejects(summarizer.summarize(report, { model: "claude-unknown", reasoningEffort: "low" }),
     { code: "MODEL_UNAVAILABLE" });
@@ -175,7 +183,8 @@ test("the controller takes Claude Code as its review provider without a Codex ho
   await writeFile(path.join(root, ".project-local", "application-gateway", "claude-provider.json"),
     JSON.stringify({ schemaVersion: 1, sdkPath: path.join(root, "sdk", "sdk.mjs"), models: MODELS }));
   const configuration = await loadConfiguration(configPath);
-  assert.equal(configuration.provider.commandResolution, "not-required");
+  // No Codex executable is looked for (the Codex path left the product).
+  assert.deepEqual(configuration.provider, { type: "claude-code", model: FAKE_MODEL, reasoningEffort: "high" });
   const provider = createProvider(configuration);
   assert.equal(provider.describe().provider, "claude-code");
   assert.equal(provider.describe().model, FAKE_MODEL);

@@ -12,7 +12,7 @@ import {
 } from "../src/control-report-collector.mjs";
 import { FakeReviewProvider } from "../src/control-review-provider.mjs";
 import {
-  CodexReportSummarizer,
+  ServiceReportSummarizer,
   ReportPresentationService,
   resolveSummaryModelProfile,
 } from "../src/report-presentation.mjs";
@@ -424,9 +424,9 @@ test("Codex summarizer discovers the catalog before starting an explicit profile
     async readThreadUsage() { return null; },
     async close() { calls.push("close"); },
   };
-  const summarizer = new CodexReportSummarizer({
+  const summarizer = new ServiceReportSummarizer({
     cwd: process.cwd(),
-    codexHome: path.join(process.cwd(), ".test-codex-home"),
+    providerId: "test-provider",
     clientFactory: () => client,
   });
   const result = await summarizer.summarize({ sourceId: "worker-one", taskId: "task-one", sha256: "a".repeat(64), text: "Report" }, {

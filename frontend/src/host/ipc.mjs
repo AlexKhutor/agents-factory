@@ -9,7 +9,7 @@ import os from "node:os";
 import { exportEvidence } from "./evidence-export.mjs";
 import { buildWorldView } from "./memory-view.mjs";
 import { validateLayout } from "./layout-store.mjs";
-import { MODELS_OPERATION, summarizeProviderModels } from "./provider-models.mjs";
+import { KNOWN_ADAPTERS, MODELS_OPERATION, combineProviderModels, summarizeProviderModels } from "./provider-models.mjs";
 
 const ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/;
 
@@ -61,7 +61,12 @@ export function createChannels({
         const turnId = records[finished].turnId;
         const answer = records.slice(0, finished).reverse()
           .find((record) => record.type === "assistant" && record.turnId === turnId);
-        return typeof answer?.text === "string" ? answer.text : "";
+        // Actions of the turn that the person or the desk's rules refused (`permission` records;
+        // `policy` is how the first ACP host build wrote the desk's own refusals).
+        const refused = records.filter((record) => record.turnId === turnId
+          && ((record.type === "permission" && record.decision !== "allow")
+            || (record.type === "policy" && record.verdict === "deny"))).length;
+        return { text: typeof answer?.text === "string" ? answer.text : "", refused };
       }
     }
     const read = await session.agentWorkspace?.conversation?.({ agentId });
@@ -80,6 +85,12 @@ export function createChannels({
       reasonCode: session.configuration?.reasonCode ?? "gateway_unavailable",
     },
   });
+
+  // The Gateway's own controls (gateway-control.mjs). A mode without them -
+  // Paperclip, direct - answers so, and the window shows no Gateway panel.
+  const control = (use) => (typeof session.gatewayControl?.status === "function"
+    ? use(session.gatewayControl)
+    : { ok: false, error: { code: "unsupported_in_mode", reasonCode: session.mode ?? null } });
 
   return {
     "atlas:app-info": async () => ({
@@ -114,6 +125,14 @@ export function createChannels({
         return { ok: false, error: { code: "unsupported_in_mode", reasonCode: session.mode ?? null } };
       }
       return { ok: true, data: await session.claudeUsage.read() };
+    },
+
+    // Whether the servers of the agents' models answer now; `force` checks again at once (model-health.mjs).
+    "atlas:model-health": async ({ force = false } = {}) => {
+      if (typeof session.modelHealth?.read !== "function") {
+        return { ok: false, error: { code: "unsupported_in_mode", reasonCode: session.mode ?? null } };
+      }
+      return { ok: true, data: await session.modelHealth.read({ force: force === true }) };
     },
 
     "atlas:connection": async ({ force = false } = {}) => {
@@ -164,8 +183,17 @@ export function createChannels({
         return { ok: false, error: { code: "unsupported_in_mode", reasonCode: session.mode ?? null } };
       }
       const adapterId = await gateway().providerOf(MODELS_OPERATION);
-      if (adapterId === null) return { ok: false, error: { code: "provider_unavailable", reasonCode: null } };
-      return summarizeProviderModels(await gateway().run(MODELS_OPERATION, {}), adapterId);
+      if (adapterId !== null) return summarizeProviderModels(await gateway().run(MODELS_OPERATION, {}), adapterId);
+      // Desk agents of several providers (Claude Code and an ACP agent): each is asked by name.
+      const adapters = typeof gateway().providersOf === "function"
+        ? await gateway().providersOf(MODELS_OPERATION, KNOWN_ADAPTERS) : [];
+      if (adapters.length === 0) return { ok: false, error: { code: "provider_unavailable", reasonCode: null } };
+      const summaries = [];
+      for (const adapter of adapters) {
+        summaries.push(summarizeProviderModels(await gateway().run(MODELS_OPERATION, {}, { provider: { adapterId: adapter } }),
+          adapter));
+      }
+      return combineProviderModels(summaries);
     },
 
     "atlas:scope-read": async ({ scopeId } = {}) => {
@@ -278,7 +306,9 @@ export function createChannels({
 
     "atlas:trusted": async () => ({ ok: true, data: await session.trusted.availability() }),
 
-    "atlas:choose-workspace": async () => session.trusted.chooseWorkspace(),
+    "atlas:choose-workspace": async ({ purpose } = {}) => session.trusted.chooseWorkspace({
+      purpose: purpose === "package" ? "package" : "workspace",
+    }),
 
     "atlas:bind-workspace": async ({ projectId, selectionId } = {}) => (
       session.trusted.bindWorkspace({ projectId, selectionId })
@@ -310,6 +340,10 @@ export function createChannels({
     "atlas:rebind-workspace": async ({ projectId, selectionId } = {}) => (typeof session.trusted.rebindWorkspace === "function"
       ? session.trusted.rebindWorkspace({ projectId, selectionId })
       : { ok: false, error: { code: "unavailable", reasonCode: "project_folder_not_supported" } }),
+    // A send whose outcome is uncertain, checked against the agent's session journal (trusted host, confirmed).
+    "atlas:settle-send": async ({ agentId, operationId } = {}) => (typeof session.trusted.settleSend === "function"
+      ? session.trusted.settleSend({ agentId, operationId })
+      : { ok: false, error: { code: "unavailable", reasonCode: "settle_send_not_supported" } }),
     // The folder a project works in - for the person's own window (trusted host, read-only).
     "atlas:project-folder": async ({ projectId } = {}) => (typeof session.trusted.readProjectFolder === "function"
       ? session.trusted.readProjectFolder({ projectId })
@@ -325,6 +359,46 @@ export function createChannels({
     "atlas:archived-projects": async () => (typeof session.trusted.listArchivedProjects === "function"
       ? session.trusted.listArchivedProjects()
       : { ok: false, error: { code: "unavailable", reasonCode: "project_archive_not_supported" } }),
+    // The history of changes (the backend's action journal) and the undo of one entry (trusted host, confirmed).
+    "atlas:action-journal": async ({ projectId = null, limit = 200 } = {}) => (typeof session.trusted.readActionJournal === "function"
+      ? session.trusted.readActionJournal({ projectId, limit })
+      : { ok: false, error: { code: "unavailable", reasonCode: "action_journal_not_supported" } }),
+    "atlas:undo-action": async ({ projectId, entryId } = {}) => (typeof session.trusted.undoAction === "function"
+      ? session.trusted.undoAction({ projectId, entryId })
+      : { ok: false, error: { code: "unavailable", reasonCode: "action_journal_not_supported" } }),
+    // Names of projects, quarters and agents (the backend's object-names.mjs): read, and rename one (trusted host).
+    "atlas:names": async () => (typeof session.trusted.readNames === "function"
+      ? session.trusted.readNames()
+      : { ok: false, error: { code: "unavailable", reasonCode: "names_not_supported" } }),
+    "atlas:rename": async ({ projectId, kind, objectId, name } = {}) => (typeof session.trusted.renameObject === "function"
+      ? session.trusted.renameObject({ projectId, kind, objectId, name: name ?? null })
+      : { ok: false, error: { code: "unavailable", reasonCode: "names_not_supported" } }),
+    // Projects not on this PC (a split instance): the list, taking one off into
+    // its package folder and bringing it back (trusted host, confirmed).
+    "atlas:away-projects": async () => (typeof session.trusted.listAwayProjects === "function"
+      ? session.trusted.listAwayProjects()
+      : { ok: true, data: { split: false, projects: [] } }),
+    "atlas:unmount-project": async ({ projectId, selectionId, choice } = {}) => (
+      typeof session.trusted.unmountProject === "function"
+        ? session.trusted.unmountProject({ projectId, selectionId, choice: choice ?? null })
+        : { ok: false, error: { code: "unavailable", reasonCode: "project_mount_not_supported" } }),
+    // Where a project may be kept: anywhere, only at home, only on this PC (trusted host).
+    "atlas:set-project-policy": async ({ projectId, choice } = {}) => (typeof session.trusted.setProjectPolicy === "function"
+      ? session.trusted.setProjectPolicy({ projectId, choice })
+      : { ok: false, error: { code: "unavailable", reasonCode: "project_mount_not_supported" } }),
+    "atlas:mount-project": async ({ selectionId, projectId } = {}) => (typeof session.trusted.mountProject === "function"
+      ? session.trusted.mountProject({ selectionId, projectId: projectId ?? null })
+      : { ok: false, error: { code: "unavailable", reasonCode: "project_mount_not_supported" } }),
+    // The world and projects between PCs (trusted host): status reads; take and release are confirmed.
+    "atlas:sync-status": async ({ remote } = {}) => (typeof session.trusted.syncStatus === "function"
+      ? session.trusted.syncStatus({ remote: remote === true })
+      : { ok: false, error: { code: "unavailable", reasonCode: "sync_not_supported" } }),
+    "atlas:sync-take": async ({ target } = {}) => (typeof session.trusted.syncTake === "function"
+      ? session.trusted.syncTake({ target: target ?? "all" })
+      : { ok: false, error: { code: "unavailable", reasonCode: "sync_not_supported" } }),
+    "atlas:sync-release": async ({ target } = {}) => (typeof session.trusted.syncRelease === "function"
+      ? session.trusted.syncRelease({ target: target ?? "all" })
+      : { ok: false, error: { code: "unavailable", reasonCode: "sync_not_supported" } }),
 
     // PROTOTYPE, direct mode: the agent's own notes and write zone. Other modes answer unavailable.
     "atlas:agent-notes": async ({ agentId } = {}) => (typeof session.trusted.readAgentNotes === "function"
@@ -360,6 +434,41 @@ export function createChannels({
       typeof session.trusted.approveMemoryDocument === "function"
         ? session.trusted.approveMemoryDocument({ agentId, path, target, apply })
         : { ok: false, error: { code: "unavailable", reasonCode: "agent_notes_not_supported" } }),
+    // The world lead and desk agents (trusted host): the task board is read-only;
+    // a desk agent and the world lead are confirmed natively. The world lead's role
+    // is given only with the flowId of that confirmation.
+    "atlas:task-board": async ({ agentId = null } = {}) => (typeof session.trusted.readTaskBoard === "function"
+      ? session.trusted.readTaskBoard({ agentId })
+      : { ok: false, error: { code: "unavailable", reasonCode: "task_board_not_supported" } }),
+    "atlas:register-desk-agent": async ({ agentId } = {}) => (typeof session.trusted.registerDeskAgent === "function"
+      ? session.trusted.registerDeskAgent({ agentId })
+      : { ok: false, error: { code: "unavailable", reasonCode: "desk_agents_not_supported" } }),
+    "atlas:prepare-world-lead": async ({ agentId, model = null } = {}) => (
+      typeof session.trusted.prepareWorldLead === "function"
+        ? session.trusted.prepareWorldLead({ agentId, model })
+        : { ok: false, error: { code: "unavailable", reasonCode: "world_lead_not_supported" } }),
+    "atlas:assign-world-lead": async ({ agentId, flowId, expectedRevision } = {}) => (
+      typeof session.trusted.assignWorldLead === "function"
+        ? session.trusted.assignWorldLead({ agentId, flowId, expectedRevision })
+        : { ok: false, error: { code: "unavailable", reasonCode: "world_lead_not_supported" } }),
+
+    // --- the Gateway, the API key and autostart ---------------------------------
+    // The host runs the agents-factory CLI with arguments it builds itself; the
+    // page names no command, path or executable. The API key comes from the page
+    // once, goes to the CLI's stdin and is not kept: every answer carries only
+    // {hasKey}. Removing the key and turning autostart on are confirmed in
+    // Atlas's own window.
+
+    "atlas:gateway-status": async () => control((gateway) => gateway.status()),
+    "atlas:gateway-start": async () => control((gateway) => gateway.start()),
+    "atlas:gateway-stop": async () => control((gateway) => gateway.stop()),
+    "atlas:gateway-recover": async () => control((gateway) => gateway.recover()),
+    "atlas:api-key-status": async () => control((gateway) => gateway.keyStatus()),
+    "atlas:api-key-set": async ({ key } = {}) => control((gateway) => gateway.setKey({ key })),
+    "atlas:api-key-remove": async () => control((gateway) => gateway.removeKey()),
+    "atlas:autostart-status": async () => control((gateway) => gateway.autostartStatus()),
+    "atlas:autostart-install": async () => control((gateway) => gateway.installAutostart()),
+    "atlas:autostart-uninstall": async () => control((gateway) => gateway.uninstallAutostart()),
 
     // --- gateway mutations -----------------------------------------------------
     // Each one confirms with the person first and carries its own identity.
@@ -410,10 +519,12 @@ export function createChannels({
         : layoutStore.read()
     ),
 
-    "atlas:layout-write": async ({ layout } = {}) => (
+    // membership (agentId -> projectId) tells a split instance's store which
+    // project part an agent's place goes to; the single file ignores it.
+    "atlas:layout-write": async ({ layout, membership } = {}) => (
       layoutStore === null
         ? { ok: false, error: { code: "unavailable", reasonCode: "no_layout_store" } }
-        : layoutStore.write(layout)
+        : layoutStore.write(layout, membership)
     ),
 
     "atlas:layout-export": async ({ layout } = {}) => {
@@ -475,11 +586,14 @@ export function createChannels({
 }
 
 export const CHANNEL_NAMES = Object.freeze([
-  "atlas:app-info", "atlas:runtime", "atlas:claude-account", "atlas:claude-usage", "atlas:connection", "atlas:operations", "atlas:expected",
+  "atlas:app-info", "atlas:runtime", "atlas:claude-account", "atlas:claude-usage", "atlas:model-health", "atlas:connection", "atlas:operations", "atlas:expected",
   "atlas:world", "atlas:turn-seen", "atlas:models", "atlas:scope-read", "atlas:agent-read", "atlas:agent-context", "atlas:agent-archive",
   "atlas:interactions", "atlas:trusted", "atlas:choose-workspace",
   "atlas:bind-workspace", "atlas:save-memory", "atlas:archive-project", "atlas:restore-project",
-  "atlas:archived-projects", "atlas:project-folder", "atlas:rebind-workspace", "atlas:set-permission-mode",
+  "atlas:archived-projects", "atlas:action-journal", "atlas:undo-action", "atlas:names", "atlas:rename",
+  "atlas:project-folder", "atlas:rebind-workspace", "atlas:settle-send", "atlas:set-permission-mode",
+  "atlas:away-projects", "atlas:unmount-project", "atlas:mount-project", "atlas:set-project-policy",
+  "atlas:sync-status", "atlas:sync-take", "atlas:sync-release",
   "atlas:permission-modes", "atlas:archive-quarter", "atlas:restore-quarter", "atlas:create-scope",
   "atlas:create-agent", "atlas:send", "atlas:send-receipt", "atlas:respond",
   "atlas:interrupt", "atlas:close-agent", "atlas:steer", "atlas:unqueue", "atlas:set-profile", "atlas:trace",
@@ -491,4 +605,8 @@ export const CHANNEL_NAMES = Object.freeze([
   "atlas:resend-file-save", "atlas:copy-project", "atlas:reconcile-project-copy",
   "atlas:agent-notes", "atlas:save-agent-notes", "atlas:set-agent-role", "atlas:approve-memory-document", "atlas:preview-memory-document", "atlas:agent-commits",
   "atlas:init-project-git",
+  "atlas:task-board", "atlas:register-desk-agent", "atlas:prepare-world-lead", "atlas:assign-world-lead",
+  "atlas:gateway-status", "atlas:gateway-start", "atlas:gateway-stop", "atlas:gateway-recover",
+  "atlas:api-key-status", "atlas:api-key-set", "atlas:api-key-remove",
+  "atlas:autostart-status", "atlas:autostart-install", "atlas:autostart-uninstall",
 ]);

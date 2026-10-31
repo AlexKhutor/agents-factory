@@ -3,7 +3,9 @@
 // named. Nothing is invented - an unknown adapter, a failed read or an empty
 // list yields a refusal, and the form falls back to typed fields.
 
-import { MODELS_OPERATION, summarizeProviderModels } from "../src/host/provider-models.mjs";
+import {
+  KNOWN_ADAPTERS, MODELS_OPERATION, combineProviderModels, summarizeProviderModels,
+} from "../src/host/provider-models.mjs";
 import { ALLOWED_OPERATIONS } from "../src/host/operations.mjs";
 import { CHANNEL_NAMES } from "../src/host/ipc.mjs";
 
@@ -84,6 +86,23 @@ const ALL = ["default", "low", "medium", "high", "xhigh", "max"];
   const partial = summarizeProviderModels(answer([record("claude-opus-5-5", "Claude Opus 5.5", ALL)],
     { status: "partial", nextCursor: "c1" }), "claude-code-sdk");
   check("partial-list-marked", partial.ok && partial.data.complete === false, partial);
+}
+
+{
+  const claude = summarizeProviderModels(answer([record("claude-opus-5-5", "Claude Opus 5.5", ALL)]), "claude-code-sdk");
+  const acp = summarizeProviderModels(answer([record("qwen3.8-27b-defiance", "Qwen", ["default"])]), "acp-stdio");
+  const down = summarizeProviderModels({ ok: false, error: { code: "provider_disconnected" } }, "acp-stdio");
+  const both = combineProviderModels([claude, acp]);
+  const one = combineProviderModels([claude, down]);
+  const none = combineProviderModels([down]);
+  check("several-providers-in-one-gateway",
+    acp.ok && acp.data.provider.profileProvider === "acp" && KNOWN_ADAPTERS.includes("acp-stdio")
+      && both.ok && both.data.providers.length === 2 && both.data.provider.profileProvider === "claude"
+      && both.data.models.map((item) => `${item.provider}:${item.id}`).join(",")
+        === "claude:claude-opus-5-5,acp:qwen3.8-27b-defiance"
+      && one.ok && one.data.providers.length === 1
+      && !none.ok && none.error.code === "provider_disconnected",
+    { both, one, none });
 }
 
 check("operation-allowed-to-window-as-read", ALLOWED_OPERATIONS[MODELS_OPERATION] === "read",

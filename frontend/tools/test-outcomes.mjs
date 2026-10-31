@@ -258,7 +258,7 @@ const identity = { operationId: "atlas-memory-1", commandId: "atlas-command-1" }
   const lost = copy({ ok: false, error: { code: "uncertain_outcome" }, identity: { operationId: "atlas-copy-3" } });
   check("copy-outcome-complete-atomic-refusal-or-reconcile",
     done.outcome === "complete" && text(done).includes("t-q1-memory") && text(done).includes("revision 3")
-      && refused.outcome === "none" && text(refused).includes("nothing created") && !text(refused).includes("partial")
+      && refused.outcome === "none" && text(refused).includes("nothing was created") && !text(refused).includes("partial")
       && lost.outcome === "uncertain" && lost.reconcile && text(lost).includes("atlas-copy-3"),
     { done, refused, lost });
 }
@@ -300,6 +300,104 @@ const identity = { operationId: "atlas-memory-1", commandId: "atlas-command-1" }
       && results.ok.ok === true && results.ok.id === "codex-r2-s4-copy-target-20260926"
       && results.quarterOk.ok === true && typeof results.occupied.text === "string",
     results);
+}
+
+// --- the world lead and desk agents --------------------------------------------
+
+{
+  const task = (stage, parts = {}) => ({ stage, taskId: "t-001", agentId: "a", acknowledgement: null, progress: null,
+    report: null, ...parts });
+  const states = (stage, parts) => core.taskStageSteps(task(stage, parts)).map((step) => step.state).join(",");
+  check("contract-task-steps-done-current-ahead",
+    core.TASK_STEPS.map(([, label]) => label).join(",") === "dispatched,accepted,plan,in progress,report,accepted by code"
+      && states("dispatched") === "current,todo,todo,todo,todo,todo"
+      && states("started") === "current,todo,todo,todo,todo,todo"
+      && states("planned") === "done,done,current,todo,todo,todo"
+      && states("reported") === "done,done,done,done,current,todo"
+      && states("accepted-by-code") === "done,done,done,done,done,done"
+      && states("declined") === "done,declined,todo,todo,todo,todo"
+      && core.taskStageSteps(task("declined"))[1].label === "not taken",
+    ["dispatched", "planned", "declined"].map((stage) => core.taskStageSteps(task(stage))));
+  const lines = {
+    planned: core.taskStateLine(task("planned", { progress: { planStatus: "awaiting_confirmation" } })),
+    confirmed: core.taskStateLine(task("planned", { progress: { planStatus: "confirmed" } })),
+    working: core.taskStateLine(task("in-progress", { progress: { now: "editing the queue" } })),
+    reported: core.taskStateLine(task("reported", { report: { status: "completed", summary: "Done." } })),
+    declined: core.taskStateLine(task("declined", { acknowledgement: { decision: "blocked", reason: "Outside my zone" } })),
+    unknown: core.taskStateLine(task("something-new")),
+  };
+  check("task-line-says-where-it-is-in-words",
+    lines.planned.includes("waiting for your confirmation") && lines.confirmed.startsWith("Plan confirmed")
+      && lines.working === "In progress: editing the queue" && lines.reported.includes("completed — Done.")
+      && lines.reported.includes("Waiting for acceptance") && lines.declined.includes("(blocked): Outside my zone")
+      && lines.declined.includes("There will be no report") && lines.unknown === "Where the task is: not reported.",
+    lines);
+}
+
+{
+  const refused = (code, reasonCode = code) => core.describeDeskRegistration({ ok: false,
+    error: { code: code === "user_declined" ? code : "cli_failed", reasonCode } });
+  const codes = ["memory_agent_closed", "memory_agent_not_found", "memory_workspace_required", "memory_workspace_conflict",
+    "memory_invalid_input", "desk_source_registration_busy", "controller_registry_incompatible", "duplicate_source_id",
+    "desk_source_conflict", "desk_source_binding_conflict", "desk_source_folder_conflict", "desk_source_record_conflict",
+    "desk_source_kit_install_failed", "desk_source_root_invalid", "desk_source_agent_invalid", "invalid_argument"];
+  const said = Object.fromEntries(codes.map((code) => [code, refused(code)]));
+  const check1 = core.describeDeskRegistration({ ok: false, error: { code: "cli_failed",
+    reasonCode: "desk_source_contract_mismatch" } });
+  const unknown = core.describeDeskRegistration({ ok: false, error: { code: "cli_failed", reasonCode: "something_new" } });
+  const declined = refused("user_declined");
+  const uncertain = core.describeDeskRegistration({ ok: false, error: { code: "cli_unavailable", reasonCode: "timeout",
+    uncertain: true } });
+  const done = core.describeDeskRegistration({ ok: true, data: { status: "registered", sourceId: "desk-a" } });
+  const repeat = core.describeDeskRegistration({ ok: true, data: { status: "already-registered", sourceId: "desk-a" } });
+  check("every-desk-agent-registration-refusal-said-in-words",
+    Object.entries(said).every(([code, value]) => value.tone === "error" && value.text.length > 30
+      && !value.text.includes(code) && /[a-z]+ [a-z]+/u.test(value.text))
+      && new Set(Object.values(said).map((value) => value.text)).size >= codes.length - 2
+      && check1.text.includes("failed the check") && unknown.text.includes("«something_new»")
+      && declined.tone === "note" && declined.text.startsWith("Nothing was done")
+      && uncertain.tone === "uncertain" && uncertain.text.includes("registration outcome unknown")
+      && done.tone === "note" && done.text.includes("desk-a") && repeat.text.includes("already takes tasks"),
+    { said, check1, unknown, declined, uncertain, done, repeat });
+}
+
+{
+  const board = { sources: [{ agentId: "a", sourceId: "desk-a", valid: true }, { agentId: "b", sourceId: "desk-b", valid: false }],
+    tasks: [] };
+  const agent = (agentId, extra = {}) => ({ agentId, state: "active", settings: { role: "feature" }, ...extra });
+  const state = (value, given = board) => core.deskRegistrationState(value, given);
+  const results = {
+    unknown: state(agent("c"), null), failed: state(agent("c"), { failed: true, reason: "the controller did not answer" }),
+    registered: state(agent("a")), invalid: state(agent("b")), offer: state(agent("c")),
+    lead: state(agent("w", { settings: { role: "coordinator" } })), archived: state(agent("c", { state: "archived" })),
+    archivedRegistered: state(agent("a", { state: "archived" })), creating: state(agent("c", { state: "creating" })),
+    projectLead: state(agent("p", { settings: { role: "project-lead" } })),
+  };
+  check("take-tasks-offered-only-while-it-applies",
+    !results.unknown.offer && !results.failed.offer && results.failed.text.includes("the controller did not answer")
+      && results.registered.kind === "registered" && !results.registered.offer && results.registered.text.includes("desk-a")
+      && results.invalid.offer && results.invalid.text.includes("fails the check")
+      && results.offer.offer && results.offer.kind === "offer"
+      && !results.lead.offer && results.lead.text.includes("world lead")
+      && !results.archived.offer && !results.creating.offer && results.archivedRegistered.kind === "registered"
+      && results.projectLead.offer,
+    results);
+}
+
+{
+  const codes = ["user_declined", "world_folder_conflict", "memory_workspace_conflict", "memory_role_taken",
+    "memory_revision_conflict", "memory_agent_closed", "memory_agent_not_found", "world_flow_expired", "invalid_input"];
+  const said = Object.fromEntries(codes.map((code) => [code, core.describeWorldLeadRefusal(
+    code === "user_declined" || code === "world_flow_expired" || code === "world_folder_conflict" || code === "invalid_input"
+      ? { code, reasonCode: code } : { code: "cli_failed", reasonCode: code })]));
+  const unknown = core.describeWorldLeadRefusal({ code: "cli_failed", reasonCode: "something_new" });
+  const uncertain = core.describeWorldLeadRefusal({ code: "cli_unavailable", reasonCode: "timeout", uncertain: true });
+  check("every-refusal-on-the-world-lead-path-said-in-words",
+    Object.entries(said).every(([code, text]) => text.length > 30 && !text.includes(code) && /[a-z]+ [a-z]+/u.test(text))
+      && said.memory_role_taken.includes("the controller has only one coordinator")
+      && said.world_flow_expired.includes("again") && unknown.includes("«something_new»")
+      && uncertain.includes("outcome unknown"),
+    { said, unknown, uncertain });
 }
 
 const failed = cases.filter((item) => item.status === "failed");

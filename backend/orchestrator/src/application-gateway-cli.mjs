@@ -8,11 +8,6 @@ import { createApplicationOperationJournal } from "./application-operation-journ
 
 import { createApplicationGatewayBackend } from "./application-gateway-backend.mjs";
 import {
-  APPLICATION_CONTRACT_VERSION,
-  applicationCanonicalSha256,
-  validateApplicationResultEnvelope,
-} from "./application-contract.mjs";
-import {
   createApplicationGatewayReadRuntime,
 } from "./application-gateway-read-runtime.mjs";
 import { ApplicationGatewayDescriptorStore } from "./application-gateway-descriptor.mjs";
@@ -29,7 +24,8 @@ import {
 } from "./application-gateway-runtime.mjs";
 import { ApplicationGatewayServer } from "./application-gateway-server.mjs";
 import { readClaudeProviderConfig } from "./application-gateway-claude-runtime.mjs";
-import { APPLICATION_OWNER_CHAT_OPERATION_IDS } from "./application-owner-chat.mjs";
+import { createAcpProviderFactory, readAcpProviderConfig } from "./application-gateway-acp-runtime.mjs";
+import { listWindowsFileLockers } from "./windows-file-lockers.mjs";
 import { runProjectMemoryCommand } from "./project-memory-cli.mjs";
 
 function parseArguments(argv) {
@@ -92,6 +88,25 @@ async function sha256File(filePath) {
   return digest.digest("hex");
 }
 
+// When Windows refuses to replace a status file, every refused attempt is
+// logged (stderr: the gateway's or the monitor's error log), and the processes
+// that hold the file open are named, at most once a minute (windows-file-lockers.mjs).
+const LOCKER_PROBE_INTERVAL_MS = 60_000;
+let lockerProbeAtMs = 0;
+function logContention(record) {
+  const atUtc = new Date().toISOString();
+  process.stderr.write(JSON.stringify({ schemaVersion: 1, component: "gateway-status-file", phase: "rename-contention",
+    atUtc, processId: process.pid, file: path.basename(record.filePath), attempt: record.attempt, code: record.code,
+    elapsedMs: record.elapsedMs, final: record.final }) + "\n");
+  if (Date.now() - lockerProbeAtMs < LOCKER_PROBE_INTERVAL_MS) return;
+  lockerProbeAtMs = Date.now();
+  listWindowsFileLockers(record.filePath).then((lockers) => {
+    process.stderr.write(JSON.stringify({ schemaVersion: 1, component: "gateway-status-file", phase: "lockers",
+      atUtc, observedAtUtc: new Date().toISOString(), processId: process.pid, file: path.basename(record.filePath),
+      lockers }) + "\n");
+  }).catch(() => {});
+}
+
 function context(options) {
   const repoRoot = path.resolve(required(options, "repo-root"));
   return {
@@ -99,7 +114,7 @@ function context(options) {
     projectId: required(options, "project-id"),
     sourceId: options["source-id"] ?? "orchestrator-development",
     workspaceRootSha256: applicationGatewayWorkspaceHash(repoRoot),
-    files: new ApplicationGatewayRuntimeFiles({ repoRoot }),
+    files: new ApplicationGatewayRuntimeFiles({ repoRoot, onContention: logContention }),
   };
 }
 
@@ -173,95 +188,6 @@ async function descriptorStatusCommand(options) {
   };
 }
 
-async function ownerChatStatusCommand(options) {
-  const current = context(options);
-  const expectedSourceId = required(options, "provider-source-id");
-  const lifecycleStatus = await current.files.readStatus().catch(() => null);
-  if (lifecycleStatus === null) {
-    return {
-      schemaVersion: 1, command: "owner-chat-status", availability: "unavailable",
-      reasonCode: "status_missing", ready: false, sourceId: expectedSourceId,
-    };
-  }
-  const store = new ApplicationGatewayDescriptorStore({
-    descriptorPath: current.files.paths.descriptor,
-  });
-  const resolved = await store.read({
-    lifecycleStatus,
-    observedAtUtc: new Date().toISOString(),
-  });
-  if (resolved.status !== "available") {
-    return {
-      schemaVersion: 1, command: "owner-chat-status", availability: "unavailable",
-      reasonCode: resolved.reasonCode, ready: false, sourceId: expectedSourceId,
-    };
-  }
-  const descriptor = resolved.descriptor;
-  const operationId = APPLICATION_OWNER_CHAT_OPERATION_IDS.resolve;
-  if (!descriptor.exposedOperations.some((item) => item.operationId === operationId)) {
-    return {
-      schemaVersion: 1, command: "owner-chat-status", availability: "unavailable",
-      reasonCode: "operation_not_exposed", ready: false, sourceId: expectedSourceId,
-    };
-  }
-  const requestId = `owner-chat-status:${randomUUID()}`;
-  let response;
-  try {
-    response = await fetch(`http://${descriptor.endpoint.authority}/v1/operations`, {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${descriptor.authorization.bearerToken}`,
-        "content-type": "application/json",
-      },
-      signal: AbortSignal.timeout(10_000),
-      body: JSON.stringify({
-        schemaVersion: 1,
-        contractVersion: APPLICATION_CONTRACT_VERSION,
-        requestId,
-        correlationId: requestId,
-        operation: {
-          schemaVersion: 1,
-          contractVersion: APPLICATION_CONTRACT_VERSION,
-          family: "query",
-          operationId,
-        },
-        requestedAtUtc: new Date().toISOString(),
-        input: {},
-      }),
-    });
-  } catch {
-    response = null;
-  }
-  if (response === null || !response.ok) {
-    return {
-      schemaVersion: 1, command: "owner-chat-status", availability: "unavailable",
-      reasonCode: "gateway_query_failed", ready: false, sourceId: expectedSourceId,
-    };
-  }
-  let result;
-  try {
-    result = validateApplicationResultEnvelope(await response.json());
-  } catch {
-    result = null;
-  }
-  const binding = result?.outcome === "succeeded" ? result.output : null;
-  const ready = binding?.sourceId === expectedSourceId;
-  return {
-    schemaVersion: 1,
-    command: "owner-chat-status",
-    availability: ready ? "available" : "unavailable",
-    reasonCode: ready ? "ready" : "source_mismatch",
-    ready,
-    sourceId: expectedSourceId,
-    providerSourceId: binding?.provider?.sourceId ?? null,
-    threadRefSha256: binding?.threadRef
-      ? applicationCanonicalSha256(binding.threadRef) : null,
-    threadState: binding?.threadState ?? null,
-    startAvailable: binding?.startAvailable ?? false,
-    steerAvailable: binding?.steerAvailable ?? false,
-  };
-}
-
 async function assertMonitorReady(current, monitorId) {
   const monitor = await current.files.readMonitor().catch(() => {
     throw Object.assign(new Error('observability_unavailable'), { monitorCheck: 'monitor_read_failed' });
@@ -282,11 +208,15 @@ async function runCommand(options) {
     throw new Error("stale_gateway_requires_recovery");
   }
   await current.files.clearStopRequest();
-  // --provider claude: desk agents run on Claude Code, configured by the
-  // controller's machine-local .project-local/application-gateway/claude-provider.json.
-  const providerKind = options.provider ?? "codex";
-  if (!["codex", "claude"].includes(providerKind)) throw new Error("invalid_argument:provider");
-  const claude = providerKind === "claude" ? await readClaudeProviderConfig(current.repoRoot) : null;
+  // Desk agents run on Claude Code, configured by the controller's machine-local
+  // .project-local/application-gateway/claude-provider.json. --provider stays for the callers that name it;
+  // "claude" is the only provider (the Codex App Server path left the product, roadmap step 1).
+  const providerKind = options.provider ?? "claude";
+  if (providerKind !== "claude") throw new Error("invalid_argument:provider");
+  const claude = await readClaudeProviderConfig(current.repoRoot);
+  // Beside Claude Code, desk agents may run on an ACP agent (DeepSeek Harness) when the controller has
+  // .project-local/application-gateway/acp-provider.json (application-gateway-acp-runtime.mjs).
+  const acp = await readAcpProviderConfig(current.repoRoot);
   const instanceId = randomUUID();
   const startedAtUtc = new Date(Date.now() - Math.floor(process.uptime() * 1000)).toISOString();
   const publishedAtUtc = new Date().toISOString();
@@ -294,9 +224,9 @@ async function runCommand(options) {
     repoRoot: current.repoRoot,
     sourceId: current.sourceId,
     instanceId,
-    providerSourceId: options["provider-source-id"] ?? null,
     provider: providerKind,
     claude,
+    extraProviders: acp === null ? null : [createAcpProviderFactory(acp)],
     onProviderDiagnostic: (record) => {
       process.stderr.write(JSON.stringify({ ...record, instanceId }) + "\n");
     },
@@ -584,6 +514,9 @@ async function watchCommand(options) {
     }
   } finally {
     if (process.stdin.isTTY) process.stdin.setRawMode(false);
+    // An open keyboard stream keeps the process alive after the Gateway stops:
+    // a visible monitor would stay on screen.
+    process.stdin.pause();
     await current.files.releaseMonitor(monitorId, process.pid);
   }
   return { status: "monitor-closed", monitorId };
@@ -604,9 +537,6 @@ async function main() {
   if (command === "status") return output(await statusCommand(options), options.json);
   if (command === "descriptor-status") {
     return output(await descriptorStatusCommand(options), options.json);
-  }
-  if (command === "owner-chat-status") {
-    return output(await ownerChatStatusCommand(options), options.json);
   }
   if (command === "stop") return output(await stopCommand(options), options.json);
   if (command === "recover") return output(await recoverCommand(options), options.json);

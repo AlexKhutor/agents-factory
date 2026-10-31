@@ -1,7 +1,7 @@
 {
   "formatVersion": 1,
   "projectName": "Agents_Factory_Control",
-  "projectVersion": "v0.42.0",
+  "projectVersion": "v0.43.0",
   "versionPolicy": {
     "major": "Fundamental architecture or compatibility changes.",
     "minor": "New capabilities, contracts, or workflow improvements.",
@@ -16,10 +16,11 @@
     "collect_child_reports_v2": "v0.3.1",
     "import_agent_report": "v0.2.0",
     "rebuild_knowledge_catalog": "v0.1.0",
-    "serialized_control_cycle": "v0.11.0",
-    "child_agent_kit": "v0.11.0",
+    "serialized_control_cycle": "v0.12.0",
+    "child_agent_kit": "v0.11.1",
     "application_gateway_tool": "v0.4.1",
     "application_gateway_cli": "v0.6.1",
-    "application_gateway_runtime_bundle": "v0.21.0"
+    "application_gateway_runtime_bundle": "v0.22.0",
+    "agents_factory_cli": "v0.1.0"
   }
 }

@@ -2,7 +2,6 @@ import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
 import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 
-import { CodexAppServerClient } from "./codex-app-server-client.mjs";
 import { statisticsFromThreadUsage } from "./agent-statistics.mjs";
 import {
   listCodexModels,
@@ -186,47 +185,31 @@ function summaryPrompt(report, language) {
   ].join("\n");
 }
 
-export class CodexReportSummarizer {
+// Writes the summary of one report on a client of the App Server shape from
+// the factory: Claude Code's in the product (claude-code-service-client.mjs).
+// The Codex App Server client that once was the default left with the Codex path.
+export class ServiceReportSummarizer {
   constructor({
     cwd,
-    codexHome,
-    command = "codex",
-    args = ["app-server"],
-    approvalPolicy = "never",
-    sandbox = "read-only",
     turnTimeoutMs = 600_000,
     clientVersion = "0.1.0",
     clientFactory,
-    providerId = "codex-app-server",
+    providerId,
     serviceName = REPORT_SUMMARY_SERVICE_NAME,
   } = {}) {
-    if (!cwd) throw new Error("CodexReportSummarizer requires cwd");
-    if (!codexHome && !clientFactory) throw new Error("CodexReportSummarizer requires codexHome");
+    if (!cwd) throw new Error("ServiceReportSummarizer requires cwd");
+    if (typeof clientFactory !== "function") throw new Error("ServiceReportSummarizer requires clientFactory");
+    if (!providerId) throw new Error("ServiceReportSummarizer requires providerId");
     this.cwd = cwd;
-    this.codexHome = codexHome;
-    this.command = command;
-    this.args = args;
-    this.approvalPolicy = approvalPolicy;
-    this.sandbox = sandbox;
     this.turnTimeoutMs = turnTimeoutMs;
     this.clientVersion = clientVersion;
     this.clientFactory = clientFactory;
-    // Another provider with a client of the same shape (Claude Code) writes
-    // the same summary under its own name.
     this.providerId = providerId;
     this.serviceName = serviceName;
   }
 
   #client() {
-    return this.clientFactory
-      ? this.clientFactory()
-      : new CodexAppServerClient({
-        command: this.command,
-        args: this.args,
-        cwd: this.cwd,
-        codexHome: this.codexHome,
-        clientVersion: this.clientVersion,
-      });
+    return this.clientFactory();
   }
 
   async listModels() {
@@ -256,8 +239,6 @@ export class CodexReportSummarizer {
         model: profile.model,
         config: { model_reasoning_effort: profile.reasoningEffort },
         allowProviderModelFallback: false,
-        approvalPolicy: this.approvalPolicy,
-        sandbox: this.sandbox,
         serviceName: this.serviceName,
         developerInstructions: [
           "You are a read-only report summarizer.",
@@ -266,15 +247,15 @@ export class CodexReportSummarizer {
         ].join(" "),
       });
       threadId = started.thread?.id;
-      if (!threadId) throw codedError("SUMMARY_THREAD_MISSING", "Codex summary provider returned no thread id");
+      if (!threadId) throw codedError("SUMMARY_THREAD_MISSING", "Summary provider returned no thread id");
       await client.setThreadName(threadId, `[summary] ${report.sourceId}/${report.taskId}`);
       const startedTurn = await client.startTurn(threadId, summaryPrompt(report, language));
       turnId = startedTurn.turn?.id;
-      if (!turnId) throw codedError("SUMMARY_TURN_MISSING", "Codex summary provider returned no turn id");
+      if (!turnId) throw codedError("SUMMARY_TURN_MISSING", "Summary provider returned no turn id");
       const completed = await client.waitForTurn(turnId, this.turnTimeoutMs);
       const status = completed?.turn?.status ?? "completed";
       if (status !== "completed") {
-        throw codedError("SUMMARY_TURN_FAILED", `Codex summary turn finished with status '${status}'`);
+        throw codedError("SUMMARY_TURN_FAILED", `Summary turn finished with status '${status}'`);
       }
       let summary = responseFromTurn(completed?.turn);
       if (!summary) {
@@ -283,11 +264,11 @@ export class CodexReportSummarizer {
         const matchingTurn = turns.find((turn) => turn.id === turnId) ?? turns.at(-1);
         summary = responseFromTurn(matchingTurn);
       }
-      if (!summary) throw codedError("SUMMARY_RESPONSE_MISSING", "Codex summary turn returned no assistant text");
+      if (!summary) throw codedError("SUMMARY_RESPONSE_MISSING", "Summary turn returned no assistant text");
       if (summary.length > MAX_SUMMARY_CHARACTERS) {
-        throw codedError("SUMMARY_TOO_LARGE", `Codex summary exceeds ${MAX_SUMMARY_CHARACTERS} characters`);
+        throw codedError("SUMMARY_TOO_LARGE", `Summary exceeds ${MAX_SUMMARY_CHARACTERS} characters`);
       }
-      if (INLINE_MEDIA.test(summary)) throw codedError("SUMMARY_INLINE_MEDIA", "Codex summary contains inline media");
+      if (INLINE_MEDIA.test(summary)) throw codedError("SUMMARY_INLINE_MEDIA", "Summary contains inline media");
       let statistics = null;
       try {
         const usage = await client.readThreadUsage(threadId);

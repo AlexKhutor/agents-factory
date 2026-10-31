@@ -169,6 +169,26 @@ operation available, the backend's agents on the map. Sends were then made
 through the same Gateway operation with the Kit client; a send clicked in the
 window itself was still ahead at that point.
 
+## Languages
+
+The code is English: each text of the interface is its own key,
+`tx("Agent {name} is waiting", { name })` (`src/renderer/i18n-core.js`), and
+`locales/<language>.json` gives it in another language (`ru.json`: Russian).
+A count goes through `txn("{count} agents", count)` with the language's plural
+forms (`en.json` holds the English ones). A key may carry a context when one
+English word needs several translations (`"account::unknown"`); English drops
+it. A text a locale lacks shows in English.
+
+The window speaks the language chosen in "Readiness" → "Language" (saved in
+`user-data/ui-state.json`, the window reloads), else the system's language when
+a locale file exists for it, else English; `ATLAS_LANGUAGE` overrides both.
+
+A new language is a new file: `node tools/locale-missing.mjs <language>
+--plurals` prints what to translate (by hand or with a model), the result goes to
+`locales/<language>.json`, and `npm test` (`tools/test-i18n.mjs`) checks that
+every text the code names is there with the same `{placeholders}` and every
+plural form. Translations are welcome as pull requests.
+
 ## Accepted delivery
 
 The kit is not trusted because it sits in `vendor/`. `delivery/` holds the

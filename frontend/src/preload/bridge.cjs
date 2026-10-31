@@ -22,6 +22,9 @@ const onFlush = (handler) => {
 };
 
 contextBridge.exposeInMainWorld("atlas", {
+  // The window's language and its texts, asked once before any script runs (host/i18n.mjs):
+  // the scripts' word tables are built as they load.
+  locale: ipcRenderer.sendSync("atlas:locale"),
   appInfo: call("atlas:app-info"),
   runtime: call("atlas:runtime"),
   connection: call("atlas:connection"),
@@ -33,6 +36,8 @@ contextBridge.exposeInMainWorld("atlas", {
   // The Claude account of the controller's agents, read on this machine.
   claudeAccount: call("atlas:claude-account"),
   claudeUsage: call("atlas:claude-usage"),
+  // Whether the servers of the agents' models answer now (host/model-health.mjs).
+  modelHealth: call("atlas:model-health"),
   // The person saw the last finished turn of an agent (its chat is open).
   turnSeen: call("atlas:turn-seen"),
   readScope: call("atlas:scope-read"),
@@ -60,8 +65,21 @@ contextBridge.exposeInMainWorld("atlas", {
   archiveProject: call("atlas:archive-project"),
   restoreProject: call("atlas:restore-project"),
   archivedProjects: call("atlas:archived-projects"),
+  actionJournal: call("atlas:action-journal"),
+  undoAction: call("atlas:undo-action"),
+  names: call("atlas:names"),
+  rename: call("atlas:rename"),
   projectFolder: call("atlas:project-folder"),
   rebindWorkspace: call("atlas:rebind-workspace"),
+  settleSend: call("atlas:settle-send"),
+  // Projects not on this PC: the list; taking one off and back, each confirmed natively.
+  awayProjects: call("atlas:away-projects"),
+  unmountProject: call("atlas:unmount-project"),
+  mountProject: call("atlas:mount-project"),
+  syncStatus: call("atlas:sync-status"),
+  syncTake: call("atlas:sync-take"),
+  syncRelease: call("atlas:sync-release"),
+  setProjectPolicy: call("atlas:set-project-policy"),
   setPermissionMode: call("atlas:set-permission-mode"),
   permissionModes: call("atlas:permission-modes"),
   archiveQuarter: call("atlas:archive-quarter"),
@@ -74,6 +92,25 @@ contextBridge.exposeInMainWorld("atlas", {
   previewMemoryDocument: call("atlas:preview-memory-document"),
   agentCommits: call("atlas:agent-commits"),
   initProjectGit: call("atlas:init-project-git"),
+  // The world lead and desk agents: the task board (read-only), an agent made a
+  // desk agent (confirmed), and the world lead's confirmed flow - binding, then role.
+  taskBoard: call("atlas:task-board"),
+  registerDeskAgent: call("atlas:register-desk-agent"),
+  prepareWorldLead: call("atlas:prepare-world-lead"),
+  assignWorldLead: call("atlas:assign-world-lead"),
+
+  // The Gateway from Atlas: the host runs the agents-factory CLI. The API key is
+  // handed to the host once; the page only ever gets back whether one is stored.
+  gatewayStatus: call("atlas:gateway-status"),
+  gatewayStart: call("atlas:gateway-start"),
+  gatewayStop: call("atlas:gateway-stop"),
+  gatewayRecover: call("atlas:gateway-recover"),
+  apiKeyStatus: call("atlas:api-key-status"),
+  setApiKey: call("atlas:api-key-set"),
+  removeApiKey: call("atlas:api-key-remove"),
+  autostartStatus: call("atlas:autostart-status"),
+  installAutostart: call("atlas:autostart-install"),
+  uninstallAutostart: call("atlas:autostart-uninstall"),
 
   // Gateway mutations. Each confirms with the person and carries a host-minted
   // identity, so an ambiguous outcome is reconciled instead of repeated.

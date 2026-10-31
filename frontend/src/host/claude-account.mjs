@@ -13,6 +13,8 @@ import path from "node:path";
 import { claudeProgramOf, readClaudeAccount } from "../direct/claude-driver.mjs";
 
 const CACHE_MS = 60_000;
+// "Not signed in" and "could not ask" are kept only briefly: a sign-in made meanwhile shows within seconds.
+const RETRY_MS = 10_000;
 
 // The same list the backend removes (claude-code-sdk.mjs): variables that
 // would bill another account or route through another provider.
@@ -41,15 +43,18 @@ export async function claudeSetupOf(controllerRoot, base = process.env) {
 
 /**
  * `read({ force })` gives `{ state, email, organization, subscriptionType,
- * authMethod }`; state is "known", "signed-out" or "failed". The answer is kept
- * for a minute: the header asks on every refresh.
+ * authMethod }`; state is "known", "signed-out" or "failed". A known account is kept
+ * for a minute (the header asks on every refresh), any other answer for ten seconds;
+ * `force` (the person's "Refresh") asks Claude Code again at once.
  */
 export function createClaudeAccountReader({ controllerRoot, now = () => Date.now(), readAccount = readClaudeAccount }) {
   let cached = null;
   let pending = null;
   return {
     async read({ force = false } = {}) {
-      if (!force && cached !== null && now() - cached.at < CACHE_MS) return cached.value;
+      if (!force && cached !== null && now() - cached.at < (cached.value.state === "known" ? CACHE_MS : RETRY_MS)) {
+        return cached.value;
+      }
       if (pending !== null) return pending;
       pending = (async () => {
         const setup = await claudeSetupOf(controllerRoot);

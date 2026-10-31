@@ -5,6 +5,10 @@ import { fileURLToPath } from "node:url";
 
 import { SqliteControlStore } from "./sqlite-control-store.mjs";
 import { PersistentSqliteBridge, persistentSqliteBridgeEnabled } from "./sqlite-bridge-server.mjs";
+import { resolveSqliteBackend, sqliteBackendOption } from "./sqlite-backend.mjs";
+import { NodeProjectMemoryBridge } from "./project-memory-store-node.mjs";
+import { SplitProjectMemoryBridge } from "./project-memory-split.mjs";
+import { resolveStoreLayout } from "./project-store-layout.mjs";
 
 export const PROJECT_MEMORY_LIMITS = Object.freeze({
   entries: 64,
@@ -25,7 +29,7 @@ const SENSITIVE_TEXT = Object.freeze([
 ]);
 const BRIDGE_ERRORS = new Set([
   "memory_authorization_consumed", "memory_authorization_mismatch",
-  "memory_authorization_required", "memory_command_conflict",
+  "memory_authorization_required", "memory_command_conflict", "memory_cross_project_change",
   "memory_identity_conflict", "memory_invalid_input", "memory_limit_exceeded",
   "memory_operation_conflict", "memory_project_scope_required",
   "memory_revision_conflict", "memory_revision_not_found", "memory_scope_conflict",
@@ -339,7 +343,10 @@ export class ProjectMemoryStore {
     return bridgeValue(() => validateScopeDto(result));
   }
 
-  /** Ends the store's bridge process after the calls already sent (sqlite-bridge-server.mjs). */
+  /**
+   * Ends the store's bridge process after the calls already sent
+   * (sqlite-bridge-server.mjs); with node:sqlite, only later calls fail.
+   */
   async close() {
     if (typeof this.store.close === "function") await this.store.close();
   }
@@ -490,6 +497,20 @@ async function checkedBridgePath(value) {
   return canonical;
 }
 
+/**
+ * The split layout's bridge (project-memory-split.mjs) when the instance is
+ * split, else null. The split layout runs on node:sqlite only (R22).
+ */
+export async function openSplitMemoryBridge(controllerRoot, sqliteBackend) {
+  if (typeof controllerRoot !== "string" || !controllerRoot) fail();
+  let layout;
+  try { layout = await resolveStoreLayout(controllerRoot); } catch { fail("memory_identity_conflict"); }
+  if (layout.layout !== "split") return null;
+  const { backend, sqlite } = await resolveSqliteBackend({ backend: sqliteBackend });
+  if (backend !== "node") fail("memory_sqlite_required");
+  return new SplitProjectMemoryBridge({ controllerRoot: layout.root, sqlite });
+}
+
 async function checkedDatabaseDirectory(controllerRoot) {
   if (typeof controllerRoot !== "string" || !controllerRoot) fail();
   let root;
@@ -527,26 +548,45 @@ async function rejectLinkedDatabase(databasePath) {
   }
 }
 
+/**
+ * `sqliteBackend` ("node" | "python") overrides AGENTS_FACTORY_SQLITE and the
+ * default: node:sqlite in this process when the runtime has it, else the
+ * Python bridge (`bridgePath`, `pythonCommand`), which is then required.
+ */
 export async function createProjectMemoryStore({
   controllerRoot,
   now = () => new Date(),
   pythonCommand,
   bridgePath = fileURLToPath(new URL("project-memory-store.py", import.meta.url)),
+  sqliteBackend,
 }) {
   if (typeof now !== "function") fail();
+  try { sqliteBackendOption(sqliteBackend); } catch { fail(); }
+  const split = await openSplitMemoryBridge(controllerRoot, sqliteBackend);
+  if (split !== null) {
+    const memory = new ProjectMemoryStore({ now, store: split });
+    Object.defineProperty(memory, "sqliteBackend", { value: "node" });
+    await memory.initialize();
+    return memory;
+  }
   const directory = await checkedDatabaseDirectory(controllerRoot);
   const databasePath = path.join(directory, "project-memory.v1.sqlite");
   await rejectLinkedDatabase(databasePath);
-  const canonicalBridge = await checkedBridgePath(bridgePath);
-  // One long-lived bridge (sqlite-bridge-server.mjs); the old one Python
-  // process per call stays available with ORCHESTRATOR_SQLITE_BRIDGE=spawn.
-  const memory = new ProjectMemoryStore({
-    now,
-    store: persistentSqliteBridgeEnabled()
+  const { backend, sqlite } = await resolveSqliteBackend({ backend: sqliteBackend });
+  let store;
+  if (backend === "node") {
+    store = new NodeProjectMemoryBridge({ databasePath, sqlite });
+  } else {
+    const canonicalBridge = await checkedBridgePath(bridgePath);
+    // One long-lived bridge (sqlite-bridge-server.mjs); the old one Python
+    // process per call stays available with ORCHESTRATOR_SQLITE_BRIDGE=spawn.
+    store = persistentSqliteBridgeEnabled()
       ? new PersistentSqliteBridge({ databasePath, pythonCommand, bridgePath: canonicalBridge,
         unavailableCode: "memory_unavailable" })
-      : new SqliteControlStore({ databasePath, pythonCommand, bridgePath: canonicalBridge }),
-  });
+      : new SqliteControlStore({ databasePath, pythonCommand, bridgePath: canonicalBridge });
+  }
+  const memory = new ProjectMemoryStore({ now, store });
+  Object.defineProperty(memory, "sqliteBackend", { value: backend });
   await memory.initialize();
   return memory;
 }

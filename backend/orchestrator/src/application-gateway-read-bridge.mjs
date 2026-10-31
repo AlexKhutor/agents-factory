@@ -94,25 +94,26 @@ function addResourceHandlers(handlers, service) {
   }
 }
 
-function addConversationHandlers(handlers, reader) {
-  if (reader === null || reader === undefined) return;
-  const descriptor = validateProviderConversationReader(reader);
-  handlers["query.provider.models.list"] = ({ input }) => reader.listModels(
-    providerOptions(input, descriptor, ["cursor", "limit", "includeHidden"]),
-  );
-  handlers["query.provider.threads.list"] = ({ input }) => reader.listThreads(
-    providerOptions(input, descriptor, ["cursor", "limit", "archived"]),
-  );
-  handlers["query.provider.thread.read"] = ({ input }) => reader.readThread(
-    providerOptions(
-      input,
-      descriptor,
-      ["threadRef", "cursor", "limit", "archived", "includeContent"],
-    ),
-  );
-  handlers["query.provider.usage.read"] = ({ input }) => reader.readUsage(
-    providerOptions(input, descriptor, ["threadRef"]),
-  );
+/**
+ * Provider reads go to the reader whose identity the request names: with
+ * desk agents of several providers (Claude Code and an ACP agent) there is
+ * one reader per provider.
+ */
+function addConversationHandlers(handlers, readers) {
+  const entries = readers.filter((reader) => reader !== null && reader !== undefined)
+    .map((reader) => ({ reader, descriptor: validateProviderConversationReader(reader) }));
+  if (entries.length === 0) return;
+  const pick = (input) => (entries.length === 1 ? entries[0]
+    : entries.find(({ descriptor }) => input?.provider?.adapterId === descriptor.identity.adapterId) ?? entries[0]);
+  const route = (method, fields) => ({ input }) => {
+    const { reader, descriptor } = pick(input);
+    return reader[method](providerOptions(input, descriptor, fields));
+  };
+  handlers["query.provider.models.list"] = route("listModels", ["cursor", "limit", "includeHidden"]);
+  handlers["query.provider.threads.list"] = route("listThreads", ["cursor", "limit", "archived"]);
+  handlers["query.provider.thread.read"] = route("readThread",
+    ["threadRef", "cursor", "limit", "archived", "includeContent"]);
+  handlers["query.provider.usage.read"] = route("readUsage", ["threadRef"]);
 }
 
 function addLifecycleHandler(handlers, provider) {
@@ -131,13 +132,15 @@ export function createApplicationGatewayReadHandlers({
   backendConsumerClient = null,
   resourceService = null,
   conversationReader = null,
+  // Readers of further desk-agent providers (application-gateway-acp-runtime.mjs).
+  extraConversationReaders = [],
   executionProvider = null,
 } = {}) {
   const handlers = {};
   addProjectionHandlers(handlers, workProjectionClient);
   addBackendHandlers(handlers, backendConsumerClient);
   addResourceHandlers(handlers, resourceService);
-  addConversationHandlers(handlers, conversationReader);
+  addConversationHandlers(handlers, [conversationReader, ...extraConversationReaders]);
   addLifecycleHandler(handlers, executionProvider);
   if (Object.keys(handlers).length === 0) invalid("read bridge has no configured source");
   return Object.freeze(handlers);

@@ -7,7 +7,12 @@
     "that contains .project-local/application-gateway/ and .orchestrator/runtime/.",
     "expectedWorkspace: the identity the descriptor must carry. Read it from that",
     "controller's .project-local/application-gateway/status.v1.json (identity.workspace).",
-    "A mismatch means the client refuses to connect, which is the point."
+    "A mismatch means the client refuses to connect, which is the point.",
+    "agentsFactoryCli (optional): the agents-factory CLI that starts and stops the",
+    "Gateway and keeps the API key. script: null means the controller's",
+    ".orchestrator/runtime/agents-factory.mjs, then (source checkout only) the",
+    "backend's dist/agents-factory-cli.bundle.mjs; a relative path is taken from",
+    "controllerRoot. nodeExecutable: null means Atlas's own Electron runs it as Node."
   ],
   "controllerRoot": "<absolute path to the installed controller root>",
   "expectedWorkspace": {
@@ -17,5 +22,9 @@
   "gatewayCli": {
     "nodeExecutable": "node",
     "scriptRelativePath": ".orchestrator/runtime/application-gateway-cli.mjs"
+  },
+  "agentsFactoryCli": {
+    "script": null,
+    "nodeExecutable": null
   }
 }

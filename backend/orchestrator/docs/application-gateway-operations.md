@@ -109,11 +109,10 @@ sixteen canonical A11 workflow boundaries without importing or opening VS
 Code. Merely publishing that surface invokes no writer.
 
 No public CLI flag, descriptor field or frontend request can install those
-generic authority ports. The separate `-ProviderSourceId` mode installs the
-fixed owner-chat, archive and provider-interaction routes after exact
-controller binding, workspace and provider validation; it does not enable
-create, interrupt, Keep/Undo or review writers. Enabling one operation does
-not enable another. An uncertain
+generic authority ports. The `-ProviderSourceId` mode, which installed the
+fixed Codex owner-chat, archive and provider-interaction routes, left with the
+Codex path on 31.10.2026 (roadmap step 1): the Gateway runs Claude Code only.
+Enabling one operation does not enable another. An uncertain
 post-submit provider result remains non-retryable `uncertain_outcome` until its
 operation-specific reconciliation boundary resolves it.
 
@@ -144,39 +143,20 @@ For one deterministic backend entry point, use:
 tools\start_orchestrator_backend.bat -AsJson
 ```
 
-The default bootstrap starts the supervised Gateway through the same `Start`
-contract, then independently verifies its exact ready descriptor. It returns
-only a bounded descriptor identity and capability count; the bearer, session,
-endpoint and descriptor path remain protected. It does not open VS Code,
-start the wake observer, submit a prompt or start an agent turn.
+The bootstrap (contract `v0.4.0`) starts the supervised Gateway on Claude Code
+through the same `Start` contract, then independently verifies its exact ready
+descriptor. It returns only a bounded descriptor identity and capability count;
+the bearer, session, endpoint and descriptor path remain protected. It does not
+open VS Code, start the wake observer, submit a prompt or start an agent turn.
 
-To bind the Gateway to the controller-selected conversation for one child
-source, use:
+The Codex-era modes left with the Codex path on 31.10.2026 (roadmap step 1):
+`-ProviderSourceId` (the Gateway bound to one child's Codex conversation,
+checked by `OwnerChatStatus`) and `-Compatibility` (the isolated VS Code
+window with the controller wake observer). Both switches, and `-Provider codex`,
+are refused before anything starts; `application_gateway.ps1` no longer has the
+`OwnerChatStatus` command, nor the CLI its `owner-chat-status`.
 
-```bat
-tools\start_orchestrator_backend.bat -ProviderSourceId sample-app-development -AsJson
-```
-
-The bootstrap additionally verifies `OwnerChatStatus` and the exact source.
-The route starts no turn by itself. Without this option, owner-chat operations
-are omitted. An existing Gateway configured for another source is rejected;
-stop it explicitly, then start the required generation.
-
-The separate compatibility mode is explicit:
-
-```bat
-tools\start_orchestrator_backend.bat -Compatibility -AsJson
-```
-
-After the same Gateway and descriptor checks, this mode invokes the existing
-isolated VS Code launcher and requires its fresh report to confirm the
-controller wake observer. The launcher remains the sole owner of editor and
-observer startup. A missing or unconfirmed observer fails the compatibility
-bootstrap; it never falls back to the backend-only result silently.
-That failure does not stop an already verified Gateway; use the exact Gateway
-Stop command when the backend should also be shut down.
-
-Both modes are user-started supervised operations. They install no service,
+The bootstrap is a user-started supervised operation. They install no service,
 Task Scheduler entry, startup hook or unattended restart. `-PlanOnly` reports
 the selected sequence without starting any process.
 

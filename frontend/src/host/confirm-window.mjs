@@ -9,6 +9,7 @@
 
 import { randomUUID } from "node:crypto";
 import { BrowserWindow, ipcMain } from "electron";
+import { tx } from "./i18n.mjs";
 
 const CHANNEL = "atlas-confirm";
 const WIDTH = 500;
@@ -34,7 +35,7 @@ export function openConfirmWindow({ parent = null, page, preload, request, onSho
       show: false,
       skipTaskbar: owner !== null,
       backgroundColor: "#222720",
-      title: String(request.title ?? "Confirmation"),
+      title: String(request.title ?? tx("Confirmation")),
       webPreferences: {
         preload,
         contextIsolation: true,
@@ -98,11 +99,11 @@ export function openConfirmWindow({ parent = null, page, preload, request, onSho
       if (window.isDestroyed()) return;
       window.webContents.send(`${CHANNEL}:request`, {
         token,
-        title: String(request.title ?? "Confirmation"),
+        title: String(request.title ?? tx("Confirmation")),
         message: String(request.message ?? ""),
         detail: request.detail === undefined || request.detail === null ? "" : String(request.detail),
-        confirmLabel: String(request.confirmLabel ?? "Confirm"),
-        cancelLabel: "Cancel",
+        confirmLabel: String(request.confirmLabel ?? tx("Confirm")),
+        cancelLabel: tx("Cancel"),
       });
     });
     window.loadFile(page).catch(() => finish(false));

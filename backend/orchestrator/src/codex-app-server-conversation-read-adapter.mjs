@@ -143,6 +143,19 @@ function utc(value, label) {
   return new Date(milliseconds).toISOString();
 }
 
+/**
+ * When an item was written: its own time (the Claude Code and ACP hosts stamp `atUtc`), else its
+ * turn's - the person's message at the start, the rest at the end (or the start while it runs) -
+ * else the read. A conversation shows when things happened, not when they were read.
+ */
+function itemTime(item, turn, fallback) {
+  const lenient = (value) => { try { return utc(value, "item time"); } catch { return null; } };
+  const started = lenient(turn?.startedAt ?? turn?.createdAt);
+  return lenient(item?.atUtc)
+    ?? (item?.type === "userMessage" ? started : lenient(turn?.completedAt) ?? started)
+    ?? fallback;
+}
+
 function completeness(nextCursor, reasonCode = "provider_pagination") {
   return nextCursor === null || nextCursor === undefined
     ? { status: "complete", reasonCode: null, nextCursor: null }
@@ -235,6 +248,7 @@ function publicActivityStatus(value) {
 
 // How much of a command's output the chat shows; the trace keeps more.
 const OUTPUT_PREVIEW_BYTES = 6 * 1024;
+// The data is English; the window shows it in the person's language (Atlas locales).
 const STATUS_WORDS = Object.freeze({ "in progress": "running", failed: "error", declined: "declined",
   cancelled: "cancelled", interrupted: "interrupted" });
 
@@ -678,10 +692,11 @@ export class CodexAppServerConversationReadAdapter {
     fitted.forEach((items, turnIndex) => {
       const turnRef = turns[turnIndex].turnRef;
       for (const item of items) {
+        const at = itemTime(item, rawTurns.data[turnIndex], observedAtUtc);
         content.push(item?.[DROPPED] === true
           ? omitted(this.#provider, providerRef(this.#provider, "provider-item", item.id), turnRef,
-            observedAtUtc, "oversized_content")
-          : itemContent(this.#provider, turnRef, item, observedAtUtc));
+            at, "oversized_content")
+          : itemContent(this.#provider, turnRef, item, at));
       }
     });
     const pageCompleteness = completeness(rawTurns.nextCursor ?? null);

@@ -42,6 +42,9 @@ const TERMINAL = new Set(["completed", "failed", "interrupted"]);
 const ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
 const ACCOUNT_TTL_MS = 60_000;
 const STOP_GRACE_MS = 10_000;
+// Claude Code lost its sign-in (the OAuth session expired and could not be refreshed, or there is
+// none): the person signs in again, so the turn says it (`claude_signed_out`).
+const SIGNED_OUT = /Failed to authenticate|OAuth (?:session|token)[^\n]{0,40}(?:expired|revoked|invalid)|not logged in|Please run \/login|authentication_error|invalid_grant/iu;
 // How long a result waits for Claude Code's "idle" before the turn is taken as over.
 const IDLE_GRACE_MS = 15_000;
 // The plan usage is read from a running turn at most this often, and given this long to answer.
@@ -479,7 +482,7 @@ export class ClaudeCodeSessionHost extends EventEmitter {
       ? clip(options.displayText, CLAUDE_CODE_SESSION_LIMITS.textBytes) : null;
     const userItem = { id: `${turnId}:user`, type: "userMessage", content: [{ type: "text", text }],
       ...(displayText === null ? {} : { displayText }),
-      clientId: typeof options.clientUserMessageId === "string" ? options.clientUserMessageId : null };
+      clientId: typeof options.clientUserMessageId === "string" ? options.clientUserMessageId : null, atUtc: startedAt };
     // The process is claimed before anything awaits, so a second start of the
     // same session cannot slip in while the turn is being recorded.
     const run = this.#claim(threadId, turnId);
@@ -747,7 +750,7 @@ export class ClaudeCodeSessionHost extends EventEmitter {
         }
       }
     } catch (error) {
-      failure = run.stopping ? null : "claude_process_failed";
+      failure = run.stopping ? null : SIGNED_OUT.test(String(error?.message ?? "")) ? "claude_signed_out" : "claude_process_failed";
       this.#diagnostic({ threadId, turnId, phase: "turn", reasonCode: "claude_process_failed",
         message: clip(error?.message ?? error, 400) });
       // A turn the Gateway can no longer follow (its record could not be
@@ -763,7 +766,8 @@ export class ClaudeCodeSessionHost extends EventEmitter {
     const status = result?.subtype === "success" && result.is_error !== true && !run.identityMismatch ? "completed"
       : run.stopping ? "interrupted" : "failed";
     await this.#finish(run, status, result, failure ?? (status !== "failed" ? null
-      : result?.is_error === true ? "claude_error_result" : result?.subtype ?? "claude_no_result"));
+      : result?.is_error === true ? (SIGNED_OUT.test(String(result?.result ?? "")) ? "claude_signed_out" : "claude_error_result")
+        : result?.subtype ?? "claude_no_result"));
   }
 
   #queryOptions(run, session, resume, options) {
@@ -831,6 +835,8 @@ export class ClaudeCodeSessionHost extends EventEmitter {
   }
 
   async #addItem(run, item, completed) {
+    // When the item was written: the conversation shows it, not the time it was read.
+    if (typeof item.atUtc !== "string") item.atUtc = this.#at();
     await this.#record(run, (turn) => {
       if (turn.items.length >= CLAUDE_CODE_SESSION_LIMITS.itemsPerTurn) { turn.truncatedItems = true; return; }
       turn.items.push(structuredClone(item));
@@ -1091,6 +1097,11 @@ export class ClaudeCodeSessionHost extends EventEmitter {
     this.emit("serverRequestState", { requestId, generation: this.#generation, method,
       providerResolvedAtUtc: this.#at() });
     const decision = this.#decision(method, params, payload, toolName, input);
+    // The person's decision goes to the trace: a refused action is attention in the desk.
+    if (method !== "item/tool/requestUserInput") {
+      await this.#trace(run, { type: "permission", toolUseId: details.toolUseID, tool: clip(toolName, 256),
+        decision: decision.behavior === "allow" ? "allow" : decision.interrupt === true ? "cancel" : "deny", by: "person" });
+    }
     if (method === "item/tool/requestUserInput" && decision.behavior === "allow") {
       // The answers, in the order of the questions, for the chat's record of them.
       run.answers.set(details.toolUseID, params.questions.map((question) =>

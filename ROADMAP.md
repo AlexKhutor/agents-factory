@@ -14,15 +14,11 @@ with every day, and it keeps growing with that work. Shipped changes are in
   DeepSeek-based harnesses, Hermes, Qoder and other local solutions - through
   one provider interface, so a team can mix cloud and local agents.
 - **One-file installer, CLI and MCP.** One installer per OS (Windows first,
-  then macOS and Linux), the `agents-factory` CLI for scripted and headless
-  installs, MCP servers for the agents, and Agents Factory itself as an MCP
+  then macOS and Linux) on top of the `agents-factory` CLI (its first
+  version shipped in v0.2.0, together with API key setup in Atlas and the world
+  lead), MCP servers for the agents, and Agents Factory itself as an MCP
   server for Claude Code, Claude Desktop, Codex CLI and Cursor. The plan:
   [docs/distribution](docs/distribution/README.md).
-- **API key setup in Atlas.** Enter the Anthropic API key in the app; it is
-  kept in the system keychain (today: an environment variable).
-- **A world lead.** One coordinator above the project leads that hands out
-  tasks across projects; desk agents and roles managed from Atlas (today: the
-  CLI).
 - **First run in minutes.** Fewer manual steps between download and the first
   agent turn, and a step-by-step guide with a demo video.
 

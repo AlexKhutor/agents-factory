@@ -15,6 +15,7 @@ import {
   assertApplicationGatewayMonitorReady,
   createApplicationGatewayFailureLogRecord,
   writeGatewayJsonAtomic,
+  GATEWAY_RENAME_ATTEMPTS,
 } from "../src/application-gateway-runtime.mjs";
 
 const MONITOR_ID = "11111111-1111-4111-8111-111111111111";
@@ -46,8 +47,9 @@ test("persistent Windows rename EPERM preserves old status and fails closed", as
   await assert.rejects(writeGatewayJsonAtomic(target, { status: "new" }, {
     platform: "win32", wait: async () => {},
     renameFile: async () => { attempts++; throw Object.assign(new Error("locked"), { code: "EPERM" }); },
-  }), (error) => error.code === "EPERM" && error.renameAttempts === 3 && error.runtimeStage === "rename");
-  assert.equal(attempts, 3);
+  }), (error) => error.code === "EPERM" && error.renameAttempts === GATEWAY_RENAME_ATTEMPTS
+    && error.runtimeStage === "rename");
+  assert.equal(attempts, GATEWAY_RENAME_ATTEMPTS);
   assert.equal(await readFile(target, "utf8"), "old\n");
   assert.deepEqual(await readdir(root), ["status.json"]);
 });
@@ -75,6 +77,17 @@ test("memory CLI failures preserve closed diagnostic codes without private paylo
     ["memory_project_not_found", "restore-project"], ["memory_contention", "list-archived-projects"],
     ["memory_workspace_conflict", "bind-workspace"], ["memory_invalid_input", "read-workspace"]]) {
     assert.deepEqual(createApplicationGatewayFailureLogRecord(Object.assign(new Error(code), { code, memoryPhase: phase })), {
+      status: "failed", code, phase: `memory-${phase}`,
+    });
+  }
+  // A folder change's refusals too, the folder in their message never: on
+  // gateway_running Atlas pauses the Gateway and runs the change again.
+  for (const [code, phase] of [["gateway_running", "rebind-workspace"], ["rebind_folder_missing", "rebind-workspace"],
+    ["rebind_target_exists", "rebind-workspace"], ["settle_not_uncertain", "settle-send"],
+    ["project_not_found", "input-validate"],
+    ["policy_invalid", "input-validate"]]) {
+    const error = Object.assign(new Error(`${code}: W:\\private\\folder`), { code, memoryPhase: phase });
+    assert.deepEqual(createApplicationGatewayFailureLogRecord(error), {
       status: "failed", code, phase: `memory-${phase}`,
     });
   }
@@ -253,4 +266,28 @@ test("owned monitor retains bounded lifecycle transitions after release", async 
   assert.doesNotMatch(JSON.stringify(log), /bearer|endpoint|E:\\/i);
   await assert.rejects(files.recordMonitorTransition(owner, terminal, "gateway-terminal",
     "2026-08-30T21:00:14.000Z"), { code: "gateway_monitor_owner_mismatch" });
+});
+
+test("every refused Windows rename is reported, the last one as final", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "gateway-status-contention-"));
+  const target = path.join(root, "status.json");
+  await writeFile(target, "old\n");
+  const heard = [];
+  let attempts = 0;
+  await writeGatewayJsonAtomic(target, { status: "new" }, {
+    platform: "win32", wait: async () => {}, onContention: (record) => heard.push(record),
+    renameFile: async (source, destination) => {
+      if (++attempts < 3) throw Object.assign(new Error("locked"), { code: "EBUSY" });
+      await rename(source, destination);
+    },
+  });
+  assert.deepEqual(heard.map((record) => [record.attempt, record.code, record.final]), [[1, "EBUSY", false], [2, "EBUSY", false]]);
+  heard.length = 0;
+  await assert.rejects(writeGatewayJsonAtomic(target, { status: "newer" }, {
+    platform: "win32", wait: async () => {}, onContention: (record) => { heard.push(record); throw new Error("ignored"); },
+    renameFile: async () => { throw Object.assign(new Error("locked"), { code: "EPERM" }); },
+  }), { code: "EPERM" });
+  assert.equal(heard.length, GATEWAY_RENAME_ATTEMPTS);
+  assert.equal(heard.at(-1).final, true);
+  assert.equal(heard.at(-1).filePath, target);
 });

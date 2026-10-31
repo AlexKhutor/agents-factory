@@ -20,7 +20,15 @@ const DEFAULTS = Object.freeze({
   steer: true,
   // The agent window's text size and the zoom of its content, in percent.
   chatText: 100, chatZoom: 100,
+  // Projects not on this PC as grey frames on the map: all of them on or off, and the ones the
+  // person hid one by one (block 3). A view of this PC only; the world is not told.
+  awayFrames: true, awayHidden: [],
+  // The window's language (i18n.mjs); null follows the system's.
+  language: null,
 });
+
+const PROJECT_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/;
+const LANGUAGE = /^[a-z]{2,3}(?:-[A-Z]{2})?$/;
 
 // Whole percents only, within what the window offers.
 const PERCENTS = Object.freeze({ chatText: [70, 150], chatZoom: [50, 150] });
@@ -31,6 +39,12 @@ function sanitize(value) {
   for (const key of Object.keys(DEFAULTS)) {
     if (key === "workspaceWidth") {
       if (Number.isInteger(value[key]) && value[key] >= 320 && value[key] <= 8000) result[key] = value[key];
+    } else if (key === "awayHidden") {
+      if (Array.isArray(value[key])) {
+        result[key] = [...new Set(value[key].filter((item) => typeof item === "string" && PROJECT_ID.test(item)))].slice(0, 200);
+      }
+    } else if (key === "language") {
+      if (typeof value[key] === "string" && LANGUAGE.test(value[key])) result[key] = value[key];
     } else if (Object.hasOwn(PERCENTS, key)) {
       const [low, high] = PERCENTS[key];
       if (Number.isInteger(value[key]) && value[key] >= low && value[key] <= high) result[key] = value[key];
@@ -41,6 +55,9 @@ function sanitize(value) {
 
 export function createUiStateStore({ directory }) {
   const file = path.join(directory, "ui-state.json");
+  // Writes go one after another, in the order they came: two ticks clicked at once
+  // would otherwise share the temporary file, and an older state could land last.
+  let queue = Promise.resolve();
 
   async function read() {
     try {
@@ -52,7 +69,7 @@ export function createUiStateStore({ directory }) {
     }
   }
 
-  async function write(value) {
+  async function writeNow(value) {
     const state = sanitize(value);
     await mkdir(directory, { recursive: true });
     const temporary = `${file}.${process.pid}.tmp`;
@@ -64,6 +81,12 @@ export function createUiStateStore({ directory }) {
       return { ok: false, error: { code: "ui_state_not_saved", reasonCode: "write_failed" } };
     }
     return { ok: true, data: state };
+  }
+
+  function write(value) {
+    const run = queue.then(() => writeNow(value));
+    queue = run.catch(() => undefined);
+    return run;
   }
 
   return { read, write, file };

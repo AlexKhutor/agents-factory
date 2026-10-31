@@ -5,7 +5,7 @@
   "frontend": {
     "packageName": "@isolate-vscode/application-frontend-kit",
     "version": "v0.21.0",
-    "manifestSha256": "5cad60679cfd898c48e76368275bcac4738ccef5e02d76ee09df1c3caf1c5039",
+    "manifestSha256": "7af45f5786001616cd4e1eddb3f107d8da9ee2fc81684bfae55948c0582c817a",
     "sourceRoot": ".project-local/claude-port-kit-0210",
     "controllerRoot": "coordination/frontend-kit/v0.21.0",
     "contracts": {

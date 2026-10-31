@@ -1,0 +1,10 @@
+/* The Gateway panel in “Readiness” (gateway-panel.js). */
+.gateway-panel .section-title:first-child{margin-top:2px}
+.gateway-actions{display:flex;flex-wrap:wrap;gap:6px;margin:7px 0 2px}
+.gateway-progress{font-size:11px;color:var(--gold);margin-top:6px}
+.gateway-failure{font-size:11px;color:var(--amber);margin-top:5px;line-height:1.45;overflow-wrap:anywhere}
+.gateway-key-form{display:flex;gap:6px;margin:7px 0 2px}
+.gateway-key-form input{flex:1;min-width:0}
+.gateway-autostart{display:flex;align-items:center;gap:8px;margin:10px 0 2px;font-size:12px;cursor:pointer}
+.gateway-autostart input{width:auto;margin:0;flex:none}
+.gateway-cli{font-size:10px;margin-top:7px}

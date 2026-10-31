@@ -22,6 +22,10 @@ function placeholder(value) {
   return typeof value === "string" && value.trim().startsWith("<");
 }
 
+// A setting that may be left out: a non-empty string that is not a placeholder, or null.
+const optionalText = (value) => (typeof value === "string" && value.trim() !== "" && !placeholder(value)
+  ? value.trim() : null);
+
 function validate(value) {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     return "config_not_an_object";
@@ -100,6 +104,14 @@ export async function loadLocalConfig(projectRoot) {
         nodeExecutable: parsed.gatewayCli?.nodeExecutable ?? "node",
         scriptRelativePath: parsed.gatewayCli?.scriptRelativePath
           ?? ".orchestrator/runtime/application-gateway-cli.mjs",
+      }),
+      // The agents-factory CLI (gateway-control.mjs). Both optional: without a
+      // script the controller's own .orchestrator/runtime/agents-factory.mjs is
+      // used (then, in a source checkout, the backend's build); without a Node
+      // executable this Electron binary runs it as Node.
+      agentsFactoryCli: Object.freeze({
+        script: optionalText(parsed.agentsFactoryCli?.script),
+        nodeExecutable: optionalText(parsed.agentsFactoryCli?.nodeExecutable),
       }),
     }),
   };

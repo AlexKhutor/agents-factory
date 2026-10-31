@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "controllerRoot": ".",
+  "runtimeRoot": ".project-local/orchestration",
+  "databasePath": ".project-local/orchestration/control-queue.db",
+  "serviceReviewIndexPath": ".project-local/orchestration/service-review-index.v1.json",
+  "backendCapabilitiesPath": ".project-local/projections/backend-capabilities.v1.json",
+  "projectionPath": ".project-local/projections/control-status.v1.json",
+  "attentionProjectionPath": ".project-local/projections/attention-status.v1.json",
+  "executionSummaryRoot": ".project-local/execution-summaries",
+  "acceptanceRoot": "coordination/acceptances",
+  "reportPresentationCacheRoot": ".project-local/orchestration/report-presentation-cache",
+  "archiveRoot": ".project-local/orchestration/archives",
+  "pythonCommand": "python",
+  "leaseSeconds": 120,
+  "publicationIntervalMs": 15000,
+  "retentionDays": 30,
+  "archiveAfterCycle": true,
+  "logRetention": {
+    "maxLooseFiles": 120,
+    "retainLooseFiles": 60,
+    "maxBundleBytes": 20971520
+  },
+  "provider": {
+    "type": "claude-code",
+    "model": "claude-sonnet-5-5",
+    "reasoningEffort": "medium",
+    "pollIntervalMs": 1000,
+    "heartbeatIntervalMs": 60000,
+    "turnTimeoutMs": 1800000
+  },
+  "reportOperations": {
+    "summary": {
+      "model": "claude-sonnet-5-5",
+      "reasoningEffort": "low",
+      "language": "English",
+      "turnTimeoutMs": 600000
+    }
+  },
+  "workerProgress": {
+    "enabled": true
+  },
+  "collector": {
+    "command": "powershell.exe",
+    "args": [
+      "-NoLogo",
+      "-NoProfile",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-File",
+      "tools/collect_child_reports_v2.ps1"
+    ],
+    "toolReport": "logs/collect_child_reports_v2.report.json",
+    "taskRoot": "coordination/tasks/dispatched",
+    "timeoutMs": 120000
+  }
+}

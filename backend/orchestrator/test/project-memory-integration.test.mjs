@@ -12,6 +12,7 @@ import { createProjectMemoryStore } from "../src/project-memory-store.mjs";
 import { createApplicationProjectMemoryHandlers } from "../src/application-project-memory.mjs";
 import { createApplicationGatewayBackend } from "../src/application-gateway-backend.mjs";
 import { createApplicationGatewayReadRuntime } from "../src/application-gateway-read-runtime.mjs";
+import { FAKE_MODELS } from "./fixtures/fake-claude-sdk.mjs";
 
 const sourceId = "memory-integration";
 const profile = {
@@ -147,9 +148,15 @@ test("trusted artifact CLI requires exact confirmation and registers a pinned pr
   await writeFile(file, JSON.stringify({ projectId: "project-one", workspacePath: other }));
   await assert.rejects(runProjectMemoryCommand({ "repo-root": root, action: "bind-workspace", "input-file": file,
     "confirm-project": "project-one" }), { code: "memory_workspace_conflict", memoryPhase: "bind-workspace" });
-  // The project has an open agent: its folder cannot be changed.
-  await assert.rejects(runProjectMemoryCommand({ "repo-root": root, action: "rebind-workspace", "input-file": file,
-    "confirm-project": "project-one" }), { code: "memory_workspace_in_use", memoryPhase: "rebind-workspace" });
+  // The project has an open agent: since plan R36 its folder changes on the
+  // person's confirmation while no agent of it works (project-rebind.mjs), and back.
+  const moved = await runProjectMemoryCommand({ "repo-root": root, action: "rebind-workspace", "input-file": file,
+    "confirm-project": "project-one" });
+  assert.equal(moved.to, await realpath(other));
+  await writeFile(file, JSON.stringify({ projectId: "project-one", workspacePath: root }));
+  await runProjectMemoryCommand({ "repo-root": root, action: "rebind-workspace", "input-file": file,
+    "confirm-project": "project-one" });
+  await writeFile(file, JSON.stringify({ projectId: "project-one", workspacePath: other }));
   await assert.rejects(runProjectMemoryCommand({ "repo-root": root, action: "rebind-workspace", "input-file": file }),
     /confirm-project/);
   await writeFile(file, JSON.stringify(input));
@@ -168,13 +175,14 @@ test("top-level controller without child contract exposes offline memory", async
     await rm(root, { recursive: true, force: true });
   });
   await writeFile(path.join(root, "project-version.json"), JSON.stringify({ projectName: "Main_Controller", projectVersion: "v0.1.0" }));
+  // The provider cannot start (no Claude Agent SDK here): memory is still read, nothing runs.
   const runtime = await createApplicationGatewayReadRuntime({ repoRoot: root,
     sourceId: "orchestrator-development", instanceId: "memory-test",
-    providerClientFactory: () => ({ connect: async () => { throw Error("fixture offline"); }, close: async () => {} }) });
+    claude: { sdkPath: path.join(root, "no-sdk-here"), claudeConfigDir: null, keepProviderVariables: false,
+      models: FAKE_MODELS, settingSources: ["project", "local"], permissionMode: "acceptEdits" } });
   t.after(() => runtime.close());
   assert.deepEqual(runtime.memoryStatus, { storage: "available", execution: "unavailable" });
   assert.equal(typeof runtime.handlers["query.memory.scope.read"], "function");
-  assert.equal(runtime.handlers["mutation.memory.agent.send"], undefined);
 });
 
 test("trusted host saves one confirmed edit and replays its receipt, not another revision", async (t) => {

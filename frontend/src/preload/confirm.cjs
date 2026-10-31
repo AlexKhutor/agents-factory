@@ -7,6 +7,9 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 let token = null;
 
+// The window's language, as the main window's (host/i18n.mjs): renderer/i18n-core.js reads atlas.locale.
+contextBridge.exposeInMainWorld("atlas", { locale: ipcRenderer.sendSync("atlas:locale") });
+
 contextBridge.exposeInMainWorld("atlasConfirm", {
   onRequest(handler) {
     if (typeof handler !== "function") return;

@@ -3,6 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { readDeskAgentSource } from "./desk-agent-sources.mjs";
+import { runDeskControllerTool } from "./desk-task-controller.mjs";
 import {
   DESK_CONTINUATION_POLICIES, DESK_REPORT_OPERATIONS, deskTaskId, readDeskTaskStatus, readDispatchedDeskTask,
   startDeskTask,
@@ -51,7 +52,10 @@ const reasons = {
   observability_unavailable: "the Gateway's visible monitor is not running",
 };
 
-export function createDeskCoordinatorTools({ controllerRoot, service, run = runPowerShellFile, now = () => new Date() }) {
+// The controller's own dispatch tool runs in this process (desk-task-controller.mjs,
+// byte for byte what dispatch_child_task.ps1 writes); `runPowerShellFile` stays for
+// a caller that passes it explicitly.
+export function createDeskCoordinatorTools({ controllerRoot, service, run = runDeskControllerTool, now = () => new Date() }) {
   const root = path.resolve(controllerRoot);
   const answer = (action) => async (args) => {
     try { return await action(args ?? {}); } catch (error) {

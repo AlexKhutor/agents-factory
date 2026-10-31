@@ -12,6 +12,8 @@
     "test": "node scripts/run-tests.mjs",
     "build:application-gateway-runtime": "node scripts/build-application-gateway-runtime.mjs",
     "verify:application-gateway-runtime": "node scripts/build-application-gateway-runtime.mjs --verify",
+    "build:agents-factory-cli": "node scripts/build-agents-factory-cli.mjs",
+    "verify:agents-factory-cli": "node scripts/build-agents-factory-cli.mjs --verify",
     "build:frontend-kit": "node scripts/build-application-frontend-kit.mjs"
   },
   "devDependencies": {

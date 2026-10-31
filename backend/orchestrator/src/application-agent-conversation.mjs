@@ -28,10 +28,19 @@ function errorCode(error) {
   return error?.code === "conflict" ? "conflict" : "source_unavailable";
 }
 
+/**
+ * One reader (`reader`, `providerId`, `adapterId`), or several: `routes` is
+ * [{ providerId, adapterId, reader }] and an agent is read by the route of its
+ * binding's provider (agents of several providers in one Gateway).
+ */
 export function createApplicationAgentConversationHandlers({ service, reader = null, instanceId,
-  now = () => new Date(), onDiagnostic = () => {}, providerId = "codex", adapterId = "codex-app-server" } = {}) {
+  now = () => new Date(), onDiagnostic = () => {}, providerId = "codex", adapterId = "codex-app-server",
+  routes = null } = {}) {
   if (!service) return Object.freeze({});
   if (typeof service.readAgent !== "function" || !ID.test(instanceId ?? "")) throw new TypeError("Invalid agent reader configuration");
+  const table = (routes ?? [{ providerId, adapterId, reader }]).filter((route) => route && route.providerId);
+  const routeOf = (binding) => table.find((route) => route.providerId === binding?.providerId) ?? null;
+  const anyReader = table.some((route) => route.reader);
   const secret = randomBytes(32);
   const seal = (value) => {
     const iv = randomBytes(12), cipher = createCipheriv("aes-256-gcm", secret, iv);
@@ -52,13 +61,15 @@ export function createApplicationAgentConversationHandlers({ service, reader = n
     if (agent.agentId !== agentId) fail("source_unavailable");
     const binding = agent.binding;
     const conversationId = binding ? conversationArchiveIdentity(binding) : null;
-    const identity = reader?.descriptor?.identity;
+    const route = binding ? routeOf(binding) : null;
+    const identity = route?.reader?.descriptor?.identity;
     const reasonCode = !binding ? "agent_unbound" : agent.state === "archived" ? "agent_archived"
-      : !reader ? "provider_unavailable"
-      : binding.providerId !== providerId || binding.projectId !== service.archive?.projectId
-        || binding.sourceId !== identity?.sourceId || identity?.adapterId !== adapterId
+      : !route ? (anyReader ? "provider_identity_mismatch" : "provider_unavailable")
+      : !route.reader ? "provider_unavailable"
+      : binding.projectId !== service.archive?.projectId
+        || binding.sourceId !== identity?.sourceId || identity?.adapterId !== route.adapterId
         ? "provider_identity_mismatch" : "available";
-    return { agent, view: { schemaVersion: 1, contractVersion: APPLICATION_AGENT_CONVERSATION_VERSION,
+    return { agent, reader: route?.reader ?? null, view: { schemaVersion: 1, contractVersion: APPLICATION_AGENT_CONVERSATION_VERSION,
       agentId, conversationId, archiveCoverage: "captured-only",
       liveRead: { status: reasonCode === "available" ? "available" : "unavailable", reasonCode } } };
   };
@@ -86,9 +97,9 @@ export function createApplicationAgentConversationHandlers({ service, reader = n
   const handlers = { [operations.resolve]: wrap(operations.resolve, async ({ agentId }, phase) => {
     phase("binding"); return (await resolve(agentId)).view;
   }) };
-  if (reader) handlers[operations.read] = wrap(operations.read, async (options, phase) => {
+  if (anyReader) handlers[operations.read] = wrap(operations.read, async (options, phase) => {
     phase("binding");
-    const { agent, view } = await resolve(options.agentId);
+    const { agent, view, reader } = await resolve(options.agentId);
     if (view.liveRead.status !== "available") {
       fail(view.liveRead.reasonCode === "agent_archived" ? "conflict" : "source_unavailable");
     }

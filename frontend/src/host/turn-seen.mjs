@@ -60,7 +60,8 @@ function sanitizeAnswers(value) {
     for (const [agentId, entry] of Object.entries(agents).slice(0, MAX_AGENTS)) {
       if (!ID.test(agentId) || !ID.test(entry?.operationId ?? "")) continue;
       kept[agentId] = { operationId: entry.operationId,
-        question: typeof entry.question === "string" ? entry.question.slice(0, 200) : null };
+        question: typeof entry.question === "string" ? entry.question.slice(0, 200) : null,
+        ...(Number.isSafeInteger(entry.refused) && entry.refused >= 0 ? { refused: Math.min(entry.refused, 99) } : {}) };
     }
     result[environment] = kept;
   }
@@ -147,8 +148,10 @@ export function createTurnSeenStore({ directory, environment }) {
      * words rather than through the question tool ("Which option do you
      * prefer?"). That is attention until the person answers - a new message
      * replaces the operation - not only until the chat is opened. The answer of
-     * each finished turn is read once (`lastAnswerOf(agentId)` -> text or null)
-     * and remembered; at most `budget` agents are read per call.
+     * each finished turn is read once (`lastAnswerOf(agentId)` -> text, or
+     * { text, refused }, or null) and remembered; at most `budget` agents are
+     * read per call. A turn in which an action of the agent was refused (by the
+     * person or by the desk's rules) is attention too, until the next message.
      */
     async questionsFor(projection, lastAnswerOf, { budget = 3 } = {}) {
       await load();
@@ -163,19 +166,24 @@ export function createTurnSeenStore({ directory, environment }) {
             const last = agent.lastOperation ?? null;
             if (last?.state !== "completed" || agent.currentOperationId || !ID.test(last.operationId ?? "")) continue;
             let entry = known[agent.agentId];
-            if (entry?.operationId !== last.operationId) {
+            // An answer remembered before refusals were counted is read again.
+            if (entry?.operationId !== last.operationId || entry.refused === undefined) {
               if (reads >= budget) continue;
               reads += 1;
-              let text = null;
-              try { text = await lastAnswerOf(agent.agentId); } catch { text = null; }
+              let answer = null;
+              try { answer = await lastAnswerOf(agent.agentId); } catch { answer = null; }
+              const text = typeof answer === "string" ? answer : answer?.text;
               if (typeof text !== "string") continue;
-              entry = { operationId: last.operationId, question: questionOf(text) };
+              const refused = Number.isSafeInteger(answer?.refused) && answer.refused > 0 ? Math.min(answer.refused, 99) : 0;
+              entry = { operationId: last.operationId, question: questionOf(text), refused };
               known[agent.agentId] = entry;
               changed = true;
             }
+            const where = { agentId: agent.agentId, projectId: agent.projectId, quarterId: agent.quarterId,
+              operationId: last.operationId };
+            if (entry.refused > 0) items.push({ kind: "refused", ...where, count: entry.refused });
             if (entry.question === null) continue;
-            items.push({ kind: "asks-you", agentId: agent.agentId, projectId: agent.projectId,
-              quarterId: agent.quarterId, operationId: last.operationId, question: entry.question });
+            items.push({ kind: "asks-you", ...where, question: entry.question });
           }
         }
       }

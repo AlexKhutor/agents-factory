@@ -76,6 +76,9 @@ test("a turn starts the session under its id, streams items and the next turn re
   assert.equal(turns.data.length, 2);
   const types = turns.data[0].items.map((item) => item.type);
   assert.deepEqual(types, ["userMessage", "reasoning", "agentMessage", "commandExecution", "plan", "agentMessage"]);
+  // Every item says when it was written; the person's message at the start of the turn.
+  assert.ok(turns.data[0].items.every((item) => Number.isFinite(Date.parse(item.atUtc))));
+  assert.equal(turns.data[0].items[0].atUtc, turns.data[0].startedAt);
   const command = turns.data[0].items.find((item) => item.type === "commandExecution");
   assert.equal(command.command, "echo hi");
   assert.equal(command.aggregatedOutput, "hi");
@@ -318,6 +321,27 @@ test("a result marked as an error fails the turn and its text reaches the conver
   const turn = await f.host.readTurn(threadId, done.turnId);
   assert.equal(turn.failure, "claude_error_result");
   assert.ok(turn.items.some((item) => item.type === "agentMessage" && /session limit/u.test(item.text)));
+});
+
+test("a lost sign-in fails the turn as claude_signed_out, whether as an error result or a thrown error", async (t) => {
+  const message = "Failed to authenticate: OAuth session expired and could not be refreshed";
+  const turns = [
+    async function* asResult({ sessionId }) {
+      yield { type: "system", subtype: "init", session_id: sessionId, model: FAKE_MODEL };
+      yield fakeResult(sessionId, { is_error: true, result: message });
+    },
+    async function* asThrow({ sessionId }) {
+      yield { type: "system", subtype: "init", session_id: sessionId, model: FAKE_MODEL };
+      throw new Error(`Claude Code returned an error result: ${message}`);
+    },
+  ];
+  const f = await fixture(t, { turns });
+  const threadId = await f.host.createSession({ cwd: f.root });
+  for (let index = 0; index < 2; index += 1) {
+    const done = await runTurn(f.host, threadId, `Hello ${index}`, { model: FAKE_MODEL });
+    assert.equal(done.status, "failed");
+    assert.equal((await f.host.readTurn(threadId, done.turnId)).failure, "claude_signed_out");
+  }
 });
 
 test("an unknown model is refused before anything starts, and a restart closes unfinished turns", async (t) => {

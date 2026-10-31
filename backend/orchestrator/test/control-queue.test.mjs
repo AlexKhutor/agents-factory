@@ -9,10 +9,11 @@ import test from "node:test";
 
 import { SerializedControlCycle } from "../src/control-cycle.mjs";
 import { createControlProjection } from "../src/control-read-model.mjs";
-import { CodexReviewProvider, FakeReviewProvider } from "../src/control-review-provider.mjs";
+import { ServiceReviewProvider, FakeReviewProvider } from "../src/control-review-provider.mjs";
 import { SqliteControlStore } from "../src/sqlite-control-store.mjs";
 import { compactToolRunHistory } from "../src/tool-run.mjs";
 import { collectWorkerProgress } from "../src/control-worker-bridge.mjs";
+import { sqliteBackendOf, sqliteBackendTest } from "./fixtures/sqlite-backends/helpers.mjs";
 
 function runPythonScript(script, argumentsList = []) {
   return new Promise((resolve, reject) => {
@@ -36,12 +37,14 @@ function runPythonScript(script, argumentsList = []) {
 async function fixture(t) {
   const root = await mkdtemp(path.join(tmpdir(), "serialized-control-"));
   t.after(() => rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
-  const store = new SqliteControlStore({ databasePath: path.join(root, "control.db") });
+  const sqliteBackend = sqliteBackendOf(t);
+  const store = new SqliteControlStore({ databasePath: path.join(root, "control.db"), sqliteBackend });
+  assert.equal(await store.sqliteBackend(), sqliteBackend);
   await store.initialize();
   return { root, store };
 }
 
-test("SQLite format v1 migrates workflow, timing, and agent statistics without losing progress", async (t) => {
+sqliteBackendTest("SQLite format v1 migrates workflow, timing, and agent statistics without losing progress", async (t) => {
   const root = await mkdtemp(path.join(tmpdir(), "serialized-control-migration-"));
   t.after(() => rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
   const databasePath = path.join(root, "control.db");
@@ -105,7 +108,7 @@ connection.commit()
 connection.close()
 `, [databasePath]);
 
-  const store = new SqliteControlStore({ databasePath });
+  const store = new SqliteControlStore({ databasePath, sqliteBackend: sqliteBackendOf(t) });
   const initialized = await store.initialize();
   assert.equal(initialized.formatVersion, 4);
   const snapshot = await store.snapshot();
@@ -239,7 +242,7 @@ async function waitFor(predicate, { timeoutMs = 2_000, intervalMs = 10 } = {}) {
   throw new Error("Timed out waiting for test condition");
 }
 
-test("SQLite queue grants only one concurrent active lease", async (t) => {
+sqliteBackendTest("SQLite queue grants only one concurrent active lease", async (t) => {
   const { store } = await fixture(t);
   await store.enqueue(report("task-one"));
   await store.enqueue(report("task-two", { reportSha256: "c".repeat(64) }));
@@ -251,7 +254,7 @@ test("SQLite queue grants only one concurrent active lease", async (t) => {
   assert.equal(claims.filter((claim) => claim.reason === "active-review").length, 1);
 });
 
-test("an existing report accepts only one complete immutable correction evidence set", async (t) => {
+sqliteBackendTest("an existing report accepts only one complete immutable correction evidence set", async (t) => {
   const { store } = await fixture(t);
   const baseEvidence = [
     { kind: "report", path: "knowledge/report.md", sha256: "1".repeat(64) },
@@ -288,14 +291,14 @@ test("an existing report accepts only one complete immutable correction evidence
   );
 });
 
-test("report ids remain valid for the maximum task-id length", async (t) => {
+sqliteBackendTest("report ids remain valid for the maximum task-id length", async (t) => {
   const { store } = await fixture(t);
   const taskId = `t${"a".repeat(95)}`;
   const queued = await store.enqueue(report(taskId));
   assert.equal(queued.item.reportId, `${taskId}-report`);
 });
 
-test("task cancellation requires source identity when task ids collide", async (t) => {
+sqliteBackendTest("task cancellation requires source identity when task ids collide", async (t) => {
   const { store } = await fixture(t);
   await store.enqueue(report("shared-task", { sourceId: "worker-one" }));
   await store.enqueue(report("shared-task", { sourceId: "worker-two", reportSha256: "c".repeat(64) }));
@@ -313,7 +316,7 @@ test("task cancellation requires source identity when task ids collide", async (
   assert.equal(snapshot.items.find((item) => item.sourceId === "worker-one").state, "queued");
 });
 
-test("accepted reviewed dependencies unblock deterministic queue order", async (t) => {
+sqliteBackendTest("accepted reviewed dependencies unblock deterministic queue order", async (t) => {
   const { store } = await fixture(t);
   await store.enqueue(report("base-task", { priority: 0 }));
   await store.enqueue(report("dependent-task", {
@@ -332,7 +335,7 @@ test("accepted reviewed dependencies unblock deterministic queue order", async (
   assert.equal(second.item.taskId, "dependent-task");
 });
 
-test("control cycle reviews at most one queued report per invocation", async (t) => {
+sqliteBackendTest("control cycle reviews at most one queued report per invocation", async (t) => {
   const { root, store } = await fixture(t);
   const cycle = new SerializedControlCycle({
     store,
@@ -379,7 +382,7 @@ test("control cycle reviews at most one queued report per invocation", async (t)
   assert.equal(capabilities.artifacts.control.path, "projection.json");
 });
 
-test("integration runs only when the configured predicate accepts the decision", async (t) => {
+sqliteBackendTest("integration runs only when the configured predicate accepts the decision", async (t) => {
   const { root, store } = await fixture(t);
   let integrationCalls = 0;
   const integrator = async () => {
@@ -403,7 +406,7 @@ test("integration runs only when the configured predicate accepts the decision",
   assert.equal(integrationCalls, 0);
 });
 
-test("targeted subagent cancellation does not cancel the parent review", async (t) => {
+sqliteBackendTest("targeted subagent cancellation does not cancel the parent review", async (t) => {
   const { root, store } = await fixture(t);
   const cycle = new SerializedControlCycle({
     store,
@@ -429,7 +432,7 @@ test("targeted subagent cancellation does not cancel the parent review", async (
   assert.equal(snapshot.agents.find((agent) => agent.kind === "reviewer").state, "completed");
 });
 
-test("task cancellation leaves no fake reviewer or subagent active", async (t) => {
+sqliteBackendTest("task cancellation leaves no fake reviewer or subagent active", async (t) => {
   const { root, store } = await fixture(t);
   const cycle = new SerializedControlCycle({
     store,
@@ -495,7 +498,8 @@ test("Codex provider preserves a targeted subagent terminal state after parent c
 
   const states = new Map();
   let targetAgentId = null;
-  const provider = new CodexReviewProvider({
+  const provider = new ServiceReviewProvider({
+    providerId: "test-provider",
     cwd: process.cwd(),
     model: "test-model",
     reasoningEffort: "low",
@@ -538,7 +542,8 @@ test("Codex provider polls cancellation frequently without persisting every poll
 
   let cancellationPolls = 0;
   let heartbeats = 0;
-  const provider = new CodexReviewProvider({
+  const provider = new ServiceReviewProvider({
+    providerId: "test-provider",
     cwd: process.cwd(),
     model: "test-model",
     reasoningEffort: "low",
@@ -557,7 +562,7 @@ test("Codex provider polls cancellation frequently without persisting every poll
   assert.ok(heartbeats >= 2 && heartbeats <= 4, `expected bounded heartbeats, got ${heartbeats}`);
 });
 
-test("emergency stop persists before interrupting the active review", async (t) => {
+sqliteBackendTest("emergency stop persists before interrupting the active review", async (t) => {
   const { root, store } = await fixture(t);
   const cycle = new SerializedControlCycle({
     store,
@@ -583,7 +588,7 @@ test("emergency stop persists before interrupting the active review", async (t) 
   assert.equal(snapshot.items[0].state, "cancelled");
 });
 
-test("a provider result completing after emergency stop is discarded", async (t) => {
+sqliteBackendTest("a provider result completing after emergency stop is discarded", async (t) => {
   const { root, store } = await fixture(t);
   let releaseProvider;
   const providerReleased = new Promise((resolve) => { releaseProvider = resolve; });
@@ -647,7 +652,7 @@ test("a provider result completing after emergency stop is discarded", async (t)
   assert.equal(validationCalls, 0);
 });
 
-test("expired pre-turn lease is safely requeued", async (t) => {
+sqliteBackendTest("expired pre-turn lease is safely requeued", async (t) => {
   const { store } = await fixture(t);
   await store.enqueue(report("expired-lease"));
   const claimed = await store.claim({ owner: "crashed-owner" });
@@ -660,7 +665,7 @@ test("expired pre-turn lease is safely requeued", async (t) => {
   assert.deepEqual(recovery.recovered.map((item) => item.to), ["queued"]);
 });
 
-test("expired active review requires explicit provider reconciliation", async (t) => {
+sqliteBackendTest("expired active review requires explicit provider reconciliation", async (t) => {
   const { store } = await fixture(t);
   await store.enqueue(report("expired-active-review"));
   const claimed = await store.claim({ owner: "crashed-reviewer" });
@@ -687,7 +692,7 @@ test("expired active review requires explicit provider reconciliation", async (t
   assert.equal(snapshot.items[0].turnId, "turn-expired");
 });
 
-test("unconfirmed emergency timeout cannot leave a queue item in cancelling", async (t) => {
+sqliteBackendTest("unconfirmed emergency timeout cannot leave a queue item in cancelling", async (t) => {
   const { store } = await fixture(t);
   await store.enqueue(report("unconfirmed-stop"));
   await store.claim({ owner: "missing-owner" });
@@ -699,7 +704,7 @@ test("unconfirmed emergency timeout cannot leave a queue item in cancelling", as
   assert.equal(snapshot.items[0].leaseToken, null);
 });
 
-test("worker progress becomes a provider-neutral task and agent projection", async (t) => {
+sqliteBackendTest("worker progress becomes a provider-neutral task and agent projection", async (t) => {
   const { store } = await fixture(t);
   const now = new Date().toISOString();
   await store.upsertProgress({
@@ -744,7 +749,7 @@ test("worker progress becomes a provider-neutral task and agent projection", asy
   assert.deepEqual(projection.interventions, []);
 });
 
-test("v0.3 worker progress keeps semantic age separate from heartbeat and publication", async (t) => {
+sqliteBackendTest("v0.3 worker progress keeps semantic age separate from heartbeat and publication", async (t) => {
   const { store } = await fixture(t);
   const semanticAt = "2026-08-17T18:18:48.000Z";
   const heartbeatAt = "2026-08-17T18:19:18.000Z";
@@ -831,7 +836,7 @@ test("v0.3 worker progress keeps semantic age separate from heartbeat and public
   assert.equal(projection.publication.intervalSeconds, 15);
 });
 
-test("an unresolved child UI interruption degrades the backend projection until operator action", async (t) => {
+sqliteBackendTest("an unresolved child UI interruption degrades the backend projection until operator action", async (t) => {
   const { store } = await fixture(t);
   const observedAtUtc = new Date().toISOString();
   const projection = createControlProjection(await store.snapshot(), {
@@ -858,7 +863,7 @@ test("an unresolved child UI interruption degrades the backend projection until 
   assert.deepEqual(projection.interventions[0].availableActions, ["resume", "cancel"]);
 });
 
-test("a resolved child cancellation reconciles stale worker progress only with terminal provider evidence", async (t) => {
+sqliteBackendTest("a resolved child cancellation reconciles stale worker progress only with terminal provider evidence", async (t) => {
   const { store } = await fixture(t);
   const observedAtUtc = "2026-08-16T18:04:29.784Z";
   const resolvedAtUtc = "2026-08-16T18:05:27.619Z";
@@ -922,7 +927,7 @@ test("a resolved child cancellation reconciles stale worker progress only with t
   assert.deepEqual(confirmed.interventions, []);
 });
 
-test("the control cycle reads resolved interventions when writing projections", async (t) => {
+sqliteBackendTest("the control cycle reads resolved interventions when writing projections", async (t) => {
   const { root, store } = await fixture(t);
   const taskId = "resolved-cycle-task";
   const observedAtUtc = "2026-08-16T18:04:29.784Z";
@@ -970,7 +975,7 @@ test("the control cycle reads resolved interventions when writing projections", 
   assert.equal(cycle.lastAttentionProjection.attentionRequired, false);
 });
 
-test("old tool logs are bundled only after a verified gzip and manifest", async (t) => {
+sqliteBackendTest("old tool logs are bundled only after a verified gzip and manifest", async (t) => {
   const { root } = await fixture(t);
   const old = path.join(root, "logs", "old");
   await mkdir(old, { recursive: true });

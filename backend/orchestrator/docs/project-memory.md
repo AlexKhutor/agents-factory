@@ -142,6 +142,12 @@ success. Archive reads work without the provider. Coverage remains explicitly
 `captured-only`; provider-private or omitted content is not invented. Historical
 memory context remains pinned. Closing never deletes provider history.
 
+SQLite runs in the process through `node:sqlite` by default (memory, archive
+and the control store); the Python bridges remain as a fallback for one
+version. `AGENTS_FACTORY_SQLITE=node|python` chooses, and `control-cycle.json`
+may name `sqliteBackend`; without `node:sqlite` every store falls back to
+Python. Both write the same schema and the same bytes.
+
 ## Public Gateway Operations
 
 Schema: `application-project-memory.v1.json`; standard Gateway envelopes,
@@ -252,6 +258,13 @@ newest first, {versioned, commits:[{sha, atUtc, subject, files}]}; versioned
 is false when the folder is not under git. Action init-project-git takes
 {projectId} and requires --confirm-project PROJECT_ID: `git init` of the
 project folder, nothing committed ({initialised:false} when it already was).
+
+Action read-task-board (no input, or {agentId}) is read-only and does not open
+the store: the registered desk agents {sources:[{agentId, sourceId, valid}]}
+and the controller's desk tasks, each with its stage - dispatched, started,
+accepted, planned, in-progress, reported, accepted-by-code or declined - and
+the details of its start, acknowledgement, progress, report and acceptance; no
+paths. With {agentId}, only that agent's tasks.
 
 ## Bounds And Runtime Limits
 

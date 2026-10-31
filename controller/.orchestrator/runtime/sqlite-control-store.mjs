@@ -2,9 +2,15 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
+import { resolveSqliteBackend, sqliteBackendOption } from "./sqlite-backend.mjs";
+import { runControlCommand } from "./sqlite-control-store-node.mjs";
+
 const CURRENT_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_BRIDGE = path.join(CURRENT_DIRECTORY, "sqlite-control-store.py");
 const MAX_BRIDGE_OUTPUT_BYTES = 4 * 1024 * 1024;
+// The node:sqlite implementation replaces this script only; another bridge
+// script (project memory, archive) always runs in Python.
+const NODE_IMPLEMENTED_BRIDGE = "sqlite-control-store.py";
 
 function commandParts(value) {
   if (Array.isArray(value) && value.length > 0) return value.map(String);
@@ -28,18 +34,56 @@ function bridgeError(command, code, stderr, stdout) {
   return error;
 }
 
+// Python writes text output with the platform's line endings.
+const PYTHON_NEWLINE = process.platform === "win32" ? "\r\n" : "\n";
+
+/**
+ * The control store's commands in node:sqlite, failing as the script did:
+ * `stderr` holds its JSON error line (argparse's usage for an unknown
+ * command), `exitCode` its exit code.
+ */
+function invokeInNode(sqlite, databasePath, command, payload) {
+  try {
+    return runControlCommand(sqlite, databasePath, command, payload);
+  } catch (error) {
+    const message = String(error.pythonMessage ?? error.message);
+    const text = error.exitCode === 2 ? message : `{"ok": false, "error": ${JSON.stringify(message)}}`;
+    throw bridgeError(command, error.exitCode ?? 1, `${text.replaceAll("\n", PYTHON_NEWLINE)}${PYTHON_NEWLINE}`, "");
+  }
+}
+
 export class SqliteControlStore {
+  #backend = null;
+
+  /**
+   * `sqliteBackend` ("node" | "python") overrides AGENTS_FACTORY_SQLITE and
+   * the default (node:sqlite when this runtime has it, else Python).
+   */
   constructor({
     databasePath,
     pythonCommand = process.env.PYTHON || "python",
     bridgePath = DEFAULT_BRIDGE,
     timeoutMs = 30_000,
+    sqliteBackend,
   }) {
     if (!databasePath) throw new Error("SqliteControlStore requires databasePath");
     this.databasePath = path.resolve(databasePath);
     this.pythonCommand = commandParts(pythonCommand);
     this.bridgePath = path.resolve(bridgePath);
     this.timeoutMs = timeoutMs;
+    this.requestedSqliteBackend = path.basename(this.bridgePath) === NODE_IMPLEMENTED_BRIDGE
+      ? sqliteBackendOption(sqliteBackend)
+      : "python";
+  }
+
+  /** "node" or "python": the implementation this store's calls use. */
+  async sqliteBackend() {
+    return (await this.#resolved()).backend;
+  }
+
+  #resolved() {
+    this.#backend ??= resolveSqliteBackend({ backend: this.requestedSqliteBackend ?? undefined });
+    return this.#backend;
   }
 
   initialize() {
@@ -110,7 +154,13 @@ export class SqliteControlStore {
     return this.invoke("compact", { retentionDays, archiveRoot });
   }
 
-  invoke(command, payload = {}) {
+  async invoke(command, payload = {}) {
+    const { backend, sqlite } = await this.#resolved();
+    if (backend === "node") return invokeInNode(sqlite, this.databasePath, command, payload);
+    return this.#invokePython(command, payload);
+  }
+
+  #invokePython(command, payload) {
     return new Promise((resolve, reject) => {
       const [executable, ...prefixArguments] = this.pythonCommand;
       const child = spawn(executable, [

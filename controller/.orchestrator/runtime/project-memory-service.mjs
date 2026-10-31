@@ -7,6 +7,9 @@ import { WRITE_ZONE_LIMITS, normalizeWriteZone, writeZonesOverlap } from "./agen
 import { entriesFromDocument, normalizeDocumentPath, readMemoryDocument } from "./memory-documents.mjs";
 import { resolveProjectWorkspace } from "./project-workspace-binding.mjs";
 import { createOpenDeskTaskReader } from "./desk-task-index.mjs";
+import { listVisibleScopes, requireOpenProject } from "./project-archive.mjs";
+import { unmountedWorldProjects } from "./world-registry.mjs";
+import { nameOf, readNames } from "./object-names.mjs";
 
 export const PROJECT_MEMORY_SERVICE_VERSION = "v0.9.0";
 export const AGENT_ROLES = Object.freeze(["feature", "project-lead", "quarter-lead", "coordinator"]);
@@ -76,17 +79,22 @@ export function effectiveWriteZone(agent, agents = []) {
     .slice(0, WRITE_ZONE_LIMITS.patterns);
 }
 
-function roleLines(agent, { documents, agents = [] }) {
+function roleLines(agent, { documents, agents = [], names = null }) {
   const settings = agentSettings(agent);
   const zone = effectiveWriteZone(agent, agents);
-  const lines = [];
+  // Names change, IDs do not (object-names.mjs): an agent knows its own name and refers to everything by ID.
+  const lines = [`Your name: ${nameOf(names, "agent", agent.agentId)} (ID ${agent.agentId}). Projects, quarters and`
+    + " agents have names the person may change and IDs that never change: refer to them by ID."];
   if (settings.role === "coordinator") {
-    lines.push("Your role: the coordinator, the main orchestrator of this controller. You turn the person's confirmed"
-      + " intents into controller tasks for the desk agents and follow them to their reports with your desk tools"
-      + " (controller_agents, controller_dispatch, controller_start_task, controller_task_status,"
-      + " controller_read_report). Confirm the intent, the outcomes, the boundary, the target agent and the return"
-      + " contract (report operation and what you do after the report) with the person before dispatching. You"
-      + " never implement an agent's work yourself, and you change files only under coordination/drafts/.");
+    lines.push("Your role: the world lead - the coordinator of this controller, above the project and quarter leads."
+      + " You see every project (\"overview\" above: its title, its lead and how many agents work in it). You turn"
+      + " the person's confirmed intents into controller tasks for the project leads and the desk agents that take"
+      + " tasks, and follow them to their reports with your desk tools (controller_agents, controller_dispatch,"
+      + " controller_start_task, controller_task_status, controller_read_report); controller_agents names who"
+      + " takes tasks. A task for a project as a whole goes to its lead. Confirm the intent, the outcomes, the"
+      + " boundary, the target agent and the return contract (report operation and what you do after the report)"
+      + " with the person before dispatching. You never implement an agent's work yourself, and you change files"
+      + " only under coordination/drafts/.");
   } else if (settings.role === "project-lead") {
     lines.push(`Your role: lead of project ${agent.projectId}. You are responsible for the whole project: you keep`
       + " its project memory and know its quarters and the agents working in each of them, with their roles and"
@@ -116,6 +124,15 @@ function roleLines(agent, { documents, agents = [] }) {
 const KEY = "memory-agents-v1";
 const ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/;
 const TERMINAL = new Set(["completed", "failed", "interrupted"]);
+/**
+ * Turn failures the person can act on (the provider's own code) and the agent's problem each one
+ * raises: it stays until one of the agent's turns completes again.
+ */
+const FAILURE_PROBLEMS = Object.freeze(new Map([
+  ["acp_model_unreachable", "model_unreachable"],
+  ["claude_signed_out", "claude_signed_out"],
+]));
+const TURN_PROBLEMS = new Set(FAILURE_PROBLEMS.values());
 const hash = (value) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 function fail(code) { throw Object.assign(new Error(code), { code }); }
 function problem(error) {
@@ -200,8 +217,16 @@ function maskTraceRecord(record) {
 }
 
 export class ProjectMemoryService {
-  constructor({ store, provider = null, archive, now = () => new Date(), openTasks = async () => new Map() }) {
-    Object.assign(this, { store, provider, archive, now, openTasks });
+  constructor({ store, provider = null, archive, now = () => new Date(), openTasks = async () => new Map(), worldProjects = null }) {
+    Object.assign(this, { store, provider, archive, now, openTasks, worldProjects });
+  }
+  /**
+   * A provider flag for one agent: under the provider router
+   * (project-memory-provider-router.mjs) it is the flag of that agent's provider.
+   */
+  providerFlag(agent, name) {
+    if (typeof this.provider?.flagFor === "function") return this.provider.flagFor(agent, name);
+    return this.provider?.[name] === true;
   }
   /** Ends the store and archive bridges once the calls already sent are done. */
   async close() {
@@ -270,7 +295,8 @@ export class ProjectMemoryService {
    * that holds write zones, when both have a zone and the zones cannot meet.
    */
   mayCollide(left, right, agents = []) {
-    if (this.provider?.enforcesWriteZones !== true) return true;
+    // Both agents' providers must hold zones: a zone a provider cannot enforce protects nothing.
+    if (!this.providerFlag(left, "enforcesWriteZones") || !this.providerFlag(right, "enforcesWriteZones")) return true;
     const leftZone = effectiveWriteZone(left, agents);
     const rightZone = effectiveWriteZone(right, agents);
     return leftZone === null || rightZone === null || writeZonesOverlap(leftZone, rightZone);
@@ -428,22 +454,52 @@ export class ProjectMemoryService {
     });
     return { kind: approval.kind, scopeId: approval.scopeId, revision: receipt.revision, entries: entries.length };
   }
-  /** What a lead oversees, by titles only: the project's quarters, or the quarter's agents. */
+  /**
+   * What a lead oversees, by titles only: the project's quarters, the
+   * quarter's agents, or - for the world lead (the coordinator) - every other
+   * open project with its lead and how many agents work in it. Each one with
+   * its name (object-names.mjs) beside its ID.
+   */
   async overviewFor(agent, agents) {
     const role = agentSettings(agent).role;
+    const namesOf = async (projectId) => readNames(this.store, projectId).catch(() => null);
+    if (role === "coordinator") {
+      // Only what changes rarely, as for the other leads: the overview is part
+      // of the memory delivery key. Which agents take tasks right now is the
+      // coordinator's tool controller_agents, read when it needs it.
+      const projects = (await listVisibleScopes(this.store)).scopes
+        .filter((scope) => scope.kind === "project" && scope.projectId !== agent.projectId).slice(0, 128);
+      const overview = { projects: await Promise.all(projects.map(async (scope) => {
+        const members = agents.filter((other) => other.agentId !== agent.agentId && other.state !== "archived"
+          && other.projectId === scope.projectId);
+        const lead = members.find((other) => agentSettings(other).role === "project-lead") ?? null;
+        const names = await namesOf(scope.projectId);
+        return { projectId: scope.projectId, name: nameOf(names, "project", scope.projectId), title: scope.title,
+          lead: lead?.agentId ?? null, leadName: lead ? nameOf(names, "agent", lead.agentId) : null, agents: members.length };
+      })) };
+      // Projects the world knows that are not on this PC: their title only
+      // (docs/project-package.md §7.2); their content is not here to read.
+      const away = typeof this.worldProjects === "function"
+        ? (await this.worldProjects()).filter((project) => !project.archived).slice(0, 128) : [];
+      if (away.length === 0) return overview;
+      return { ...overview,
+        notHere: "Projects marked not-here are on another PC: only their title is known here; their agents cannot be reached from this PC.",
+        projectsNotHere: away.map((project) => ({ projectId: project.projectId, title: project.title, availability: "not-here" })) };
+    }
     if (role === "project-lead") {
       const listed = (await this.store.listScopes({ projectId: agent.projectId })).scopes
         .filter((scope) => scope.kind === "quarter").slice(0, 128);
       const scopes = await this.store.readScopes({ scopeIds: listed.map((scope) => scope.scopeId) });
+      const names = await namesOf(agent.projectId);
       // Who works in each quarter, briefly: the lead knows its people. Only
       // what changes rarely (role, model): the overview is part of the memory
       // delivery key, and a busy/idle flag would resend the memory every time.
       const members = (quarterId) => agents.filter((other) => other.agentId !== agent.agentId
         && other.state !== "archived" && other.projectId === agent.projectId && other.quarterId === quarterId)
-        .slice(0, 64).map((other) => ({ agentId: other.agentId, role: agentSettings(other).role,
-          model: other.profile?.model ?? null }));
-      return { quarters: scopes.map((scope) => ({ quarterId: scope.quarterId, title: scope.title,
-        memory: scope.entries.map((entry) => entry.title), agents: members(scope.quarterId) })) };
+        .slice(0, 64).map((other) => ({ agentId: other.agentId, name: nameOf(names, "agent", other.agentId),
+          role: agentSettings(other).role, model: other.profile?.model ?? null }));
+      return { quarters: scopes.map((scope) => ({ quarterId: scope.quarterId, name: nameOf(names, "quarter", scope.quarterId),
+        title: scope.title, memory: scope.entries.map((entry) => entry.title), agents: members(scope.quarterId) })) };
     }
     if (role === "quarter-lead") {
       const members = agents.filter((other) => other.agentId !== agent.agentId && other.state !== "archived"
@@ -451,7 +507,9 @@ export class ProjectMemoryService {
       const scopes = new Map((await this.store.readScopes({ scopeIds: members
         .filter((other) => other.agentScopeId).map((other) => other.agentScopeId) }))
         .map((scope) => [scope.scopeId, scope]));
-      return { agents: members.map((other) => ({ agentId: other.agentId, role: agentSettings(other).role,
+      const names = await namesOf(agent.projectId);
+      return { agents: members.map((other) => ({ agentId: other.agentId, name: nameOf(names, "agent", other.agentId),
+        role: agentSettings(other).role,
         model: other.profile?.model ?? null, writeZone: effectiveWriteZone(other),
         memory: scopes.get(other.agentScopeId)?.entries.map((entry) => entry.title) ?? [] })) };
     }
@@ -563,7 +621,8 @@ export class ProjectMemoryService {
     const overview = await this.overviewFor(agent, agents);
     // The role says what the agent may change; its text is part of the key, so
     // a changed rule reaches an agent that already had the memory.
-    const roles = roleLines(agent, { documents: this.provider?.memoryDocuments === true, agents });
+    const roles = roleLines(agent, { documents: this.providerFlag(agent, "memoryDocuments"), agents,
+      names: await readNames(this.store, agent.projectId).catch(() => null) });
     const writeZone = effectiveWriteZone(agent, agents);
     const delivery = { manifestHash: manifest.manifestHash, settingsRevision: agentSettings(agent).revision,
       providerKey: deliveryKey, overviewHash: overview === null ? null : hash(overview), roleHash: hash(roles) };
@@ -619,10 +678,20 @@ export class ProjectMemoryService {
         if (!repeated) current.memoryDelivery = delivery;
       });
     } catch (error) {
+      // A provider that refused before anything started says so (notDelivered):
+      // the message did not go and the agent is free again. Anything else may
+      // have reached the provider and stays uncertain.
+      const notDelivered = error?.notDelivered === true;
+      // The provider's own code stays with the operation: without it a failed
+      // or uncertain send says nothing of why (a fixed identifier, never text).
+      const causeCode = typeof error?.code === "string" && /^[a-z][a-z0-9_]{0,63}$/u.test(error.code) ? error.code : null;
       await this.change((doc) => {
-        Object.assign(this.find(doc, agentId).operations.find((op) => op.operationId === operationId), {
-          state: "uncertain", problemCode: problem(error),
-        });
+        const current = this.find(doc, agentId);
+        Object.assign(current.operations.find((op) => op.operationId === operationId), { causeCode }, notDelivered
+          ? { state: "failed", settledAtUtc: this.now().toISOString(),
+            problemCode: problem(error) === "memory_operation_unconfirmed" ? "memory_send_not_started" : problem(error) }
+          : { state: "uncertain", problemCode: problem(error) });
+        if (notDelivered && current.currentOperationId === operationId) current.currentOperationId = null;
       });
     }
     agent = this.find((await this.catalog()).value, agentId);
@@ -648,6 +717,13 @@ export class ProjectMemoryService {
             // The model that actually answered (Claude Code reports it).
             if (typeof observed.observedModel === "string" && /^[A-Za-z0-9._:\[\]-]{1,160}$/u.test(observed.observedModel)) {
               stored.observedModel = observed.observedModel;
+            }
+            // A model that did not answer, or a lost sign-in, is the agent's problem until one of its turns
+            // completes again (attention in Atlas, even after the person saw the failed turn).
+            if (stored.state === "failed" && FAILURE_PROBLEMS.has(observed.failure)) {
+              current.problemCode = FAILURE_PROBLEMS.get(observed.failure);
+            } else if (stored.state === "completed" && TURN_PROBLEMS.has(current.problemCode)) {
+              current.problemCode = null;
             }
             // When the backend saw the message end: the agent is idle from then on.
             if (TERMINAL.has(stored.state) && !stored.settledAtUtc) stored.settledAtUtc = this.now().toISOString();
@@ -679,6 +755,30 @@ export class ProjectMemoryService {
     await this.archive.read(agent.binding, { limit: 1 });
     await this.change((doc) => {
       Object.assign(this.find(doc, agentId), { state: "archived", archivedAtUtc: this.now().toISOString() });
+    });
+    return this.readAgent({ agentId });
+  }
+  /**
+   * Opens a closed agent again (the undo of its closing, action-journal-undo.mjs):
+   * the same agent with its conversation, memory and settings, in a project and
+   * quarter that are not archived, while no other open agent holds its role.
+   */
+  async reopenAgent(input) {
+    exact(input, ["agentId"]);
+    const agentId = id(input.agentId);
+    const agent = this.find((await this.catalog()).value, agentId);
+    if (agent.state !== "archived") fail("memory_agent_open");
+    await requireOpenProject(this.store, agent.projectId, agent.quarterId);
+    await this.change((doc) => {
+      const current = this.find(doc, agentId);
+      if (current.state !== "archived") fail("memory_agent_open");
+      const role = agentSettings(current).role;
+      if (role !== "feature" && doc.agents.some((other) => other.agentId !== agentId && other.state !== "archived"
+          && agentSettings(other).role === role && (role === "coordinator" || (other.projectId === current.projectId
+            && (role === "project-lead" || other.quarterId === current.quarterId))))) fail("memory_role_taken");
+      current.state = "active";
+      current.archivedAtUtc = null;
+      delete current.closeOperationId;
     });
     return this.readAgent({ agentId });
   }
@@ -862,5 +962,6 @@ export async function createProjectMemoryService({ controllerRoot, sourceId, pro
     archive: archive ?? await createConversationArchive({ controllerRoot,
       projectId: await resolveProviderMutationProjectId(controllerRoot), now, pythonCommand }),
     provider, now, openTasks: controllerRoot ? createOpenDeskTaskReader(controllerRoot) : undefined,
+    worldProjects: controllerRoot ? () => unmountedWorldProjects(controllerRoot).catch(() => []) : null,
   });
 }

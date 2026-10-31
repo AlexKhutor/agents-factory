@@ -63,7 +63,9 @@ test("continuation rejects cross-project, changed content and Gateway reconstruc
 });
 
 test("UTF-8 paging never splits a code point or stalls a continuation", async (t) => {
-  const f = await fixture(t); await writeFile(path.join(f.root, "src/unicode.txt"), "Hello");
+  // "Privet" in Cyrillic: two bytes per letter, so a 3-byte page always ends inside one.
+  const word = "\u041f\u0440\u0438\u0432\u0435\u0442";
+  const f = await fixture(t); await writeFile(path.join(f.root, "src/unicode.txt"), word);
   const input = { projectId: "project-a", path: "src/unicode.txt", maximumBytes: 3 };
   let text = "", cursor = null, pages = 0;
   do {
@@ -72,7 +74,7 @@ test("UTF-8 paging never splits a code point or stalls a continuation", async (t
     text += page.text; cursor = page.nextCursor;
     assert.ok(++pages <= 6);
   } while (cursor);
-  assert.equal(text, "Hello");
+  assert.equal(text, word);
 });
 
 test("artifact continuations cannot be borrowed by another agent sharing the same project file", async (t) => {

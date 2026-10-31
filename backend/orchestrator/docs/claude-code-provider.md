@@ -9,18 +9,22 @@ acceptance of stage 5 ran on 2026-10-02 with real Claude Code turns; what it
 covered and what is still open is listed at the end.
 
 Desk agents (the agents of `project-memory.md`: one agent per quarter feature,
-with project and quarter memory) can run on Claude Code instead of the Codex App
-Server. The Gateway selects the provider when it starts:
+with project and quarter memory) run on Claude Code. The Gateway starts with:
 
 ```text
 node application-gateway-cli.mjs run --repo-root <controller> --project-id <id> --monitor-id <uuid> --provider claude
 ```
 
-Without `--provider`, or with `--provider codex`, nothing changes. The owner
-chat and the generic provider mutations (thread create, turn start, interrupt of
-`application-gateway-provider-mutations.md`) stay on the controller's own route
-and are not offered by the Claude runtime: `--provider-source-id` together with
-`--provider claude` is refused.
+Claude Code is the only provider (`--provider` defaults to `claude`). The
+Codex App Server runtime, with the owner chat and the generic provider mutations
+(thread create, turn start, interrupt of `application-gateway-provider-mutations.md`),
+left with the Codex path on 31.10.2026 (roadmap step 1): `--provider codex` and
+`--provider-source-id` are refused. An ACP agent (DeepSeek Harness, and later
+Codex through `codex-acp`) runs beside Claude Code (`acp-provider.json`).
+
+The controller's serialized reviewer and report summarizer run on Claude Code
+too (`claude-code-service-client.mjs`): `control-cycle.json` without a
+`provider` means `claude-code`, and `codex-app-server` is refused.
 
 ## Configuration
 
@@ -59,6 +63,10 @@ committed. Unknown fields are refused.
 - `permissionMode`: `default`, `acceptEdits`, `auto`, `plan` or `dontAsk`:
   the mode of agents without their own. `bypassPermissions` is not accepted
   here: it is only ever an agent's own mode, chosen by the person for it.
+- `webFetchHosts`: host names agents may `WebFetch` from without asking the
+  person (each covers its subdomains). Not given: built-in documentation and
+  code hosts (`DEFAULT_WEB_FETCH_HOSTS` in `agent-secret-paths.mjs`); `[]`:
+  every fetch asks.
 
 An agent profile on this provider is
 `{ "provider": "claude", "model": <a configured id>, "reasoningEffort": <an effort of it>, "fallbackPolicy": "deny" }`.
@@ -125,6 +133,40 @@ a reason the agent reads; reading stays open. A shell command that only reads
 goes to the person in the manual and accept-edits modes, and to the mode in
 auto and bypass. Hooks are not part of the prompt, so the prompt cache is
 unaffected.
+
+## Secrets Are Not Read
+
+Every turn of every agent, with a zone or without, carries a first PreToolUse
+hook (`agent-secret-paths.mjs`, `claudeSecretHook`) that refuses, in every
+permission mode, a tool call that would read or change a login, key or token:
+
+- by name wherever it lies: `.credentials.json`, `.claude.json`,
+  `connection.v1.json`, `*.dpapi.json`, `.env` (not `.env.example`), SSH keys,
+  `.netrc`, `.npmrc`, `.git-credentials`, key stores, and data files named for a
+  key (`work-qwen-api-key.txt`, `github-token.json`, `secrets.yaml`);
+- by folder: `.project-runtime`, `secrets`, `.ssh`, `.gnupg`, `.aws`, `.azure`,
+  `.kube`, `.docker`, and any `.project-local` outside the agent's own folder
+  (an instance's: its logins and the Gateway's connection);
+- in `Read`, `Write`, `Edit`, `MultiEdit`, `NotebookEdit`, `Grep` (`path`,
+  `glob`), `Glob` (`path`) and `LS`, and in shell commands that name such a path
+  (wildcards like `.cred*` count) or print the environment (`env`, `printenv`,
+  `set`, `export -p`, PowerShell's `env:` drive, a variable named for a key
+  such as `$ANTHROPIC_API_KEY`).
+
+The refusal tells the agent to say in its answer that the work needs a secret,
+so the person does that step. A shell can always hide a name: this stops the
+plain and the accidental cases, and secrets still belong outside the agents'
+folders. ACP agents get the same check in the host's permission gate (their
+desk gate plugin sends reading tools there too; any other read is allowed at
+once, without the person).
+
+A second hook (`claudeWebFetchHook`) asks the person before a `WebFetch` to an
+address not on `webFetchHosts`: whatever a fetched address carries goes there,
+and a prompt injected into what an agent read may try to send out what it
+found. MCP: an agent sees only the servers the Gateway passes
+(`strictMcpConfig`: the in-process `desk` server); ACP agents only those listed
+in their provider config. Trust levels per server come with the MCP catalog
+(`docs/distribution/mcp.md`, stage 2).
 
 ## Permission Modes
 
@@ -210,6 +252,30 @@ same. It writes a memory document into memory exactly as the person approved it
 in the desk (`project-memory.md`, Memory Documents) and answers the agent what
 was written, or why nothing was. It needs `zod` from beside the SDK
 (`loadClaudeZod`); without it the tool and its instructions are left out.
+
+## The World Lead, Desk Tasks And The Lifecycle In Node
+
+- **The world lead.** The role `coordinator` is shown in Atlas as the world
+  lead: an agent in the reserved project `world`, bound to the controller root,
+  in its HQ quarter `hq`. Atlas sets it up in one confirmed flow (the trusted
+  host binds `world` to the controller root, creates the agent, then gives it
+  the role). Its memory also carries an overview of every other open project:
+  its lead and agents. Its write zone and the one-coordinator rule are
+  unchanged.
+- **Desk tasks without PowerShell.** For the route `claude-desk-agent` the desk
+  tools (accept, plan, progress, report, signal), the coordinator's dispatch and
+  the kit install at registration run in the Gateway's process
+  (`desk-task-*.mjs`); they write the same files, byte for byte, as the
+  PowerShell scripts. `control-cli report` collects and imports desk reports
+  in-process. PowerShell remains for the Codex-era routes.
+- **The lifecycle in Node.** `agents-factory gateway start | stop | status |
+  recover | logs` (`.orchestrator/runtime/agents-factory.mjs`) does what
+  `tools/application_gateway.ps1` does: a headless monitor (`watch`), then
+  `run`, then waits for ready. Atlas starts and stops the Gateway from its
+  readiness panel through it. The Anthropic API key comes from
+  `ANTHROPIC_API_KEY` or from the key store (`agents-factory key set`: DPAPI,
+  Keychain or Secret Service) and reaches only the Gateway's process; with
+  `keepProviderVariables: true` the agents use it.
 
 ## What Is Checked
 

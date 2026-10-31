@@ -93,7 +93,7 @@ button.chip.account:hover{border-color:var(--gold)}
 .hud{position:absolute;z-index:4;text-shadow:0 1px 8px #11160fcc;max-width:340px}
 #scopeHud{top:16px;left:18px}
 #scopeHud .muted{font-size:11px;line-height:1.5}
-.hud.right{top:16px;right:20px;display:flex;flex-direction:column;gap:7px;align-items:flex-end}
+.hud.right{max-width:560px;top:16px;right:20px;display:flex;flex-direction:column;gap:7px;align-items:flex-end}
 .attention-button{display:flex;align-items:center;gap:9px;text-align:left;background:#222a1fee;
   border-color:#5d6a48;padding:7px 11px}
 .attention-button strong{display:block;font-size:12px}
@@ -102,7 +102,8 @@ button.chip.account:hover{border-color:var(--gold)}
 .attention-mark{min-width:24px;height:24px;display:grid;place-items:center;border-radius:12px;
   background:#4a3a24;border:1px solid var(--amber);color:var(--amber);font-size:11px;font-weight:700}
 .attention-mark.calm{background:var(--panel2);border-color:var(--line);color:var(--muted)}
-.hud-row{display:flex;gap:6px}
+.hud-row{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px}
+.hud-row button{white-space:nowrap}
 .notice{padding:3px 8px;border-radius:4px;border:1px solid var(--amber);color:var(--amber);
   font-size:11px;background:#2a2a20e6}
 
@@ -149,16 +150,16 @@ button.chip.account:hover{border-color:var(--gold)}
 #mapStage.drawer-open #minimapBox{bottom:224px}
 
 /* Floating panels: by default they are not on the screen. */
-#inspector{position:absolute;right:20px;top:150px;width:334px;max-height:calc(100% - 190px);
+#inspector{position:absolute;right:20px;top:var(--panel-top,150px);width:334px;max-height:calc(100% - var(--panel-top,150px) - 40px);
   overflow:auto;background:#242b21fa;border:1px solid #5a654d;border-radius:7px;
   box-shadow:var(--shadow);z-index:8;padding:12px 14px}
-#attentionPanel{position:absolute;right:20px;top:150px;width:340px;max-height:calc(100% - 190px);
+#attentionPanel{position:absolute;right:20px;top:var(--panel-top,150px);width:340px;max-height:calc(100% - var(--panel-top,150px) - 40px);
   display:flex;flex-direction:column;background:#242c21fa;border:1px solid #647151;border-radius:7px;
   box-shadow:var(--shadow);z-index:10;overflow:hidden}
 #attentionPanel.hidden{display:none!important}
 
 /* Readiness is in the same place on the right as the inspector and the attention list. */
-#readinessPanel{position:absolute;right:20px;top:150px;width:380px;max-height:calc(100% - 190px);
+#readinessPanel{position:absolute;right:20px;top:var(--panel-top,150px);width:380px;max-height:calc(100% - var(--panel-top,150px) - 40px);
   display:flex;flex-direction:column;background:#242c21fa;border:1px solid #647151;border-radius:7px;
   box-shadow:var(--shadow);z-index:10;overflow:hidden}
 #readinessPanel.hidden{display:none!important}
@@ -360,7 +361,7 @@ select.chat-model,select.chat-effort,select.chat-permission{font-size:calc(11px*
   border-bottom:1px solid #262b22}
 .tray-kind{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--amber)}
 
-.sheet{position:absolute;right:20px;top:150px;width:420px;max-height:calc(100% - 190px);display:flex;
+.sheet{position:absolute;right:20px;top:var(--panel-top,150px);width:420px;max-height:calc(100% - var(--panel-top,150px) - 40px);display:flex;
   flex-direction:column;background:#1f241ffa;border:1px solid var(--line);border-radius:7px;
   box-shadow:var(--shadow);z-index:11}
 
@@ -408,6 +409,8 @@ footer#bottomBar{height:36px;flex:none;display:flex;align-items:center;gap:10px;
 .identifier-hint{font-size:10px;line-height:1.4;margin:2px 0 9px}
 .identifier-hint.bad{color:var(--red)}
 .actions{display:flex;gap:6px;flex-wrap:wrap;margin:9px 0}
+.check-row{display:flex;align-items:flex-start;gap:6px;margin:8px 0;cursor:pointer}
+.check-row input{width:auto;margin:2px 0 0;flex:none}
 .attention-item{border:1px solid var(--line);border-left:2px solid var(--amber);border-radius:5px;
   padding:7px 9px;margin-bottom:7px;background:var(--panel2);cursor:pointer}
 .attention-item:hover{border-color:#747b64}
@@ -498,3 +501,27 @@ footer#bottomBar{height:36px;flex:none;display:flex;align-items:center;gap:10px;
 .feed-pulse-what{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
   font:calc(11px*var(--chat-text,1)) Consolas,monospace;color:#c9cfb4}
 @keyframes feed-pulse{0%,100%{opacity:.35;transform:scale(.9)}50%{opacity:1;transform:scale(1.1)}}
+/* Controller tasks: the steps of the task contract, like the to-do list in Claude Code - done, now, ahead. */
+.task-steps{display:flex;flex-wrap:wrap;gap:4px;margin:6px 0 4px}
+.task-step{font-size:11px;padding:1px 7px;border-radius:9px;border:1px solid var(--line);color:#7f8873}
+.task-step.done{border-color:#5f7a4c;color:var(--green)}
+.task-step.done::before{content:"✓ "}
+.task-step.current{border-color:var(--gold);color:var(--gold);background:#3a3524}
+.task-step.current::before{content:"● "}
+.task-step.declined{border-color:var(--red);color:var(--red)}
+.task-step.declined::before{content:"✕ "}
+.task-entry .entry-title{display:flex;gap:8px;align-items:baseline}
+.task-entry .task-id{font:11px Consolas,monospace;color:var(--muted);font-weight:400}
+/* World HQ in the navigator - above the project list. */
+.nav-project.world .nav-symbol{background:#4a4126;color:var(--gold);box-shadow:inset 0 0 0 1px var(--gold)}
+/* History of changes: one line per change, its details open on a click. */
+.history-hint{margin-bottom:8px}
+.history-entry{border-bottom:1px solid var(--line)}
+.history-row{display:flex;gap:10px;align-items:baseline;width:100%;padding:7px 4px;background:none;border:0;color:inherit;text-align:left;cursor:pointer;font:inherit}
+.history-row:hover{background:var(--panel2)}
+.history-when{color:var(--muted);min-width:44px;font-variant-numeric:tabular-nums}
+.history-title{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.history-entry.open .history-title{white-space:normal}
+.history-mark{color:var(--muted);font-size:12px}
+.history-details{padding:0 4px 10px 58px}
+.history-details .actions{margin-top:6px}

@@ -21,6 +21,8 @@ import { agentSettings } from "./project-memory-service.mjs";
 import { resolveProjectWorkspace } from "./project-workspace-binding.mjs";
 import { applyRateLimitEvent, normalizeClaudeUsage, writeClaudeUsage } from "./claude-usage.mjs";
 import { createAgentTurnCommits } from "./agent-turn-commits.mjs";
+import { recordActionQuietly } from "./action-journal.mjs";
+import { memoryWrite } from "./action-journal-gateway.mjs";
 
 // The Gateway's provider runtime when desk agents run on Claude Code instead
 // of the Codex App Server. It returns the same shape as the Codex runtime in
@@ -54,9 +56,12 @@ function unavailable(reasonCode) {
 /**
  * `claude`: the normalized config, plus for tests an `sdk` object and a
  * `readAccount` function used instead of the installed SDK and `auth status`.
+ * `attach: false`: the memory provider is not set on the service; the caller
+ * routes it with other providers (project-memory-provider-router.mjs) and
+ * takes `memoryProvider`, `conversationRoute` and `agentEventBridge` from the result.
  */
 export async function createClaudeProviderRuntime({ repoRoot, sourceId, instanceId, now, claude,
-  memoryService, assertVisible, readPermissions = {}, onDiagnostic = () => {} }) {
+  memoryService, assertVisible, readPermissions = {}, onDiagnostic = () => {}, attach = true }) {
   let host = null;
   let memoryProvider = null;
   let agentEvents = null;
@@ -125,19 +130,30 @@ export async function createClaudeProviderRuntime({ repoRoot, sourceId, instance
         archive: memoryService.archive, descriptor, assertVisible,
         onInteractionChanged: (record) => agentEvents?.interactionChanged(record),
         resolveWorkspace: (agent) => resolveProjectWorkspace(memoryService.store, agent.projectId),
-        documents: (agent, documentPath) => memoryService.writeMemoryFromDocument({ agentId: agent.agentId,
-          path: documentPath }),
+        // The agent's own write of an approved document goes into the action journal as the agent's.
+        documents: async (agent, documentPath) => {
+          const written = await memoryService.writeMemoryFromDocument({ agentId: agent.agentId, path: documentPath });
+          const scope = await memoryService.store.readScope({ scopeId: written.scopeId }).catch(() => null);
+          if (scope !== null) {
+            await recordActionQuietly(memoryService.store, memoryWrite(scope,
+              { previousRevision: written.revision - 1, revision: written.revision },
+              { kind: "agent", id: agent.agentId }), { now, onDiagnostic });
+          }
+          return written;
+        },
         // Controller tasks reach desk agents registered as sources (claude-code-controller.md).
         taskTools: claude.taskTools ?? deskTools({ controllerRoot: repoRoot, service: memoryService, returns }),
         taskGate: claude.taskTools ? null : (agent) => deskTaskGateHook({ controllerRoot: repoRoot, agentId: agent.agentId }),
         // Each turn's work becomes a commit in the git of its project folder (agent-turn-commits.mjs);
         // claude-provider.json `agentCommits: false` turns it off.
         commits: claude.agentCommits === false ? null : (claude.commits ?? createAgentTurnCommits()),
+        // A fetch from an address not on this list asks the person (claude-provider.json `webFetchHosts`).
+        webFetchHosts: claude.webFetchHosts ?? null,
         onCommit: (record) => onDiagnostic({ schemaVersion: 1, component: "agent-turn-commits", instanceId,
           phase: "commit", agentId: record.agentId, operationId: record.operationId, turnId: record.turnId,
           state: record.state, reasonCode: record.reason ?? null, sha: record.sha ?? null,
           files: Array.isArray(record.files) ? record.files.length : 0 }) });
-      memoryService.provider = memoryProvider;
+      if (attach) memoryService.provider = memoryProvider;
       agentEvents = createApplicationAgentEventBridge({ service: memoryService, client: host,
         providerSourceId: sourceId, instanceId, now, providerId: CLAUDE_CODE_PROVIDER_ID });
       // A finished turn settles its send receipt at once, so the agent counts as
@@ -157,6 +173,9 @@ export async function createClaudeProviderRuntime({ repoRoot, sourceId, instance
         permissions: readPermissions })],
       authenticationStates: [authentication.data.state],
       agentEventHandlers: agentEvents?.handlers ?? {},
+      memoryProvider,
+      agentEventBridge: agentEvents,
+      conversationRoute: { providerId: CLAUDE_CODE_PROVIDER_ID, adapterId: CLAUDE_CODE_ADAPTER_ID, reader: conversationReader },
       close: async () => {
         agentEvents?.close();
         await memoryProvider?.close();

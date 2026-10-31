@@ -32,8 +32,8 @@ actually answered) and, in the conversation, readable tool items - the
 command and its output, the changed file with `+added −removed` lines, the
 read or searched path - where Kit v0.20.0 showed "Command completed" or "File
 change completed". The person's message is shown as typed, without the memory
-in front of it; the plan is a checklist headed `Plan`, reasoning summaries are
-headed `Thinking`. Kit v0.20.0 consumers keep working.
+in front of it; the plan is a checklist headed `План`, reasoning summaries are
+headed `Размышление`. Kit v0.20.0 consumers keep working.
 
 ## Kit v0.20.0 send receipts through the Gateway
 

@@ -3,13 +3,13 @@ import { stat, realpath } from "node:fs/promises";
 import { createHash } from "node:crypto";
 
 function fail(code) { throw Object.assign(new Error(code), { code }); }
-function key(projectId) {
+export function workspaceDocumentKey(projectId) {
   if (typeof projectId !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/.test(projectId)) {
     fail("memory_invalid_input");
   }
   return `workspace-${createHash("sha256").update(projectId).digest("hex")}`;
 }
-async function canonical(workspacePath) {
+export async function workspaceIdentity(workspacePath) {
   if (typeof workspacePath !== "string" || !path.isAbsolute(workspacePath)) fail("memory_invalid_input");
   const root = await realpath(workspacePath);
   if (!(await stat(root)).isDirectory()) fail("memory_invalid_input");
@@ -20,8 +20,8 @@ async function canonical(workspacePath) {
 // Trusted host/operator only. This function is deliberately not an HTTP handler.
 export async function bindProjectWorkspace(store, input) {
   if (!input || Object.keys(input).sort().join() !== "projectId,workspacePath") fail("memory_invalid_input");
-  const documentKey = key(input.projectId);
-  const value = { projectId: input.projectId, ...await canonical(input.workspacePath) };
+  const documentKey = workspaceDocumentKey(input.projectId);
+  const value = { projectId: input.projectId, ...await workspaceIdentity(input.workspacePath) };
   const existing = await store.readDocument({ key: documentKey });
   if (existing) {
     if (existing.value.workspaceKey !== value.workspaceKey) fail("memory_workspace_conflict");
@@ -47,8 +47,8 @@ const AGENTS_KEY = "memory-agents-v1";
  */
 export async function rebindProjectWorkspace(store, input) {
   if (!input || Object.keys(input).sort().join() !== "projectId,workspacePath") fail("memory_invalid_input");
-  const documentKey = key(input.projectId);
-  const value = { projectId: input.projectId, ...await canonical(input.workspacePath) };
+  const documentKey = workspaceDocumentKey(input.projectId);
+  const value = { projectId: input.projectId, ...await workspaceIdentity(input.workspacePath) };
   const existing = await store.readDocument({ key: documentKey });
   if (!existing) return bindProjectWorkspace(store, input);
   if (existing.value.workspaceKey === value.workspaceKey) {
@@ -73,11 +73,11 @@ export async function rebindProjectWorkspace(store, input) {
  */
 export async function readProjectWorkspace(store, input) {
   if (!input || Object.keys(input).join() !== "projectId") fail("memory_invalid_input");
-  const record = await store.readDocument({ key: key(input.projectId) });
+  const record = await store.readDocument({ key: workspaceDocumentKey(input.projectId) });
   if (!record) return { projectId: input.projectId, configured: false };
   let available = true;
   try {
-    available = (await canonical(record.value.workspacePath)).workspaceKey === record.value.workspaceKey;
+    available = (await workspaceIdentity(record.value.workspacePath)).workspaceKey === record.value.workspaceKey;
   } catch {
     available = false;
   }
@@ -85,9 +85,9 @@ export async function readProjectWorkspace(store, input) {
 }
 
 export async function resolveProjectWorkspace(store, projectId) {
-  const record = await store.readDocument({ key: key(projectId) });
+  const record = await store.readDocument({ key: workspaceDocumentKey(projectId) });
   if (!record) fail("memory_workspace_required");
-  const current = await canonical(record.value.workspacePath);
+  const current = await workspaceIdentity(record.value.workspacePath);
   if (current.workspaceKey !== record.value.workspaceKey || record.value.projectId !== projectId) {
     fail("memory_workspace_conflict");
   }

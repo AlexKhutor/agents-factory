@@ -40,6 +40,12 @@
     agentAutoStart: 40,
     hqWidth: 190,
     hqHeight: 170,
+    // The World HQ is the main base of the whole world, bigger than a project HQ, like the town hall
+    // (Town Center) in Age of Empires II next to the houses. It stands apart,
+    // to the left of the projects, and its label is built the same way as a project HQ's.
+    worldHqWidth: 320,
+    worldHqHeight: 280,
+    worldHqLabelHeight: 52,
     // The caption under the HQ and the clearance around it: together with the building, this is the HQ zone.
     hqLabelHeight: 40,
     hqClearance: 24,
@@ -51,6 +57,9 @@
   // The HQ size is a fraction of the standard one, set per project (`hqScale` in its
   // layout): the HQ is dragged by its corner and keeps its proportions.
   const HQ_SCALE = Object.freeze({ minimum: 0.4, maximum: 1.5 });
+  // The World HQ is dragged by its corner the same way; it never gets smaller than half, otherwise
+  // the main base would get lost next to the project HQs.
+  const WORLD_HQ_SCALE = Object.freeze({ minimum: 0.5, maximum: 1.5 });
   // A quarter never gets smaller than this, even when empty: its frame and supports must stay readable.
   const QUARTER_MINIMUM = Object.freeze({ width: 120, height: 100 });
   // The agent size is a fraction of the standard one, set per agent (`scale` in its layout).
@@ -522,6 +531,61 @@
     }
   }
 
+  // --- World HQ ------------------------------------------------------------------
+  //
+  // The World HQ is the world lead's building. Its place and size are kept in
+  // the layout as the entry of the world's service project (`layout.projects[worldId]`):
+  // { x, y, width, height } of the building, `hqScale` - a fraction of the standard size,
+  // `auto` - the map chose the place. It is moved and dragged by its corner, like a project HQ.
+
+  /** The World HQ building size at its fraction. */
+  function worldHeadquartersSize(placement = null) {
+    const scale = Number.isFinite(placement?.hqScale)
+      ? clamp(placement.hqScale, WORLD_HQ_SCALE.minimum, WORLD_HQ_SCALE.maximum) : 1;
+    return { width: Math.round(GEOMETRY.worldHqWidth * scale), height: Math.round(GEOMETRY.worldHqHeight * scale) };
+  }
+
+  /**
+   * Where the World HQ stands until the person moves it: left of the projects, level with
+   * their top edge, with the same gap as between project columns -
+   * like the main base at the start point in a strategy game. Once placed by the map,
+   * it moves only with `reflow` - when the map itself rearranged the projects, not
+   * when the person drags a neighbour; once moved by the person (no `auto`), it stays
+   * where it is. Returns whether it has just appeared.
+   */
+  function autoPlaceWorldHeadquarters(layout, worldId, projectBoxes = [], { reflow = false } = {}) {
+    const existing = layout.projects[worldId];
+    if (existing !== undefined && (existing.auto !== true || !reflow)) return false;
+    const size = worldHeadquartersSize(existing ?? null);
+    const bounds = boundsOf(projectBoxes);
+    const x = bounds === null ? 0 : bounds.x - size.width - GEOMETRY.columnGap;
+    const y = bounds === null ? 0 : bounds.y;
+    if (existing === undefined) {
+      layout.projects[worldId] = { x, y, width: size.width, height: size.height, auto: true };
+      return true;
+    }
+    Object.assign(existing, { x, y, width: size.width, height: size.height });
+    return false;
+  }
+
+  /**
+   * The World HQ by its bottom-right corner, moved by dx, dy from the start of the gesture
+   * (`start` - its { width, height } at that time): it keeps its proportions,
+   * the top-left corner stays put.
+   */
+  function resizeWorldHeadquarters(layout, worldId, start, dx, dy) {
+    const placement = layout.projects[worldId];
+    if (placement === undefined) return false;
+    const W = GEOMETRY.worldHqWidth;
+    const H = GEOMETRY.worldHqHeight;
+    const scale = ((start.width + dx) * W + (start.height + dy) * H) / (W ** 2 + H ** 2);
+    const rounded = Math.round(clamp(scale, WORLD_HQ_SCALE.minimum, WORLD_HQ_SCALE.maximum) * 100) / 100;
+    if (rounded === 1) delete placement.hqScale;
+    else placement.hqScale = rounded;
+    Object.assign(placement, worldHeadquartersSize(placement));
+    return true;
+  }
+
   /** The top-left corner of the project is taken by the HQ; slots that touch it are skipped. */
   function quarterSlot(project, slot) {
     // Rows are counted by the standard width, not by the frame: the frame wraps
@@ -882,24 +946,31 @@
   // --- attention -----------------------------------------------------------------
 
   // recovery and captured-pending are attention captured by the catalog (Kit v0.15.0).
+  // refused - an action of the agent was refused (by the person or the desk's rules) in its last turn.
   const SEVERITY = Object.freeze({
-    interaction: 1, "captured-pending": 1, "turn-finished": 1, "asks-you": 1, state: 2, recovery: 2, problem: 3,
+    interaction: 1, "captured-pending": 1, "turn-finished": 1, "asks-you": 1, state: 2, recovery: 2, refused: 2, problem: 3,
   });
+  // Signals that wait for the person's action pulse; an unread answer does not.
+  const CALM = Object.freeze(new Set(["turn-finished"]));
 
   function aggregateAttention(world) {
     const byAgent = new Map();
     const byQuarter = new Map();
     const byProject = new Map();
     if (world === null) return { byAgent, byQuarter, byProject, total: 0 };
-    const bump = (map, key, severity) => {
-      const current = map.get(key) ?? { count: 0, severity: 0 };
-      map.set(key, { count: current.count + 1, severity: Math.max(current.severity, severity) });
+    const bump = (map, key, severity, urgent) => {
+      const current = map.get(key) ?? { count: 0, severity: 0, urgent: false };
+      map.set(key, { count: current.count + 1, severity: Math.max(current.severity, severity),
+        urgent: current.urgent || urgent });
     };
     for (const item of world.attention ?? []) {
-      const severity = SEVERITY[item.kind] ?? 1;
-      bump(byAgent, item.agentId, severity);
-      if (item.quarterId) bump(byQuarter, `${item.projectId}/${item.quarterId}`, severity);
-      if (item.projectId) bump(byProject, item.projectId, severity);
+      // A turn that failed is not a calm "answer is ready": it waits for the person like a state problem.
+      const failedTurn = item.kind === "turn-finished" && item.outcome === "failed";
+      const severity = failedTurn ? SEVERITY.state : SEVERITY[item.kind] ?? 1;
+      const urgent = failedTurn || !CALM.has(item.kind);
+      bump(byAgent, item.agentId, severity, urgent);
+      if (item.quarterId) bump(byQuarter, `${item.projectId}/${item.quarterId}`, severity, urgent);
+      if (item.projectId) bump(byProject, item.projectId, severity, urgent);
     }
     return { byAgent, byQuarter, byProject, total: (world.attention ?? []).length };
   }
@@ -943,6 +1014,10 @@
   return {
     GEOMETRY,
     HQ_SCALE,
+    WORLD_HQ_SCALE,
+    worldHeadquartersSize,
+    autoPlaceWorldHeadquarters,
+    resizeWorldHeadquarters,
     QUARTER_MINIMUM,
     AGENT_SCALE,
     agentScaleOf,

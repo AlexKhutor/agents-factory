@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            backend/orchestrator/package-lock.json
+            frontend/package-lock.json
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Backend tests
+        working-directory: backend/orchestrator
+        run: |
+          npm ci --no-audit --no-fund
+          node scripts/run-tests.mjs
+
+      - name: Bundles match their sources
+        working-directory: backend/orchestrator
+        run: |
+          node scripts/build-application-gateway-runtime.mjs --verify
+          node scripts/build-agents-factory-cli.mjs --verify
+
+      - name: Atlas tests
+        working-directory: frontend
+        env:
+          # The test chain runs in Node; the Electron program is only for the UI scenes.
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+        run: |
+          npm ci --no-audit --no-fund
+          npm test

@@ -85,11 +85,36 @@ export function createApplicationAgentEventBridge({ service, client, providerSou
       return result;
     } catch (error) { throw normalizeApplicationProjectMemoryError(error); }
   };
-  return { handlers: { [APPLICATION_AGENT_EVENTS_OPERATION]: read },
+  return { read, handlers: { [APPLICATION_AGENT_EVENTS_OPERATION]: read },
     interactionChanged: ({ threadId, turnId, itemId }) => append("interaction-changed", threadId, turnId, itemId),
     close() {
     unavailable = true;
     for (const [name, handler] of listeners) client.off(name, handler);
     listeners.length = 0; retained.length = 0;
   } };
+}
+
+/**
+ * Agents of several providers in one Gateway: one bridge per provider client
+ * ({ providerId, bridge }), and the read goes to the bridge of the agent's
+ * binding. Each bridge still checks the binding itself.
+ */
+export function combineApplicationAgentEventBridges({ service, bridges }) {
+  const table = (bridges ?? []).filter((entry) => entry?.bridge?.read);
+  if (!service || table.length === 0) return { handlers: {}, close() {} };
+  if (table.length === 1) return table[0].bridge;
+  const read = async (request) => {
+    try {
+      const agentId = request?.input?.agentId;
+      if (!validId(agentId)) fail("conflict");
+      const agent = await service.readAgent({ agentId });
+      const entry = table.find((item) => item.providerId === agent.binding?.providerId);
+      if (!entry) fail("source_unavailable");
+      return await entry.bridge.read(request);
+    } catch (error) { throw normalizeApplicationProjectMemoryError(error); }
+  };
+  return {
+    read, handlers: { [APPLICATION_AGENT_EVENTS_OPERATION]: read },
+    close() { for (const entry of table) entry.bridge.close(); },
+  };
 }

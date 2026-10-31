@@ -13,8 +13,11 @@ import { createProjectMemoryClaude } from "../src/project-memory-claude.mjs";
 import { createAgentTurnCommits } from "../src/agent-turn-commits.mjs";
 import { execFileSync } from "node:child_process";
 import { createProjectMemoryService } from "../src/project-memory-service.mjs";
+import { settleUncertainSend } from "../src/project-send-settle.mjs";
+import { createFileProviderMutationLease } from "../src/provider-mutation-lease-store.mjs";
 import { bindProjectWorkspace, resolveProjectWorkspace } from "../src/project-workspace-binding.mjs";
 import { FAKE_MODEL, FAKE_MODELS, FAKE_ZOD, createFakeClaudeSdk, fakeResult, signedIn } from "./fixtures/fake-claude-sdk.mjs";
+import { setName } from "../src/object-names.mjs";
 
 const profile = { provider: "claude", model: FAKE_MODEL, reasoningEffort: "default", fallbackPolicy: "deny" };
 
@@ -110,6 +113,96 @@ test("a desk agent on Claude Code: a session at creation, a turn per message, an
   assert.ok(kinds.includes("message:assistant"));
   assert.ok(kinds.includes("activity:tool"));
   assert.ok(archive.items.some((item) => item.record.kind === "delivery" && item.record.state === "completed"));
+});
+
+test("a session that never ran works after a mount without its empty turns folder; a turn not even recorded frees the agent", async (t) => {
+  // Live check 2026-10-27: a project package carries files only, so the empty
+  // turns folder of an agent that was never sent anything did not come back.
+  const f = await fixture(t);
+  const agent = await f.service.createAgent({ agentId: "a", projectId: "p", quarterId: "q",
+    operationId: "create-a", profile });
+  const turns = path.join(f.root, ".project-local", "orchestration", "claude-sessions", agent.binding.threadId, "turns");
+  await rm(turns, { recursive: true });
+  const done = finished(f.host);
+  assert.equal((await f.service.send({ agentId: "a", operationId: "send-1", text: "Hello" })).state, "started");
+  await done;
+  assert.equal((await settle(f.service, "a", "send-1")).state, "completed");
+
+  // When the turn cannot be recorded the process never starts: the send failed, it is not uncertain.
+  await rm(turns, { recursive: true });
+  await writeFile(turns, "not a folder");
+  const refused = await f.service.send({ agentId: "a", operationId: "send-2", text: "Again" });
+  assert.equal(refused.state, "failed");
+  assert.equal(refused.problemCode, "memory_send_not_started");
+  assert.equal((await f.service.readAgent({ agentId: "a" })).currentOperationId, null);
+  assert.equal(f.sdk.calls.length, 1);
+  await rm(turns);
+  const next = finished(f.host);
+  assert.equal((await f.service.send({ agentId: "a", operationId: "send-3", text: "Once more" })).state, "started");
+  await next;
+  assert.equal((await settle(f.service, "a", "send-3")).state, "completed");
+});
+
+/** A send the service marked uncertain before it knew a turn, with its lease uncertain: as the live check left it. */
+async function strand(f, agentId, operationId, { lease = true } = {}) {
+  const catalog = await f.service.store.readDocument({ key: "memory-agents-v1" });
+  const next = structuredClone(catalog.value);
+  const agent = next.agents.find((item) => item.agentId === agentId);
+  const known = agent.operations.find((op) => op.operationId === operationId);
+  if (known) Object.assign(known, { state: "uncertain", turnId: null, problemCode: "memory_operation_unconfirmed" });
+  else {
+    agent.operations.push({ operationId, intentHash: "0".repeat(64), manifest: agent.assignedManifest, memorySnapshot: "full",
+      state: "uncertain", turnId: null, requestedAtUtc: new Date().toISOString(), problemCode: "memory_operation_unconfirmed" });
+  }
+  agent.currentOperationId = operationId;
+  assert.ok(await f.service.store.compareAndSwapDocument({ key: "memory-agents-v1", expectedRevision: catalog.revision, value: next }));
+  if (!lease) return;
+  const { lease: leases } = await createFileProviderMutationLease({ controllerRoot: f.root, projectId: f.service.archive.projectId });
+  const owner = { sourceId: "controller", runtimeInstanceId: "test-one", threadId: agent.binding.threadId,
+    operation: "memory.agent.send", operationId, correlationId: operationId };
+  const acquired = await leases.acquire({ owner, intentSha256: "a".repeat(64) });
+  await leases.release({ owner, intentSha256: "a".repeat(64), leaseId: acquired.record.leaseId, outcome: "uncertain" });
+}
+
+test("the person settles an uncertain send: no turn in the journal frees the agent, a recorded turn is taken up", async (t) => {
+  const f = await fixture(t);
+  await f.service.createAgent({ agentId: "a", projectId: "p", quarterId: "q", operationId: "create-a", profile });
+  await f.service.createAgent({ agentId: "b", projectId: "p", quarterId: "q", operationId: "create-b", profile });
+  await strand(f, "a", "stuck-1");
+  // The stranded send holds the agent, the project's folder and the instance's provider lease.
+  await assert.rejects(f.service.send({ agentId: "a", operationId: "send-a", text: "Hi" }), { code: "memory_agent_busy" });
+  await assert.rejects(f.service.send({ agentId: "b", operationId: "send-b", text: "Hi" }), { code: "memory_workspace_busy" });
+
+  const settleA = (operationId, extra = {}) => settleUncertainSend({ controllerRoot: f.root, store: f.service.store,
+    agentId: "a", operationId, confirm: "a", ...extra });
+  await assert.rejects(settleA("stuck-1", { confirm: "b" }), { code: "settle_confirmation_required" });
+  const status = path.join(f.root, ".project-local", "application-gateway", "status.v1.json");
+  await mkdir(path.dirname(status), { recursive: true });
+  await writeFile(status, JSON.stringify({ terminal: false, identity: { process: { processId: process.pid } } }));
+  await assert.rejects(settleA("stuck-1"), { code: "gateway_running" });
+  await rm(status);
+
+  const freed = await settleA("stuck-1");
+  assert.equal(freed.found, null);
+  assert.equal(freed.operationState, "failed");
+  assert.equal(freed.leaseOutcome, "not-applied");
+  assert.equal(freed.causeCode, null, "the stranded send had no provider code, and none is invented");
+  assert.equal(freed.problemCode, "memory_operation_unconfirmed");
+  assert.equal((await f.service.readAgent({ agentId: "a" })).currentOperationId, null);
+  await assert.rejects(settleA("stuck-1"), { code: "settle_not_uncertain" });
+  const done = finished(f.host);
+  assert.equal((await f.service.send({ agentId: "b", operationId: "send-b2", text: "Hi" })).state, "started");
+  await done;
+  assert.equal((await settle(f.service, "b", "send-b2")).state, "completed");
+
+  // A send whose turn the journal holds went: the operation gets that turn.
+  await strand(f, "b", "send-b2", { lease: false });
+  const taken = await settleUncertainSend({ controllerRoot: f.root, store: f.service.store, agentId: "b",
+    operationId: "send-b2", confirm: "b" });
+  assert.equal(taken.operationState, "completed");
+  assert.equal(taken.leaseOutcome, "applied");
+  assert.match(taken.found.turnId, /^[0-9a-f-]{36}$/u);
+  assert.equal((await f.service.readAgent({ agentId: "b" })).currentOperationId, null);
 });
 
 test("a signed-out Claude Code, an unoffered model or a hidden monitor refuses before anything runs", async (t) => {
@@ -208,7 +301,13 @@ test("write zones go with every turn, and agents whose zones cannot meet share a
 
   await f.service.send({ agentId: "solver", operationId: "solver-1", text: "Fix the solver" });
   const options = f.sdk.calls[0].options;
-  const hook = options.hooks.PreToolUse[0].hooks[0];
+  // Secrets and web fetches first (every agent), then the zone.
+  const [secrets, fetches, hook] = options.hooks.PreToolUse[0].hooks;
+  assert.equal((await secrets({ tool_name: "Read", tool_input: { file_path: path.join(f.workspace, ".env") } }))
+    .hookSpecificOutput.permissionDecision, "deny");
+  assert.equal((await fetches({ tool_name: "WebFetch", tool_input: { url: "https://collect.example.net/?q=x" } }))
+    .hookSpecificOutput.permissionDecision, "ask");
+  assert.deepEqual(await fetches({ tool_name: "WebFetch", tool_input: { url: "https://nodejs.org/api/fs.html" } }), {});
   const refused = await hook({ tool_name: "Write", tool_input: { file_path: path.join(f.workspace, "tools", "ui", "panel.py") } });
   assert.equal(refused.hookSpecificOutput.permissionDecision, "deny");
   assert.deepEqual(await hook({ tool_name: "Edit", tool_input: {
@@ -244,13 +343,13 @@ test("a lead may change what it leads: the project lead the folder, the quarter 
     await settle(f.service, agentId, operationId);
     return f.sdk.calls.at(-1);
   };
-  // The project lead: the whole folder, no zone hook at all.
+  // The project lead: the whole folder, no zone hook at all (the secret and web fetch hooks only).
   const leadCall = await run("lead", "lead-1");
-  assert.equal(leadCall.options.hooks?.PreToolUse, undefined);
+  assert.equal(leadCall.options.hooks.PreToolUse[0].hooks.length, 2);
   assert.match(leadCall.prompt.message.content, /The whole project folder is yours to change\./u);
   // The quarter lead: its quarter's zones and the memory documents, nothing else.
   const quarterCall = await run("quarter-lead", "quarter-1");
-  const hook = quarterCall.options.hooks.PreToolUse[0].hooks[0];
+  const hook = quarterCall.options.hooks.PreToolUse[0].hooks[2];
   for (const allowed of [["docs", "memory", "q.md"], ["tools", "solver", "a.py"]]) {
     assert.deepEqual(await hook({ tool_name: "Write", tool_input: { file_path: path.join(f.workspace, ...allowed) } }), {});
   }
@@ -534,11 +633,18 @@ test("leads get an overview of what they oversee, and it goes again when it chan
   };
   const first = await say("lead-1");
   const snapshot = JSON.parse(first.prompt.split("\n")[2]);
-  assert.deepEqual(snapshot.overview, { agents: [{ agentId: "solver", role: "feature", model: FAKE_MODEL,
+  assert.deepEqual(snapshot.overview, { agents: [{ agentId: "solver", name: "solver", role: "feature", model: FAKE_MODEL,
     writeZone: ["tools/jointsolver/**"], memory: [] }] });
+  // Every agent knows its own name and refers to everything by ID (object-names.mjs).
+  assert.match(first.prompt, /^Your name: lead \(ID lead\)\. Projects, quarters and agents have names .*refer to them by ID\.$/mu);
   assert.equal((await say("lead-2")).operation.memorySnapshot, "unchanged");
   await f.service.setAgentSettings({ agentId: "solver", expectedRevision: 1, role: "feature", writeZone: ["tools/solver/**"] });
   assert.equal((await say("lead-3")).operation.memorySnapshot, "full", "a changed overview goes to the lead");
+  // A renamed agent is a changed overview too: the lead gets it with the next message.
+  await setName(f.service.store, { projectId: "p", kind: "agent", objectId: "solver", name: "Grid planner" });
+  const renamed = await say("lead-4");
+  assert.equal(renamed.operation.memorySnapshot, "full");
+  assert.equal(JSON.parse(renamed.prompt.split("\n")[2]).overview.agents[0].name, "Grid planner");
 });
 
 test("the kit's memory schema accepts what the backend now returns for Claude agents", async (t) => {

@@ -13,11 +13,16 @@ export const MODELS_OPERATION = "query.provider.models.list";
 // An agent profile names its provider by the backend's own id; the adapter that
 // answered the model list says which one that is. The labels are the official
 // product names. An adapter not listed here gets no lists: the form then falls
-// back to typed fields instead of guessing a provider id.
+// back to typed fields instead of guessing a provider id. The Codex App Server
+// left with the Codex path; a Codex agent would come back as an ACP agent.
 const PROVIDERS = Object.freeze({
   "claude-code-sdk": Object.freeze({ profileProvider: "claude", label: "Anthropic API · Claude Code" }),
-  "codex-app-server": Object.freeze({ profileProvider: "codex", label: "OpenAI Codex" }),
+  // An ACP agent the Gateway runs beside Claude Code (acp-provider.json): DeepSeek Harness.
+  "acp-stdio": Object.freeze({ profileProvider: "acp", label: "DeepSeek Harness · ACP" }),
 });
+
+/** The adapters this window knows, in the order the form offers them. */
+export const KNOWN_ADAPTERS = Object.freeze(Object.keys(PROVIDERS));
 
 const MAX_MODELS = 64;
 const MAX_EFFORTS = 8;
@@ -67,8 +72,29 @@ export function summarizeProviderModels(response, adapterId) {
     ok: true,
     data: {
       provider: { adapterId, profileProvider: provider.profileProvider, label: provider.label },
-      models,
+      models: models.map((model) => ({ ...model, provider: provider.profileProvider })),
       complete: envelope.output.data.completeness?.status === "complete" && records.length <= MAX_MODELS,
+    },
+  };
+}
+
+/**
+ * Several providers in one Gateway (Claude Code and an ACP agent): their
+ * summaries as one catalog. `provider` and `complete` stay those of the first
+ * provider that answered; `providers` lists each one with its own models;
+ * `models` holds all of them, each naming its provider. A provider that did
+ * not answer is left out; when none did, the first refusal is returned.
+ */
+export function combineProviderModels(summaries) {
+  const answered = summaries.filter((summary) => summary?.ok);
+  if (answered.length === 0) return summaries[0] ?? refuse("provider_unavailable");
+  return {
+    ok: true,
+    data: {
+      provider: answered[0].data.provider,
+      complete: answered.every((summary) => summary.data.complete),
+      providers: answered.map((summary) => summary.data),
+      models: answered.flatMap((summary) => summary.data.models),
     },
   };
 }

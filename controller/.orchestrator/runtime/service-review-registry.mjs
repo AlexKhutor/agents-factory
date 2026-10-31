@@ -1,14 +1,13 @@
 import path from "node:path";
-import { createReadStream } from "node:fs";
-import { createHash, randomUUID } from "node:crypto";
-import { open, readdir, readFile } from "node:fs/promises";
-import { setTimeout as delay } from "node:timers/promises";
+import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { writeProjectionAtomic } from "./control-read-model.mjs";
 
+// The index of serialized reviews. A record's raw trace once pointed into the
+// reviewer's Codex home; the Codex path left the product, so a new record has
+// none ("not-applicable") and an old one keeps what it recorded (schema v1).
 const INDEX_SCHEMA_VERSION = 1;
 const MAX_RECORDS = 5_000;
-const MAX_SESSION_FILES = 10_000;
-const MAX_METADATA_BYTES = 256 * 1024;
 const INLINE_MEDIA = /data:(?:image|audio|video)\//i;
 const SERVICE_STATUSES = new Set([
   "starting",
@@ -137,110 +136,14 @@ async function readIndex(indexPath) {
   }
 }
 
-async function listSessionFiles(root) {
-  const result = [];
-  const pending = [root];
-  while (pending.length > 0) {
-    const current = pending.pop();
-    let entries;
-    try {
-      entries = await readdir(current, { withFileTypes: true });
-    } catch (error) {
-      if (error?.code === "ENOENT") continue;
-      throw error;
-    }
-    entries.sort((left, right) => left.name.localeCompare(right.name));
-    for (const entry of entries) {
-      if (entry.isSymbolicLink()) continue;
-      const candidate = path.join(current, entry.name);
-      if (entry.isDirectory()) pending.push(candidate);
-      else if (entry.isFile() && entry.name.endsWith(".jsonl")) result.push(candidate);
-      if (result.length > MAX_SESSION_FILES) {
-        throw new Error(`Reviewer CODEX_HOME exceeds the ${MAX_SESSION_FILES} session-file scan budget`);
-      }
-    }
-  }
-  return result;
-}
-
-async function readSessionMetadata(filePath) {
-  const handle = await open(filePath, "r");
-  try {
-    const buffer = Buffer.alloc(MAX_METADATA_BYTES);
-    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
-    const firstLine = buffer.subarray(0, bytesRead).toString("utf8").split(/\r?\n/, 1)[0];
-    const record = JSON.parse(firstLine);
-    const payload = record?.type === "session_meta" ? record.payload : null;
-    return payload ? {
-      sessionId: payload.id ? String(payload.id) : null,
-      cliVersion: payload.cli_version ? String(payload.cli_version) : null,
-      modelProvider: payload.model_provider ? String(payload.model_provider) : null,
-      createdAtUtc: payload.timestamp ? String(payload.timestamp) : null,
-    } : null;
-  } catch {
-    return null;
-  } finally {
-    await handle.close();
-  }
-}
-
-async function hashFile(filePath) {
-  const hash = createHash("sha256");
-  let bytes = 0;
-  await new Promise((resolve, reject) => {
-    const stream = createReadStream(filePath);
-    stream.on("data", (chunk) => {
-      bytes += chunk.length;
-      hash.update(chunk);
-    });
-    stream.on("error", reject);
-    stream.on("end", resolve);
-  });
-  return { sha256: hash.digest("hex"), bytes };
-}
-
 export function createServiceRunId() {
   return `review-${randomUUID()}`;
 }
 
-export async function locateCodexRollout(codexHome, threadId, {
-  attempts = 5,
-  retryDelayMs = 100,
-} = {}) {
-  if (!codexHome || !threadId) return normalizedRawTrace({ archiveState: "not-applicable" });
-  const resolvedHome = path.resolve(codexHome);
-  const sessionsRoot = path.join(resolvedHome, "sessions");
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    const files = await listSessionFiles(sessionsRoot);
-    const likely = files.filter((filePath) => path.basename(filePath).includes(String(threadId)));
-    const candidates = likely.length > 0 ? likely : files;
-    for (const filePath of candidates) {
-      const metadata = await readSessionMetadata(filePath);
-      if (metadata?.sessionId !== String(threadId)) continue;
-      const digest = await hashFile(filePath);
-      return {
-        available: true,
-        home: "reviewer-codex-home",
-        locator: path.relative(resolvedHome, filePath).replaceAll(path.sep, "/"),
-        sha256: digest.sha256,
-        bytes: digest.bytes,
-        archiveState: "live",
-        cliVersion: metadata.cliVersion,
-        modelProvider: metadata.modelProvider,
-        createdAtUtc: metadata.createdAtUtc,
-      };
-    }
-    if (attempt + 1 < attempts) await delay(retryDelayMs);
-  }
-  return normalizedRawTrace({ archiveState: "missing" });
-}
-
 export class ServiceReviewRegistry {
-  constructor({ indexPath, codexHome, maxRecords = MAX_RECORDS } = {}) {
+  constructor({ indexPath, maxRecords = MAX_RECORDS } = {}) {
     if (!indexPath) throw new Error("ServiceReviewRegistry requires indexPath");
-    if (!codexHome) throw new Error("ServiceReviewRegistry requires reviewer codexHome");
     this.indexPath = path.resolve(indexPath);
-    this.codexHome = path.resolve(codexHome);
     this.maxRecords = maxRecords;
     this.writeQueue = Promise.resolve();
   }
@@ -283,10 +186,6 @@ export class ServiceReviewRegistry {
     const current = await this.get(serviceRunId);
     if (!current) throw new Error(`Unknown service review '${serviceRunId}'`);
     return this.upsert({ ...current, ...patch, serviceRunId, updatedAtUtc: new Date().toISOString() });
-  }
-
-  locateRawTrace(threadId, options) {
-    return locateCodexRollout(this.codexHome, threadId, options);
   }
 
   async #write(records) {

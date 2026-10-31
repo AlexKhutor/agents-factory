@@ -5,6 +5,7 @@
 // the same feed — each entry once, in its latest state, in the order
 // of first appearance.
 
+import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,7 +14,9 @@ import { createSession } from "../src/host/session.mjs";
 
 const require = createRequire(import.meta.url);
 const core = require("../src/renderer/feed-core.js");
+const i18n = require("../src/renderer/i18n-core.js");
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+i18n.setLocale("en", JSON.parse(readFileSync(path.join(PROJECT_ROOT, "locales", "en.json"), "utf8")));
 
 const cases = [];
 const check = (caseId, condition, detail) => {
@@ -112,11 +115,18 @@ const ids = (records) => core.orderedFeedEntries(records).map((item) => item.rec
   check("context-line-by-importance-to-the-person",
     expectations.every(([actual, expected]) => actual === expected), expectations);
 
-  const plural = [1, 2, 5, 11, 21, 22, 25].map((count) => `${count} ${core.questionsWord(count)}`);
-  check("question-plurals",
-    JSON.stringify(plural) === JSON.stringify(
-      ["1 question", "2 questions", "5 questions", "11 questions", "21 questions", "22 questions", "25 questions"]),
-    plural);
+  // Plural forms come from the locale: English in the code, Russian from locales/ru.json.
+  const counts = [1, 2, 5, 11, 21, 22, 25];
+  const english = counts.map((count) => core.questionsCount(count));
+  i18n.setLocale("ru", JSON.parse(readFileSync(path.join(PROJECT_ROOT, "locales", "ru.json"), "utf8")));
+  const russian = counts.map((count) => core.questionsCount(count));
+  i18n.setLocale("en", JSON.parse(readFileSync(path.join(PROJECT_ROOT, "locales", "en.json"), "utf8")));
+  check("questions-plural-forms",
+    JSON.stringify(english) === JSON.stringify(
+      ["1 question", "2 questions", "5 questions", "11 questions", "21 questions", "22 questions", "25 questions"])
+    && JSON.stringify(russian) === JSON.stringify(
+      ["1 вопрос", "2 вопроса", "5 вопросов", "11 вопросов", "21 вопрос", "22 вопроса", "25 вопросов"]),
+    { english, russian });
 }
 
 // --- sending: the agent state together with the declared operation ----------------

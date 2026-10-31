@@ -4,6 +4,7 @@ import { applicationCanonicalSha256 as hash } from "./application-contract.mjs";
 import { createApplicationProviderInteractionBridge } from "./application-provider-interaction-bridge.mjs";
 import { CLAUDE_EFFORTS } from "./claude-code-sdk.mjs";
 import { CLAUDE_CODE_PROVIDER_ID, claudeTurnState } from "./claude-code-session-host.mjs";
+import { claudeSecretHook, claudeWebFetchHook } from "./agent-secret-paths.mjs";
 import { claudeWriteZoneHook } from "./agent-write-zone.mjs";
 import { effectiveWriteZone } from "./project-memory-service.mjs";
 
@@ -33,7 +34,7 @@ function fail(code) { throw Object.assign(new Error(code), { code }); }
  */
 export async function createProjectMemoryClaude({ host, controllerRoot, sourceId, providerSourceId,
   instanceId, archive, assertVisible, resolveWorkspace, descriptor = null, onInteractionChanged,
-  documents = null, taskTools = null, taskGate = null, commits = null, onCommit = () => {} } = {}) {
+  documents = null, taskTools = null, taskGate = null, commits = null, onCommit = () => {}, webFetchHosts = null } = {}) {
   if (!host || typeof resolveWorkspace !== "function" || typeof assertVisible !== "function") {
     fail("memory_provider_unavailable");
   }
@@ -167,6 +168,10 @@ export async function createProjectMemoryClaude({ host, controllerRoot, sourceId
       // The agent's own permission mode (set by the person), else the provider's.
       const permissionMode = agent.permissionMode ?? host.permissionMode ?? "acceptEdits";
       const hooks = [
+        // Secrets first: every agent, every permission mode; a fetch from an unknown address asks the person
+        // (agent-secret-paths.mjs).
+        claudeSecretHook({ root: workspace.workspacePath }),
+        claudeWebFetchHook(webFetchHosts === null ? {} : { hosts: webFetchHosts }),
         ...(zone === null ? [] : [claudeWriteZoneHook({ root: workspace.workspacePath, patterns: zone, permissionMode })]),
         ...(typeof taskGate === "function" ? [taskGate(agent)] : []),
       ];
@@ -180,7 +185,7 @@ export async function createProjectMemoryClaude({ host, controllerRoot, sourceId
           ...(typeof displayText === "string" ? { displayText } : {}),
           deskTools: deskToolsFor(agent),
           // Hooks are not part of the prompt: the cached start of it stays the same.
-          query: hooks.length === 0 ? {} : { hooks: { PreToolUse: [{ hooks }] } },
+          query: { hooks: { PreToolUse: [{ hooks }] } },
         });
         const turnId = result?.turn?.id;
         if (typeof turnId !== "string" || !turnId) fail("memory_invalid_observation");
@@ -194,13 +199,16 @@ export async function createProjectMemoryClaude({ host, controllerRoot, sourceId
           outcome: "applied", receiptSha256: hash({ threadId, turnId }) });
         return { turnId, state: "started" };
       } catch (error) {
-        // A refusal before the process started leaves nothing behind; anything
-        // later is uncertain and stays so.
+        // A refusal before the process started leaves nothing behind (the turn
+        // could not even be recorded); the service then frees the agent.
+        // Anything later is uncertain and stays so.
         const refused = ["claude_session_busy", "memory_profile_conflict", "provider_disconnected",
-          "invalid_request"].includes(error?.code);
+          "invalid_request", "claude_journal_unavailable", "claude_journal_invalid", "claude_journal_full",
+          "claude_turn_exists", "thread_not_found"].includes(error?.code);
         await lease.release({ owner, intentSha256, leaseId: acquired.record.leaseId,
           ...(refused ? { outcome: "not-applied", receiptSha256: hash({ threadId, refused: error.code }) }
             : { outcome: "uncertain" }) }).catch(() => {});
+        if (refused && error && typeof error === "object") error.notDelivered = true;
         throw error;
       }
     },
@@ -208,7 +216,8 @@ export async function createProjectMemoryClaude({ host, controllerRoot, sourceId
       const turn = await host.readTurn(bound(agent), operation.turnId);
       if (turn === null) fail("memory_invalid_observation");
       return { turnId: turn.id, state: claudeTurnState(turn),
-        observedModel: typeof turn.observedModel === "string" ? turn.observedModel : null };
+        observedModel: typeof turn.observedModel === "string" ? turn.observedModel : null,
+        failure: typeof turn.failure === "string" ? turn.failure : null };
     },
     /**
      * A message for the agent's running turn: steered in at once, or held for

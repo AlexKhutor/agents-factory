@@ -1,13 +1,14 @@
 [CmdletBinding()]
 param(
-    [ValidateSet("Start", "Status", "DescriptorStatus", "OwnerChatStatus", "Stop", "Recover", "OpenMonitor", "CloseMonitor", "Watch")]
+    [ValidateSet("Start", "Status", "DescriptorStatus", "Stop", "Recover", "OpenMonitor", "CloseMonitor", "Watch")]
     [string]$Command = "Status",
     [string]$RepoRoot,
     [string]$ProjectId,
     [string]$NodeCommand = "node",
     [string]$MonitorId,
-    [string]$ProviderSourceId,
-    [ValidateSet("codex", "claude")][string]$Provider = "claude",
+    # Claude Code is the Gateway's only provider: the Codex path, with its
+    # owner chat, left the product (roadmap step 1).
+    [ValidateSet("claude")][string]$Provider = "claude",
     [ValidateRange(1, 60)][int]$StartupTimeoutSeconds = 15,
     [ValidateRange(250, 10000)][int]$RefreshMilliseconds = 1000,
     [switch]$PlanOnly,
@@ -169,15 +170,6 @@ function Write-GatewayOutput {
 }
 
 $context = Resolve-GatewayContext
-if (-not [string]::IsNullOrWhiteSpace($ProviderSourceId) -and
-    $ProviderSourceId -notmatch '^[a-z0-9][a-z0-9-]{1,63}$') {
-    throw "gateway_provider_source_identity_invalid"
-}
-# With Claude Code the desk agents run on Claude; the owner chat stays on the
-# controller's own Codex route, so it cannot be required here.
-if ($Provider -ceq "claude" -and -not [string]::IsNullOrWhiteSpace($ProviderSourceId)) {
-    throw "gateway_owner_chat_requires_codex_provider"
-}
 
 if ($Command -ceq "Watch") {
     if ([string]::IsNullOrWhiteSpace($MonitorId)) { throw "gateway_monitor_id_required" }
@@ -199,17 +191,6 @@ if ($Command -ceq "Status") {
 if ($Command -ceq "DescriptorStatus") {
     Write-GatewayOutput -Value (Invoke-GatewayCliJson `
         -Context $context -CliCommand "descriptor-status")
-    return
-}
-
-if ($Command -ceq "OwnerChatStatus") {
-    if ([string]::IsNullOrWhiteSpace($ProviderSourceId)) {
-        throw "gateway_provider_source_identity_required"
-    }
-    Write-GatewayOutput -Value (Invoke-GatewayCliJson `
-        -Context $context -CliCommand "owner-chat-status" -Extra @(
-            "--provider-source-id", $ProviderSourceId
-        ))
     return
 }
 
@@ -350,12 +331,7 @@ if ($PlanOnly) {
             "open-visible-monitor", "verify-monitor-readiness", "inspect-exact-gateway",
             "recover-exact-dead-stale-if-needed", "launch-hidden-host-if-terminal-or-absent",
             "verify-ready-instance", "verify-monitor-binding"
-        ) + $(if ([string]::IsNullOrWhiteSpace($ProviderSourceId)) {
-            @()
-        } else { @("verify-exact-owner-chat-source") })
-        providerSourceId = if ([string]::IsNullOrWhiteSpace($ProviderSourceId)) {
-            $null
-        } else { $ProviderSourceId }
+        )
         provider = $Provider
         headlessAutostart = $false
         broadKill = $false
@@ -388,14 +364,9 @@ if ($null -eq $status -or [bool]$status.terminal) {
         (Quote-ProcessArgument $context.Cli), "run",
         "--repo-root", (Quote-ProcessArgument $context.Root),
         "--project-id", (Quote-ProcessArgument $context.ProjectId),
-        "--monitor-id", (Quote-ProcessArgument ([string]$monitor.monitorId))
+        "--monitor-id", (Quote-ProcessArgument ([string]$monitor.monitorId)),
+        "--provider", $Provider
     )
-    if (-not [string]::IsNullOrWhiteSpace($ProviderSourceId)) {
-        $arguments += @(
-            "--provider-source-id", (Quote-ProcessArgument $ProviderSourceId)
-        )
-    }
-    if ($Provider -ceq "claude") { $arguments += @("--provider", "claude") }
     $gatewayProcess = Start-Process -FilePath $context.Node `
         -ArgumentList ([string]::Join(" ", $arguments)) `
         -WorkingDirectory $context.Root -WindowStyle Hidden -PassThru `
@@ -432,19 +403,6 @@ do {
 } while ([datetime]::UtcNow -lt $deadline)
 if (-not $bound) { throw "observability_unavailable" }
 
-$ownerChat = $null
-if (-not [string]::IsNullOrWhiteSpace($ProviderSourceId)) {
-    $ownerChat = Invoke-GatewayCliJson `
-        -Context $context -CliCommand "owner-chat-status" -Extra @(
-            "--provider-source-id", $ProviderSourceId
-        )
-    if (-not [bool]$ownerChat.ready -or
-        [string]$ownerChat.sourceId -cne $ProviderSourceId -or
-        [string]$ownerChat.providerSourceId -cne $ProviderSourceId) {
-        throw "gateway_owner_chat_source_not_ready"
-    }
-}
-
 Write-GatewayOutput -Value ([ordered]@{
     schemaVersion = 1
     command = "start"
@@ -456,18 +414,6 @@ Write-GatewayOutput -Value ([ordered]@{
     monitorId = [string]$monitor.monitorId
     monitorProcessId = [int]$monitor.processId
     monitorBound = $true
-    ownerChat = if ($null -eq $ownerChat) {
-        [ordered]@{ configured = $false; ready = $false; sourceId = $null }
-    } else {
-        [ordered]@{
-            configured = $true
-            ready = $true
-            sourceId = [string]$ownerChat.sourceId
-            threadRefSha256 = [string]$ownerChat.threadRefSha256
-            threadState = [string]$ownerChat.threadState
-            startAvailable = [bool]$ownerChat.startAvailable
-            steerAvailable = [bool]$ownerChat.steerAvailable
-        }
-    }
+    provider = $Provider
     headlessAutostart = $false
 })

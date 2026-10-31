@@ -12,6 +12,7 @@
 //   - the execution profile comes from the catalog, with fallback denied.
 
 import { createHash, randomUUID } from "node:crypto";
+import { tx } from "./i18n.mjs";
 
 const ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/;
 const MAX_TEXT = 16384;
@@ -354,10 +355,10 @@ function buildMutations({ gateway, confirm, schemas }) {
   async function closeAgent({ agentId } = {}) {
     if (typeof agentId !== "string" || !ID.test(agentId)) return invalid("agent_id_invalid", "agentId");
     const confirmed = await confirm({
-      title: "Archive agent",
-      message: `Send agent “${agentId}” to the archive?`,
-      detail: "Archive finished work. The agent leaves the map, its conversation stays readable; the agent cannot be returned to work.",
-      confirmLabel: "Archive",
+      title: tx("Archive agent"),
+      message: tx("Send agent “{agentId}” to the archive?", { agentId }),
+      detail: tx("Archive finished work. The agent leaves the map, its conversation stays readable; the agent cannot be returned to work."),
+      confirmLabel: tx("Archive"),
     });
     if (!confirmed) return declined();
     // The backend keeps the identity a close started with and refuses any other
@@ -417,10 +418,10 @@ function buildMutations({ gateway, confirm, schemas }) {
     if (problem !== null) return invalid(`schema_${problem}`, "input");
 
     const confirmed = await confirm({
-      title: "Save project file",
-      message: `Save “${filePath}” in project “${projectId}”?`,
-      detail: `Replaces the version you read (${expectedSha256.slice(0, 12)}…) with ${bytes} bytes. If the file changed after it was read, nothing is written, and your text stays in the editor.`,
-      confirmLabel: "Save",
+      title: tx("Save project file"),
+      message: tx("Save “{filePath}” in project “{projectId}”?", { filePath, projectId }),
+      detail: tx("Replaces the version you read ({value}…) with {bytes} bytes. If the file changed after it was read, nothing is written, and your text stays in the editor.", { value: expectedSha256.slice(0, 12), bytes }),
+      confirmLabel: tx("Save"),
     });
     if (!confirmed) return declined();
     return sendSave(input);
@@ -467,10 +468,10 @@ function buildMutations({ gateway, confirm, schemas }) {
     }
     const { input } = known;
     const confirmed = await confirm({
-      title: "Repeat the save",
-      message: `Send the unapplied save of “${input.path}” again?`,
-      detail: `The same request with the same operation ID (${operationId}). If the file changed after it was read, nothing is written.`,
-      confirmLabel: "Send again",
+      title: tx("Repeat the save"),
+      message: tx("Send the unapplied save of “{path}” again?", { path: input.path }),
+      detail: tx("The same request with the same operation ID ({operationId}). If the file changed after it was read, nothing is written.", { operationId }),
+      confirmLabel: tx("Send again"),
     });
     if (!confirmed) return declined();
     return sendSave(input);
@@ -545,10 +546,10 @@ function buildMutations({ gateway, confirm, schemas }) {
     if (problem !== null) return invalid(`schema_${problem}`, "input");
 
     const confirmed = await confirm({
-      title: "Copy project with memory",
-      message: `Copy project “${sourceProjectId}” to “${targetProjectId}” together with its quarters (${quarterIds.length}) and their memory?`,
-      detail: "One atomic operation: everything or nothing is copied. Agents, folder bindings, provider sessions and history are not copied.",
-      confirmLabel: "Copy",
+      title: tx("Copy project with memory"),
+      message: tx("Copy project “{sourceProjectId}” to “{targetProjectId}” together with its quarters ({length}) and their memory?", { sourceProjectId, targetProjectId, length: quarterIds.length }),
+      detail: tx("One atomic operation: everything or nothing is copied. Agents, folder bindings, provider sessions and history are not copied."),
+      confirmLabel: tx("Copy"),
     });
     if (!confirmed) return declined();
     return sendCopy(input, quarterIds);
@@ -559,10 +560,10 @@ function buildMutations({ gateway, confirm, schemas }) {
     const known = typeof operationId === "string" ? unresolved.get(operationId) : undefined;
     if (known === undefined || known.kind !== "copy") return invalid("reconcile_unknown", "operationId");
     const confirmed = await confirm({
-      title: "Check the copy outcome",
-      message: `Ask again how copying “${known.input.sourceProjectId}” to “${known.input.targetProjectId}” ended?`,
-      detail: `The same request with the same operation ID (${operationId}); it cannot copy anything else.`,
-      confirmLabel: "Check",
+      title: tx("Check the copy outcome"),
+      message: tx("Ask again how copying “{sourceProjectId}” to “{targetProjectId}” ended?", { sourceProjectId: known.input.sourceProjectId, targetProjectId: known.input.targetProjectId }),
+      detail: tx("The same request with the same operation ID ({operationId}); it cannot copy anything else.", { operationId }),
+      confirmLabel: tx("Check"),
     });
     if (!confirmed) return declined();
     return sendCopy(known.input, known.quarterIds);

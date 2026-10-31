@@ -5,6 +5,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'none'; form-action 'none'; base-uri 'none'"/>
 <title>Agents Factory Atlas</title>
 <link rel="stylesheet" href="styles.css"/>
+<link rel="stylesheet" href="gateway-panel.css"/>
 </head>
 <body>
 <div id="app">
@@ -13,23 +14,23 @@
       <span class="brand-mark">A</span>
       <div>
         <div class="brand-name">Agents Factory Atlas</div>
-        <div class="brand-sub muted" id="appVersion">loading</div>
+        <div class="brand-sub muted" id="appVersion" data-i18n="loading">loading</div>
       </div>
     </div>
     <nav id="mapCrumbs" class="crumbs"></nav>
     <div class="spacer"></div>
-    <div id="modeBadge" class="badge hidden">mode</div>
+    <div id="modeBadge" class="badge hidden" data-i18n="mode">mode</div>
     <div class="usage-wrap">
-      <button id="accountChip" class="chip account" type="button">Claude · account…</button>
+      <button id="accountChip" class="chip account" type="button" data-i18n="Claude · account…">Claude · account…</button>
       <div id="usageMenu" class="usage-menu hidden"></div>
     </div>
-    <div id="connectionChip" class="chip status">connecting…</div>
-    <button id="watch" class="small">Live: off</button>
-    <button id="refresh" class="primary small">Refresh</button>
+    <div id="connectionChip" class="chip status" data-i18n="connecting…">connecting…</div>
+    <button id="watch" class="small" data-i18n="Live: off">Live: off</button>
+    <button id="refresh" class="primary small" data-i18n="Refresh">Refresh</button>
   </header>
 
   <div id="deliveryBanner" class="banner bad hidden"></div>
-  <div id="fixtureBanner" class="banner hidden">
+  <div id="fixtureBanner" class="banner hidden" data-i18n="FIXTURE — local test data, not the controller. Nothing here lets you send anything.">
     FIXTURE — local test data, not the controller. Nothing here lets you send anything.
   </div>
 
@@ -37,8 +38,8 @@
     <canvas id="mapCanvas"></canvas>
 
     <div id="scopeHud" class="hud">
-      <div class="eyebrow" id="scopeEyebrow">04 / STRATEGIC WORLD</div>
-      <h1 id="scopeName">Project map</h1>
+      <div class="eyebrow" id="scopeEyebrow" data-i18n="04 / STRATEGIC WORLD">04 / STRATEGIC WORLD</div>
+      <h1 id="scopeName" data-i18n="Project map">Project map</h1>
       <div class="muted" id="scopeMeta"></div>
       <div class="muted" id="scopeDescription"></div>
     </div>
@@ -47,48 +48,51 @@
       <button id="attentionToggle" class="attention-button">
         <span id="attentionCount" class="attention-mark">0</span>
         <span>
-          <strong id="attentionTitle">No attention requests</strong>
-          <small id="attentionSubtitle">Open the list for all projects</small>
+          <strong id="attentionTitle" data-i18n="No attention requests">No attention requests</strong>
+          <small id="attentionSubtitle" data-i18n="Open the list for all projects">Open the list for all projects</small>
         </span>
       </button>
       <div class="hud-row">
-        <button id="trayToggle" class="small">Off the map <span id="trayCount" class="count">0</span></button>
-        <button id="archiveToggle" class="small" title="Archived projects and quarters: return them to the map">Archive <span id="archiveCount" class="count">0</span></button>
-        <button id="readinessToggle" class="small" title="What is available now and why the rest is unavailable">Readiness</button>
-        <button id="logToggle" class="small">Journal</button>
+        <button id="trayToggle" class="small" data-i18n="Off the map">Off the map <span id="trayCount" class="count">0</span></button>
+        <button id="archiveToggle" class="small" title="Archived projects and quarters: return them to the map" data-i18n-title="Archived projects and quarters: return them to the map" data-i18n="archive-list::Archive">Archive <span id="archiveCount" class="count">0</span></button>
+        <button id="historyToggle" class="small" title="Who changed what and when; undo a change" data-i18n-title="Who changed what and when; undo a change" data-i18n="History">History</button>
+        <button id="awayToggle" class="small hidden" title="The world's projects disconnected from this PC: connect from a package" data-i18n-title="The world's projects disconnected from this PC: connect from a package" data-i18n="Not on this PC">Not on this PC <span id="awayCount" class="count">0</span></button>
+        <button id="syncToggle" class="small hidden" title="The world and projects between PCs: take and hand over" data-i18n-title="The world and projects between PCs: take and hand over" data-i18n="World:">World: <span id="syncState">…</span></button>
+        <button id="readinessToggle" class="small" title="What is available now and why the rest is unavailable" data-i18n-title="What is available now and why the rest is unavailable" data-i18n="Readiness">Readiness</button>
+        <button id="logToggle" class="small" data-i18n="Journal">Journal</button>
       </div>
       <div id="dataNotice" class="notice hidden"></div>
     </div>
 
     <div id="editToolbar">
-      <button id="selectTool" class="active" title="Select objects (V)">Select</button>
-      <button id="panTool" title="Pan (H or Space)">Hand</button>
+      <button id="selectTool" class="active" title="Select objects (V)" data-i18n-title="Select objects (V)" data-i18n="Select">Select</button>
+      <button id="panTool" title="Pan (H or Space)" data-i18n-title="Pan (H or Space)" data-i18n="Hand">Hand</button>
       <span class="toolbar-divider"></span>
-      <button id="mapUndo" title="Undo">Undo</button>
-      <button id="mapRedo" title="Redo">Redo</button>
+      <button id="mapUndo" title="Undo" data-i18n-title="Undo" data-i18n="Undo">Undo</button>
+      <button id="mapRedo" title="Redo" data-i18n-title="Redo" data-i18n="Redo">Redo</button>
       <span class="toolbar-divider"></span>
-      <button id="mapCompact" title="Shrink the project to its content">Fit</button>
-      <button id="mapExport" title="Save the layout to a file">Export</button>
-      <button id="mapImport" title="Load a layout from a file">Import</button>
+      <button id="mapCompact" title="Shrink the project to its content" data-i18n-title="Shrink the project to its content" data-i18n="Fit">Fit</button>
+      <button id="mapExport" title="Save the layout to a file" data-i18n-title="Save the layout to a file" data-i18n="Export">Export</button>
+      <button id="mapImport" title="Load a layout from a file" data-i18n-title="Load a layout from a file" data-i18n="Import">Import</button>
     </div>
 
     <div id="selectionBar" class="hidden">
       <span id="selectionCount" class="selection-count"></span>
-      <button id="clearSelection" class="small">Clear selection</button>
+      <button id="clearSelection" class="small" data-i18n="Clear selection">Clear selection</button>
     </div>
 
     <div id="mapHint" class="hint muted"></div>
 
     <div id="minimapBox">
       <div id="minimapLabel">
-        <span id="minimapScope">WORLD</span>
+        <span id="minimapScope" data-i18n="WORLD">WORLD</span>
         <span id="scaleLabel" class="mono"></span>
       </div>
       <canvas id="minimapCanvas"></canvas>
       <div id="worldNavList"></div>
       <div id="worldNavFoot">
         <span id="worldNavSummary"></span>
-        <button id="navAttention" class="small">attention</button>
+        <button id="navAttention" class="small" data-i18n="attention">attention</button>
       </div>
     </div>
 
@@ -97,26 +101,26 @@
     <aside id="inspector" class="hidden"></aside>
     <aside id="attentionPanel" class="hidden">
       <div class="float-head">
-        <h2>Needs attention</h2>
+        <h2 data-i18n="Needs attention">Needs attention</h2>
         <span class="muted" id="attentionSummary"></span>
         <div class="spacer"></div>
         <button id="attentionClose" class="icon-btn flat">×</button>
       </div>
       <div class="float-body" id="attentionList"></div>
-      <div class="float-foot muted">
+      <div class="float-foot muted" data-i18n="Only what is observed: pending questions, problem codes, “failure” and “uncertain” states.">
         Only what is observed: pending questions, problem codes, “failure” and “uncertain” states.
       </div>
     </aside>
 
     <aside id="readinessPanel" class="hidden">
       <div class="float-head">
-        <h2>Readiness</h2>
+        <h2 data-i18n="Readiness">Readiness</h2>
         <span class="muted" id="readinessSummary"></span>
         <div class="spacer"></div>
         <button id="readinessClose" class="icon-btn flat">×</button>
       </div>
-      <div class="float-body" id="readinessBody"></div>
-      <div class="float-foot muted">
+      <div class="float-body" id="readinessBody"><div id="gatewayPanel" class="gateway-panel hidden"></div></div>
+      <div class="float-foot muted" data-i18n="Only what the Gateway reports. Nothing unavailable here pretends to work.">
         Only what the Gateway reports. Nothing unavailable here pretends to work.
       </div>
     </aside>
@@ -127,8 +131,8 @@
 
     <section id="tray" class="drawer hidden">
       <div class="float-head">
-        <h2>Off the map</h2>
-        <span class="muted">nodes that cannot be placed</span>
+        <h2 data-i18n="Off the map">Off the map</h2>
+        <span class="muted" data-i18n="nodes that cannot be placed">nodes that cannot be placed</span>
         <div class="spacer"></div>
         <button id="trayClose" class="icon-btn flat">×</button>
       </div>
@@ -137,12 +141,12 @@
 
     <section id="logDrawer" class="drawer hidden">
       <div class="float-head">
-        <h2>Journal</h2>
+        <h2 data-i18n="Journal">Journal</h2>
         <span class="muted" id="activityCount"></span>
         <div class="spacer"></div>
-        <button id="saveLog" class="small">Save…</button>
-        <button id="exportEvidence" class="small" title="Read journal of this run: which requests went out, to what, with which IDs and how they ended">Evidence…</button>
-        <button id="clearLog" class="small">Clear</button>
+        <button id="saveLog" class="small" data-i18n="Save…">Save…</button>
+        <button id="exportEvidence" class="small" title="Read journal of this run: which requests went out, to what, with which IDs and how they ended" data-i18n-title="Read journal of this run: which requests went out, to what, with which IDs and how they ended">Evidence…</button>
+        <button id="clearLog" class="small" data-i18n="Clear">Clear</button>
         <button id="logClose" class="icon-btn flat">×</button>
       </div>
       <div class="drawer-body mono" id="activityList"></div>
@@ -150,7 +154,7 @@
 
     <div id="sheet" class="sheet hidden">
       <div class="float-head">
-        <h2 id="sheetTitle">Panel</h2>
+        <h2 id="sheetTitle" data-i18n="Panel">Panel</h2>
         <span class="muted" id="sheetKind"></span>
         <div class="spacer"></div>
         <button id="sheetClose" class="icon-btn flat">×</button>
@@ -161,25 +165,28 @@
 
   <footer id="bottomBar">
     <div class="level-track">
-      <button data-level="4"><span class="level-num">4</span> World</button>
+      <button data-level="4"><span class="level-num">4</span> <span data-i18n="World">World</span></button>
       <span class="sep">/</span>
-      <button data-level="3"><span class="level-num">3</span> Project</button>
+      <button data-level="3"><span class="level-num">3</span> <span data-i18n="Project">Project</span></button>
       <span class="sep">/</span>
-      <button data-level="2"><span class="level-num">2</span> Quarter</button>
+      <button data-level="2"><span class="level-num">2</span> <span data-i18n="Quarter">Quarter</span></button>
       <span class="sep">/</span>
-      <button data-level="1"><span class="level-num">1</span> Agent</button>
+      <button data-level="1"><span class="level-num">1</span> <span data-i18n="Agent">Agent</span></button>
     </div>
     <div class="spacer"></div>
     <span id="kitLine" class="mono muted"></span>
     <span id="operationsLine" class="mono muted"></span>
   </footer>
 </div>
+<script src="i18n-core.js"></script>
 <script src="scene-core.js"></script>
 <script src="feed-core.js"></script>
 <script src="markdown-core.js"></script>
 <script src="outcome-core.js"></script>
+<script src="id-core.js"></script>
 <script src="scene.js"></script>
 <script src="workspace.js"></script>
+<script src="gateway-panel.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

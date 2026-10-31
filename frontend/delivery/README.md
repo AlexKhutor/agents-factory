@@ -7,14 +7,14 @@ a new backend delivery replaces them together with the pins in
 
 | File | What it is | SHA-256 |
 | --- | --- | --- |
-| `contracts/accepted-delivery-claude-port-20261003.v1.json` | lock of the active delivery (Frontend Kit v0.21.0) | `6d3b8f17f039fa141008bddf03a683b141f51a983b1bab5064eb87c437015975` |
+| `contracts/accepted-delivery-claude-port-20261003.v1.json` | lock of the active delivery (Frontend Kit v0.21.0) | `8db06673b053049d13725697ef4c34111e661f5336bd72af7d61708aff69da35` |
 | `contracts/accepted-delivery-claude-port-20261002.v1.json` | lock of the retained delivery (Frontend Kit v0.20.0) | `321c91c31ae090004f168b7a090380da350cfd6865a632b7f2f711daacd1a494` |
 | `scripts/verify-accepted-delivery.mjs` | the backend's delivery verifier | `adc66a1e276e74024bb075e3c893977699b8af1901ecb1375da4ea3673371c70` |
 
 Active: release `claude-port-backend-20261003` (the agent chat: steer and
 queue, the model picker, the trace), Application Frontend Kit v0.21.0 in
 `vendor/frontend-kit/v0.21.0`, manifest SHA-256
-`5cad60679cfd898c48e76368275bcac4738ccef5e02d76ee09df1c3caf1c5039`, contracts
+`7af45f5786001616cd4e1eddb3f107d8da9ee2fc81684bfae55948c0582c817a`, contracts
 application v0.1.0, gateway descriptor v0.2.0, capabilities v0.2.0.
 
 Retained for rollback: release `claude-port-backend-20261002`, Application

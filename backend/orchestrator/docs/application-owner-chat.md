@@ -5,6 +5,13 @@
 > go through the Gateway's agent operations - see [claude-code-provider.md](claude-code-provider.md).
 > Links to internal reports of that era are not part of this repository.
 
+> **Removed from the product on 31.10.2026 (roadmap step 1).** The owner chat
+> ran on the Codex App Server, which left the product with the Codex path: the
+> Gateway runs Claude Code only and offers none of the operations below
+> (`ownerChatStatus` reports `disabled`). Their ids stay declared in
+> `application-owner-chat-contract.mjs` for the Application contract. This page
+> is kept as the record of what the route did.
+
 Status: source implementation `v0.3.0`, public/schema contract `v0.2.0`, for
 one explicitly selected child Codex conversation. It is renderer-neutral and
 does not prescribe SampleApp presentation.

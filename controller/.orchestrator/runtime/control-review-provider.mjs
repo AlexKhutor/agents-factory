@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import { CodexAppServerClient } from "./codex-app-server-client.mjs";
 import {
   mergeAgentStatistics,
   statisticsFromThreadUsage,
@@ -63,43 +62,38 @@ export function buildReviewPrompt(item, {
   ].join("\n");
 }
 
-export class CodexReviewProvider {
+// Runs one serialized review on a client of the App Server shape (connect,
+// startThread, startTurn, waitForTurn, interruptTurn, usage, notifications).
+// The factory makes that client for the item under review: Claude Code's
+// (claude-code-service-client.mjs) in the product, a fake one in the tests.
+// The Codex App Server client that once was the default left with the Codex path.
+export class ServiceReviewProvider {
   constructor({
     cwd,
-    codexHome,
-    command = "codex",
-    args = ["app-server"],
     model,
     reasoningEffort,
-    approvalPolicy = "never",
-    sandbox = "workspace-write",
     clientVersion = "0.6.0",
     pollIntervalMs = 500,
     heartbeatIntervalMs = 60_000,
     turnTimeoutMs = 3_600_000,
     interruptConfirmationTimeoutMs = 10_000,
     clientFactory,
-    providerId = "codex-app-server",
+    providerId,
     serviceName = REVIEW_SERVICE_NAME,
     promptOptions = {},
   } = {}) {
-    if (!cwd) throw new Error("CodexReviewProvider requires cwd");
+    if (!cwd) throw new Error("ServiceReviewProvider requires cwd");
+    if (typeof clientFactory !== "function") throw new Error("ServiceReviewProvider requires clientFactory");
+    if (!providerId) throw new Error("ServiceReviewProvider requires providerId");
     this.cwd = cwd;
-    this.codexHome = codexHome;
-    this.command = command;
-    this.args = args;
     this.model = model;
     this.reasoningEffort = reasoningEffort;
-    this.approvalPolicy = approvalPolicy;
-    this.sandbox = sandbox;
     this.clientVersion = clientVersion;
     this.pollIntervalMs = pollIntervalMs;
     this.heartbeatIntervalMs = Math.max(pollIntervalMs, heartbeatIntervalMs);
     this.turnTimeoutMs = turnTimeoutMs;
     this.interruptConfirmationTimeoutMs = interruptConfirmationTimeoutMs;
     this.clientFactory = clientFactory;
-    // Another provider with a client of the same shape (Claude Code) runs the
-    // same review under its own name; the factory gets the item under review.
     this.providerId = providerId;
     this.serviceName = serviceName;
     this.promptOptions = promptOptions;
@@ -125,15 +119,7 @@ export class CodexReviewProvider {
     onStatistics = async () => {},
     onEvent = async () => {},
   } = {}) {
-    const client = this.clientFactory
-      ? this.clientFactory(item)
-      : new CodexAppServerClient({
-        command: this.command,
-        args: this.args,
-        cwd: this.cwd,
-        codexHome: this.codexHome,
-        clientVersion: this.clientVersion,
-      });
+    const client = this.clientFactory(item);
     let eventQueue = Promise.resolve();
     const threadAgents = new Map();
     const agentThreads = new Map();
@@ -247,16 +233,14 @@ export class CodexReviewProvider {
         model: profile.model,
         config: { model_reasoning_effort: profile.reasoningEffort },
         allowProviderModelFallback: false,
-        approvalPolicy: this.approvalPolicy,
-        sandbox: this.sandbox,
         serviceName: this.serviceName,
       });
       rootThreadId = started.thread?.id;
-      if (!rootThreadId) throw new Error("Codex review provider returned no thread id");
+      if (!rootThreadId) throw new Error("Review provider returned no thread id");
       await client.setThreadName(rootThreadId, `[review] ${item.sourceId}/${item.taskId}`);
       const turnResult = await client.startTurn(rootThreadId, prompt);
       rootTurnId = turnResult.turn?.id;
-      if (!rootTurnId) throw new Error("Codex review provider returned no turn id");
+      if (!rootTurnId) throw new Error("Review provider returned no turn id");
       const rootAgentId = stableAgentId(item.taskId, rootThreadId, "reviewer");
       threadAgents.set(rootThreadId, rootAgentId);
       agentThreads.set(rootAgentId, rootThreadId);

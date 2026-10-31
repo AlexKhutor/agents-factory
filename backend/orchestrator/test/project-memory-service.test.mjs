@@ -83,6 +83,22 @@ test("new agent has a fresh binding and two empty memories without a start gate"
   assert.equal((await f.service.context({ agentId: a.agentId })).deliveryState, "delivered");
 });
 
+test("a model that does not answer is the agent's problem until one of its turns completes again", async () => {
+  const f = fixture(); const a = await f.service.createAgent(create());
+  const turn = async (operationId, state, failure) => {
+    f.provider.observe = async ({ operation }) => ({ turnId: operation.turnId, state, failure });
+    await f.service.send({ agentId: a.agentId, operationId, text: operationId });
+    await f.service.receipt({ agentId: a.agentId, operationId });
+    return f.service.readAgent({ agentId: a.agentId });
+  };
+  assert.equal((await turn("send-1", "failed", "acp_prompt_failed")).problemCode ?? null, null, "another failure is no such problem");
+  const down = await turn("send-2", "failed", "acp_model_unreachable");
+  assert.deepEqual([down.problemCode, down.state, down.lastOperation.state], ["model_unreachable", "active", "failed"]);
+  assert.equal((await turn("send-3", "completed", null)).problemCode, null);
+  assert.equal((await turn("send-4", "failed", "claude_signed_out")).problemCode, "claude_signed_out");
+  assert.equal((await turn("send-5", "completed", null)).problemCode, null);
+});
+
 test("same creation replays; changed membership and foreign session adoption fail", async () => {
   const f = fixture(); await f.service.createAgent(create());
   await f.service.createAgent(create());
