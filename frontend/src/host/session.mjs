@@ -94,7 +94,7 @@ function rejectedDeliverySession(mode, delivery) {
   };
 }
 
-export async function createSession({ projectRoot, mode, confirm = null, chooseDirectory = null }) {
+export async function createSession({ projectRoot, mode, confirm = null, chooseDirectory = null, openInEditor = null }) {
   const hasConfirmationSurface = typeof confirm === "function" && typeof chooseDirectory === "function";
 
   // The application's own root holds its accepted delivery and its kit.
@@ -166,6 +166,7 @@ export async function createSession({ projectRoot, mode, confirm = null, chooseD
           confirm,
           chooseDirectory,
           gateway: gatewayControl,
+          openInEditor,
         })
         : unavailableActions("confirmation_surface_unavailable"),
       gatewayControl,
@@ -253,7 +254,7 @@ export async function createSession({ projectRoot, mode, confirm = null, chooseD
       ? createMutations({ gateway, confirm, journal, schemas })
       : unavailableMutations("confirmation_surface_unavailable"),
     trusted: hasConfirmationSurface
-      ? createTrustedActions({ config: loaded.config, confirm, chooseDirectory, journal, gateway: gatewayControl })
+      ? createTrustedActions({ config: loaded.config, confirm, chooseDirectory, journal, gateway: gatewayControl, openInEditor })
       : unavailableActions("confirmation_surface_unavailable"),
     gatewayControl,
     // The instance itself: the map of a split instance lives in it (layout-split.mjs).

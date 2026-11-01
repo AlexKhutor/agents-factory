@@ -18,7 +18,7 @@ export const CLAUDE_CODE_SDK_SUPPORT_VERSION = "v0.2.0";
  */
 export const CLAUDE_AGENT_TOOLS = Object.freeze([
   "Read", "Write", "Edit", "Glob", "Grep", "Bash", "NotebookEdit",
-  "TodoWrite", "WebFetch", "WebSearch", "AskUserQuestion",
+  "TodoWrite", "WebFetch", "WebSearch", "AskUserQuestion", "ExitPlanMode",
 ]);
 
 export const CLAUDE_EFFORTS = Object.freeze(["low", "medium", "high", "xhigh", "max"]);

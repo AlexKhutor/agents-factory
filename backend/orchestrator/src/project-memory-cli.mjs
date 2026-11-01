@@ -34,7 +34,8 @@ export async function runProjectMemoryCommand(options) {
     "create-scope": "createScope", "authorize-write": "authorizeWrite", write: "write",
     "bind-workspace": "bindWorkspace", "save-user-edit": "saveUserEdit", "register-artifact": "registerArtifact",
     "set-agent-settings": "setAgentSettings", "preview-memory-document": "previewMemoryDocument",
-    "approve-memory-document": "approveMemoryDocument", "register-desk-source": "registerDeskSource",
+    "approve-memory-document": "approveMemoryDocument", "export-memory-document": "exportMemoryDocument",
+    "register-desk-source": "registerDeskSource",
     "archive-project": "archiveProject", "restore-project": "restoreProject",
     "list-archived-projects": "listArchivedProjects", "archive-quarter": "archiveQuarter",
     "restore-quarter": "restoreQuarter", "read-workspace": "readWorkspace",
@@ -44,7 +45,10 @@ export async function runProjectMemoryCommand(options) {
     "list-away-projects": "unmountedWorldProjects", "read-world-registry": "worldRegistryView",
     "set-project-policy": "recordWorldProjects", "settle-send": "settleUncertainSend",
     "read-journal": "readJournal", "undo-action": "undoAction", rename: "renameObject",
-    "read-names": "readAllNames" };
+    "read-names": "readAllNames", "start-task": "startTask", "revise-task": "reviseTask",
+    "approve-task": "approveTask", "cancel-task": "cancelTask", "read-tasks": "readTasks", "read-task": "readTask",
+    "read-memory-changes": "readMemoryChanges", "approve-memory-change": "decideMemoryChange",
+    "reject-memory-change": "decideMemoryChange", "set-memory-autonomy": "setOwnMemoryAutonomy" };
   if (!Object.hasOwn(methods, action)) throw new Error("unsupported_command");
   let input = {};
   if (options["input-file"]) {
@@ -111,7 +115,8 @@ export async function runProjectMemoryCommand(options) {
     throw new Error("invalid_argument:confirm-user-command");
   }
   phase = "store-open";
-  if (["register-artifact", "register-desk-source", "set-permission-mode"].includes(action) && (typeof input.agentId !== "string"
+  if (["register-artifact", "register-desk-source", "set-permission-mode", "start-task", "revise-task", "approve-task",
+    "cancel-task", "set-memory-autonomy"].includes(action) && (typeof input.agentId !== "string"
       || options["confirm-agent"] !== input.agentId)) throw new Error("invalid_argument:confirm-agent");
   const store = await createProjectMemoryStore({ controllerRoot: root });
   // The person's change goes into the action journal (action-journal-cli.mjs); it never fails the action.
@@ -215,9 +220,10 @@ export async function runProjectMemoryCommand(options) {
     return await undoAction({ controllerRoot: root, store, service, projectId: input.projectId, entryId: input.entryId });
   }
   phase = "operation";
-  if (["preview-memory-document", "approve-memory-document"].includes(action)) {
+  if (["preview-memory-document", "approve-memory-document", "export-memory-document"].includes(action)) {
     // The trusted host shows the preview, asks the person, then approves the
-    // exact document (its SHA-256 from the preview).
+    // exact document (its SHA-256 from the preview); it writes a memory as a
+    // document for the person's text editor.
     const service = await createProjectMemoryService({ controllerRoot: root, store });
     return done(await service[methods[action]](input));
   }
@@ -242,6 +248,27 @@ export async function runProjectMemoryCommand(options) {
     }
     const workspace = await resolveProjectWorkspace(store, input.projectId);
     return done({ projectId: input.projectId, ...await initProjectGit({ folder: workspace.workspacePath }) });
+  }
+  if (["start-task", "revise-task", "approve-task", "cancel-task", "read-tasks", "read-task"].includes(action)) {
+    // Task mode (agent-tasks.mjs): the person starts a task for an agent, asks for changes to its
+    // plan, approves or cancels it in the trusted host (--confirm-agent names the agent again);
+    // the agent's next message is the task's turn. Reads are for the Plan tab and the task board.
+    const service = await createProjectMemoryService({ controllerRoot: root, store });
+    const result = await service[methods[action]](input);
+    return action.startsWith("read-") ? result : done(result);
+  }
+  if (["read-memory-changes", "approve-memory-change", "reject-memory-change", "set-memory-autonomy"].includes(action)) {
+    // The agents' own memory changes (memory-changes.mjs): the person approves or rejects one in the
+    // trusted host (--confirm-change names it again), and allows an agent to change its own memory
+    // without asking (--confirm-agent). Reads are for the chat's cards and the attention list.
+    if (["approve-memory-change", "reject-memory-change"].includes(action)
+        && (Object.keys(input).sort().join() !== "changeId,projectId" || options["confirm-change"] !== input.changeId)) {
+      throw new Error("invalid_argument:confirm-change");
+    }
+    const service = await createProjectMemoryService({ controllerRoot: root, store });
+    if (action === "read-memory-changes") return await service.readMemoryChanges(input);
+    if (action === "set-memory-autonomy") return done(await service.setOwnMemoryAutonomy(input));
+    return done(await service.decideMemoryChange({ ...input, approve: action === "approve-memory-change" }));
   }
   if (action === "set-permission-mode") {
     // How the agent's tool calls are approved is the person's decision, confirmed
@@ -284,12 +311,14 @@ export async function runProjectMemoryCommand(options) {
           if (path.relative(directory, await realpath(directory)) !== "") throw new Error("unsafe_diagnostic_path");
           const action = ["list-scopes", "read-scope", "create-scope", "authorize-write",
             "write", "bind-workspace", "save-user-edit", "register-artifact", "set-agent-settings",
-            "preview-memory-document", "approve-memory-document", "register-desk-source",
+            "preview-memory-document", "approve-memory-document", "export-memory-document", "register-desk-source",
             "archive-project", "restore-project", "list-archived-projects", "archive-quarter",
             "restore-quarter", "read-workspace", "rebind-workspace", "set-permission-mode",
             "read-permission-modes", "read-agent-commits", "init-project-git", "read-task-board",
             "list-away-projects", "read-world-registry", "set-project-policy", "settle-send", "read-journal",
-            "undo-action", "rename", "read-names"]
+            "undo-action", "rename", "read-names", "start-task", "revise-task", "approve-task", "cancel-task",
+            "read-tasks", "read-task", "read-memory-changes", "approve-memory-change", "reject-memory-change",
+            "set-memory-autonomy"]
             .includes(options.action) ? options.action : "unknown";
           const record = { schemaVersion: 1, ...createApplicationGatewayFailureLogRecord(error),
             diagnosticId: error.diagnosticId, action, failedAtUtc: new Date().toISOString(),

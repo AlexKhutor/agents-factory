@@ -198,7 +198,7 @@ const mark = () => session.journal.snapshot().entries.length;
 
 {
   const list = await workspace.listArtifacts({ agentId: "data-ingest-1" });
-  const report = await workspace.readArtifact({ agentId: "data-ingest-1", artifactId: "drain-report" });
+  const report = await workspace.readArtifact({ agentId: "data-ingest-1", artifactId: "task-d0ne.1" });
   const patch = await workspace.readArtifact({ agentId: "data-ingest-1", artifactId: "drain-patch" });
   check("artifacts-only-registered-references",
     list.ok && list.data.coverage === "registered-only" && list.data.records.length === 2, list);

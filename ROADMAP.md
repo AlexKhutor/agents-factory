@@ -7,14 +7,13 @@ with every day, and it keeps growing with that work. Shipped changes are in
 
 ## Next
 
-- **Autonomy with the person in charge.** A "task" mode in an agent's chat:
-  the agent first changes nothing and answers with how it understood the
-  task, what is unclear and the steps it plans. A Plan card shows that; the
-  person answers the questions, asks for changes (each new revision shows
-  what changed) or approves, and the card then follows the work step by step.
-  The world lead hands tasks out to the agents with the person's approval; an
-  agent stops on someone else's failure instead of building on it; the
-  attention list ranks what matters most.
+- **Autonomy with the person in charge.** The "task" mode and the Plan card
+  are in (see the [changelog](CHANGELOG.md)), and Claude Code agents keep their
+  memory themselves with the person's approval. Next: the same memory tools
+  for ACP agents (a local Qwen), the world lead handing tasks out to the
+  agents with the person's approval, an agent stopping on someone else's
+  failure instead of building on it, and an attention list ranked by what
+  matters most.
 - **Statistics and budgets.** Turns (done and failed), working time, tokens
   (input, cache, output) and their price at API rates, by model - per agent,
   quarter, project and the whole world, for a day, a week or all time - in an

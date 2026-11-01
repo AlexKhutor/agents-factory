@@ -142,8 +142,9 @@ Usage: agents-factory <command> [options] [--instance <folder>] [--data-dir <fol
   migrate [--dry-run]
   version
 
-The instance defaults to AGENTS_FACTORY_HOME, else <data>/controller; the data
-folder defaults to the OS's (AGENTS_FACTORY_DATA_DIR overrides).
+The instance defaults to AGENTS_FACTORY_HOME, else the instance this CLI is
+installed in (<instance>/.orchestrator/runtime), else <data>/controller; the
+data folder defaults to the OS's (AGENTS_FACTORY_DATA_DIR overrides).
 `;
 
 const FLAG_NAMES = new Set([GLOBAL_OPTIONS, ...Object.values(COMMANDS)]
@@ -302,7 +303,7 @@ async function versionInfo({ layout }) {
  */
 export async function executeCommand(command, options, io) {
   const { env, platform, executor } = io;
-  const layout = resolveLayout({ options, env, platform, homeDir: io.homeDir });
+  const layout = resolveLayout({ options, env, platform, homeDir: io.homeDir, cliPath: io.cliPath ?? null });
   const keyStore = io.keyStore ?? createKeyStore({ platform, layout, executor, env });
   const gatewayContext = () => createGatewayContext({ layout, options, env, platform, executor, launcher: io.launcher ?? null, keyStore });
   const timeout = (fallback) => integerOption(options, "timeout-seconds", fallback, 1, 600) * 1000;
@@ -550,6 +551,8 @@ export async function runCli(argv, io = {}) {
     env: io.env ?? process.env,
     platform: io.platform ?? process.platform,
     homeDir: io.homeDir ?? os.homedir(),
+    // The script node runs: a CLI installed in an instance works on that instance (agents-factory-paths.mjs).
+    cliPath: io.cliPath ?? null,
     executor: io.executor ?? defaultExecutor,
     stdin: io.stdin ?? process.stdin,
     stdout: io.stdout ?? process.stdout,

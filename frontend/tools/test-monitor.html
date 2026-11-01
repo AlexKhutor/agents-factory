@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Checks</title>
+<style>
+body{font:13px/1.45 system-ui,sans-serif;margin:12px 14px;background:#1b2017;color:#e4ecd2}
+h1{font-size:16px;margin:0 0 2px}
+.muted{color:#a2a997}
+.bar{height:8px;background:#2c3129;border-radius:4px;margin:8px 0;overflow:hidden}
+.fill{height:100%;background:#9fbb88;width:0}
+.fill.bad{background:#df927a}
+.now{margin:4px 0 8px;color:#dbbf7c}
+ol{margin:0;padding-left:0;list-style:none}
+li{display:flex;gap:8px;padding:1px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mark{width:14px;flex:none;text-align:center}
+.passed .mark{color:#9fbb88}.failed{color:#df927a}.running{color:#dbbf7c}.pending{color:#7d8a93}
+</style></head>
+<body>
+<h1 id="title">Checks</h1>
+<div class="muted" id="meta">waiting for the run</div>
+<div class="bar"><div class="fill" id="fill"></div></div>
+<div class="now" id="now"></div>
+<ol id="list"></ol>
+<script>
+"use strict";
+const MARKS = { passed: "✓", failed: "✗", running: "▸", pending: "·", skipped: "–" };
+const ago = (iso) => (iso ? Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 1000)) : null);
+const minutes = (ms) => (ms === null ? "" : `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, "0")}`);
+// The main process hands the run's status over each time it changes (test-monitor.cjs).
+function render({ label, status }) {
+  const done = status.counts.passed + status.counts.failed + (status.counts.skipped ?? 0);
+  document.getElementById("title").textContent = `${label} · ${done} of ${status.total}`;
+  document.getElementById("meta").textContent = `${status.phase === "finished" ? `finished: ${status.status}` : "running"}`
+    + ` · passed ${status.counts.passed}, failed ${status.counts.failed} · ${minutes(status.elapsedMs)}`
+    + ` · updated ${ago(status.updatedAtUtc) ?? "?"} s ago`;
+  const fill = document.getElementById("fill");
+  fill.style.width = `${status.total > 0 ? (100 * done) / status.total : 0}%`;
+  fill.classList.toggle("bad", status.counts.failed > 0);
+  document.getElementById("now").textContent = status.phase === "finished" ? ""
+    : status.current ? `now: ${status.current.name}${status.current.attempt > 1 ? ` (attempt ${status.current.attempt})` : ""}` : "";
+  const list = document.getElementById("list");
+  list.replaceChildren(...status.scenes.map((scene) => {
+    const item = document.createElement("li");
+    item.className = scene.status;
+    const mark = document.createElement("span");
+    mark.className = "mark";
+    mark.textContent = MARKS[scene.status] ?? "?";
+    item.append(mark, document.createTextNode(scene.name));
+    return item;
+  }));
+  const running = list.querySelector(".running");
+  if (running) running.scrollIntoView({ block: "center" });
+}
+</script>
+</body></html>

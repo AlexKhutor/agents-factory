@@ -6,7 +6,7 @@ import test from "node:test";
 
 import { parseCommandLine, runCli } from "../src/agents-factory-commands.mjs";
 import { INSTANCE_SCHEMA_VERSION } from "../src/agents-factory-migrate.mjs";
-import { agentsFactoryDataDir, defaultInstanceDir, resolveLayout } from "../src/agents-factory-paths.mjs";
+import { agentsFactoryDataDir, defaultInstanceDir, instanceOfCli, resolveLayout } from "../src/agents-factory-paths.mjs";
 import {
   buildFakeSdk, buildTemplate, cliBundle, fakeExecutor, orchestratorRoot, parseJsonOutput, runCliProcess, temporaryRoot,
   testEnvironment,
@@ -27,6 +27,26 @@ test("data folders follow stage-0.md per OS; AGENTS_FACTORY_HOME names the insta
   assert.equal(layout.instanceDir, "/srv/one");
   assert.equal(layout.sdkRoot, "/home/p/.local/share/agents-factory/runtime/claude-agent-sdk");
   assert.equal(layout.dpapiKeyFile, "/home/p/.local/share/agents-factory/secrets/anthropic-api-key.dpapi.json");
+});
+
+test("a CLI installed in an instance works on that instance unless told otherwise", () => {
+  const installed = "W:\\af-world\\instance\\.orchestrator\\runtime\\agents-factory.mjs";
+  const isInstance = (file) => file.toLowerCase() === "w:\\af-world\\instance\\instance.json";
+  const win = { platform: "win32", env: { LOCALAPPDATA: "C:\\Users\\p\\AppData\\Local" }, homeDir: "C:\\Users\\p", exists: isInstance };
+  assert.equal(instanceOfCli(installed, win), "W:\\af-world\\instance");
+  assert.equal(resolveLayout({ ...win, cliPath: installed }).instanceDir, "W:\\af-world\\instance");
+  // --instance and AGENTS_FACTORY_HOME still win; the data folder stays the OS's.
+  assert.equal(resolveLayout({ ...win, cliPath: installed, options: { instance: "D:\\other" } }).instanceDir, "D:\\other");
+  assert.equal(resolveLayout({ ...win, cliPath: installed, env: { ...win.env, AGENTS_FACTORY_HOME: "E:\\home" } }).instanceDir,
+    "E:\\home");
+  assert.equal(resolveLayout({ ...win, cliPath: installed }).dataDir, "C:\\Users\\p\\AppData\\Local\\AgentsFactory");
+  // A CLI elsewhere (the repository's bundle), or a folder that is no instance: the OS default, as before.
+  for (const cliPath of ["W:\\repo\\dist\\agents-factory-cli.bundle.mjs", "W:\\loose\\.orchestrator\\runtime\\agents-factory.mjs",
+    null]) {
+    assert.equal(resolveLayout({ ...win, cliPath }).instanceDir, "C:\\Users\\p\\AppData\\Local\\AgentsFactory\\controller");
+  }
+  assert.equal(instanceOfCli("/srv/i/.orchestrator/runtime/agents-factory.mjs",
+    { platform: "linux", exists: (file) => file === "/srv/i/instance.json" }), "/srv/i");
 });
 
 test("arguments: groups, options anywhere, flags without values, exit code 2 for misuse", async () => {

@@ -468,14 +468,14 @@ function projectPolicy(value) {
   if (keys !== "allowedMachines,homeOnly") fail2("policy_invalid", keys);
   if (typeof value.homeOnly !== "boolean") fail2("policy_invalid", "homeOnly");
   const allowed = value.allowedMachines;
-  if (allowed !== null && (!Array.isArray(allowed) || allowed.length === 0 || allowed.length > 16 || allowed.some((id3) => typeof id3 !== "string" || !MACHINE_ID.test(id3)) || new Set(allowed).size !== allowed.length)) {
+  if (allowed !== null && (!Array.isArray(allowed) || allowed.length === 0 || allowed.length > 16 || allowed.some((id5) => typeof id5 !== "string" || !MACHINE_ID.test(id5)) || new Set(allowed).size !== allowed.length)) {
     fail2("policy_invalid", "allowedMachines");
   }
   return { homeOnly: value.homeOnly, allowedMachines: allowed === null ? null : [...allowed].sort() };
 }
 
 // orchestrator/src/project-package-export.mjs
-import { createHash as createHash6 } from "node:crypto";
+import { createHash as createHash8 } from "node:crypto";
 import { lstat as lstat5, mkdir as mkdir5, readFile as readFile6, readdir as readdir3, realpath as realpath2, rename as rename5, rm as rm5, writeFile as writeFile5 } from "node:fs/promises";
 import path6 from "node:path";
 
@@ -503,7 +503,12 @@ var JOURNAL_ACTIONS = Object.freeze([
   "project.git-init",
   "project.file-save",
   "agent.desk-source",
-  "object.rename"
+  "object.rename",
+  "task.start",
+  "task.revise",
+  "task.approve",
+  "task.cancel",
+  "agent.memory-autonomy"
 ]);
 var UNDO_KINDS = Object.freeze([
   "close-agent",
@@ -527,7 +532,9 @@ var NO_UNDO_REASONS = Object.freeze([
   "git_not_undone",
   "desk_source_not_undone",
   "approval_without_write",
-  "first_revision"
+  "first_revision",
+  "task_not_undone",
+  "setting_not_undone"
 ]);
 var ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
 var MAX_BYTES = 200 * 1024;
@@ -565,6 +572,133 @@ function id2(value) {
 }
 function namesKeyOf(projectId) {
   return `${NAMES_PREFIX}${sha2562(id2(projectId)).slice(0, 32)}`;
+}
+
+// orchestrator/src/agent-tasks.mjs
+import { createHash as createHash4 } from "node:crypto";
+
+// orchestrator/src/object-ids.mjs
+var CYRILLIC = Object.freeze(Object.fromEntries([
+  [1072, "a"],
+  [1073, "b"],
+  [1074, "v"],
+  [1075, "g"],
+  [1076, "d"],
+  [1077, "e"],
+  [1105, "e"],
+  [1078, "zh"],
+  [1079, "z"],
+  [1080, "i"],
+  [1081, "y"],
+  [1082, "k"],
+  [1083, "l"],
+  [1084, "m"],
+  [1085, "n"],
+  [1086, "o"],
+  [1087, "p"],
+  [1088, "r"],
+  [1089, "s"],
+  [1090, "t"],
+  [1091, "u"],
+  [1092, "f"],
+  [1093, "kh"],
+  [1094, "ts"],
+  [1095, "ch"],
+  [1096, "sh"],
+  [1097, "shch"],
+  [1098, ""],
+  [1099, "y"],
+  [1100, ""],
+  [1101, "e"],
+  [1102, "yu"],
+  [1103, "ya"],
+  [1110, "i"],
+  [1111, "yi"],
+  [1108, "ye"],
+  [1169, "g"]
+].map(([code, latin]) => [String.fromCodePoint(code), latin])));
+
+// orchestrator/src/agent-tasks.mjs
+var TASKS_PREFIX = "agent-tasks-v1:";
+var TASK_STAGES = Object.freeze(["planning", "awaiting-approval", "in-progress", "done", "cancelled"]);
+var OPEN_STAGES = Object.freeze(["planning", "awaiting-approval", "in-progress"]);
+var TASK_PHASES = Object.freeze(["plan", "work"]);
+var TASK_ORIGINS = Object.freeze(["chat"]);
+var ID3 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
+var LIMITS = Object.freeze({
+  tasks: 200,
+  revisions: 20,
+  remarks: 20,
+  text: 8e3,
+  understanding: 4e3,
+  questions: 16,
+  question: 1e3,
+  steps: 40,
+  step: 600,
+  answers: 16,
+  answer: 2e3,
+  raw: 16e3,
+  results: 32,
+  resultPath: 400,
+  resultNote: 400,
+  documentBytes: 200 * 1024
+});
+function fail5(code) {
+  throw Object.assign(new Error(code), { code });
+}
+var sha2563 = (value) => createHash4("sha256").update(value).digest("hex");
+function id3(value) {
+  if (typeof value !== "string" || !ID3.test(value)) fail5("task_invalid_input");
+  return value;
+}
+function tasksKeyOf(projectId) {
+  return `${TASKS_PREFIX}${sha2563(id3(projectId)).slice(0, 32)}`;
+}
+var RU = (codes) => String.fromCodePoint(...codes);
+var HEADINGS = Object.freeze([
+  ["understanding", ["understanding", "summary", RU([1087, 1086, 1085, 1080, 1084, 1072, 1085, 1080, 1077])]],
+  ["questions", ["questions", "open questions", "question", RU([1074, 1086, 1087, 1088, 1086, 1089, 1099])]],
+  ["plan", ["plan", "steps", RU([1087, 1083, 1072, 1085]), RU([1096, 1072, 1075, 1080])]],
+  ["results", [
+    "results",
+    "result",
+    RU([1088, 1077, 1079, 1091, 1083, 1100, 1090, 1072, 1090, 1099]),
+    RU([1088, 1077, 1079, 1091, 1083, 1100, 1090, 1072, 1090])
+  ]]
+]);
+var NONE = /* @__PURE__ */ new Set([
+  "none",
+  "no questions",
+  "n/a",
+  "-",
+  RU([1085, 1077, 1090]),
+  RU([1074, 1086, 1087, 1088, 1086, 1089, 1086, 1074, 32, 1085, 1077, 1090])
+]);
+
+// orchestrator/src/memory-changes.mjs
+import { createHash as createHash5, randomBytes } from "node:crypto";
+var CHANGES_PREFIX = "memory-changes-v1:";
+var CHANGE_STATES = Object.freeze(["pending", "approved", "rejected", "stale", "written"]);
+var CHANGE_TARGETS = Object.freeze(["own", "quarter", "project", "agent"]);
+var ID4 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
+var LIMITS2 = Object.freeze({
+  kept: 100,
+  changes: 32,
+  title: 512,
+  text: 65536,
+  reason: 2e3,
+  documentBytes: 200 * 1024
+});
+function fail6(code) {
+  throw Object.assign(new Error(code), { code });
+}
+var sha2564 = (value) => createHash5("sha256").update(value).digest("hex");
+function id4(value) {
+  if (typeof value !== "string" || !ID4.test(value)) fail6("memory_change_invalid_input");
+  return value;
+}
+function changesKeyOf(projectId) {
+  return `${CHANGES_PREFIX}${sha2564(id4(projectId)).slice(0, 32)}`;
 }
 
 // orchestrator/src/sqlite-backend.mjs
@@ -618,7 +752,7 @@ async function resolveSqliteBackend({ backend, load = loadNodeSqlite } = {}) {
 }
 
 // orchestrator/src/sqlite-python-compat.mjs
-import { createHash as createHash4 } from "node:crypto";
+import { createHash as createHash6 } from "node:crypto";
 var PythonError = class extends Error {
   constructor(type, message) {
     super(message);
@@ -742,7 +876,7 @@ function utf8(text3) {
   return Buffer.from(text3, "utf8");
 }
 function sha256Hex(text3) {
-  return createHash4("sha256").update(utf8(text3)).digest("hex");
+  return createHash6("sha256").update(utf8(text3)).digest("hex");
 }
 function stringRepr(value) {
   const quote = value.includes("'") && !value.includes('"') ? '"' : "'";
@@ -1055,7 +1189,7 @@ var NodeSqliteConnection = class {
 };
 
 // orchestrator/src/project-store-layout.mjs
-import { createHash as createHash5, randomUUID as randomUUID4 } from "node:crypto";
+import { createHash as createHash7, randomUUID as randomUUID4 } from "node:crypto";
 import { lstat as lstat3, mkdir as mkdir3, readdir as readdir2, readFile as readFile4, realpath, rename as rename3, rm as rm3, writeFile as writeFile3 } from "node:fs/promises";
 import path4 from "node:path";
 var STORE_LAYOUT_MARKER = "store-layout.v1.json";
@@ -1072,7 +1206,7 @@ var ProjectStoreLayoutError = class extends Error {
     this.code = code;
   }
 };
-function fail5(code, detail) {
+function fail7(code, detail) {
   throw new ProjectStoreLayoutError(code, detail);
 }
 async function kind(target) {
@@ -1081,7 +1215,7 @@ async function kind(target) {
     throw error;
   });
   if (info === null) return null;
-  if (info.isSymbolicLink()) fail5("store_layout_link_refused", target);
+  if (info.isSymbolicLink()) fail7("store_layout_link_refused", target);
   return info.isDirectory() ? "directory" : info.isFile() ? "file" : "other";
 }
 function projectsRoot(controllerRoot) {
@@ -1091,9 +1225,9 @@ function singleMemoryDatabase(controllerRoot) {
   return path4.join(controllerRoot, ".project-local", "orchestration", "project-memory", "project-memory.v1.sqlite");
 }
 function projectFolderName(projectId) {
-  if (typeof projectId !== "string" || !PROJECT_ID.test(projectId)) fail5("store_project_id_invalid");
+  if (typeof projectId !== "string" || !PROJECT_ID.test(projectId)) fail7("store_project_id_invalid");
   if (PLAIN_FOLDER.test(projectId) && !RESERVED.test(projectId) && !projectId.endsWith(".")) return projectId;
-  return `~${createHash5("sha256").update(projectId).digest("hex").slice(0, 32)}`;
+  return `~${createHash7("sha256").update(projectId).digest("hex").slice(0, 32)}`;
 }
 async function resolveStoreLayout(controllerRoot, { env = process.env } = {}) {
   const root = await realpath(controllerRoot);
@@ -1101,10 +1235,10 @@ async function resolveStoreLayout(controllerRoot, { env = process.env } = {}) {
   const markerKind = await kind(marker);
   if (markerKind === "file") {
     const value = JSON.parse(await readFile4(marker, "utf8"));
-    if (value?.schemaVersion !== 1 || value?.layout !== "split") fail5("store_layout_unsupported", marker);
+    if (value?.schemaVersion !== 1 || value?.layout !== "split") fail7("store_layout_unsupported", marker);
     return { layout: "split", root };
   }
-  if (markerKind !== null) fail5("store_layout_unsupported", marker);
+  if (markerKind !== null) fail7("store_layout_unsupported", marker);
   if (String(env?.[STORE_LAYOUT_ENVIRONMENT] ?? "").trim().toLowerCase() === "split" && await kind(singleMemoryDatabase(root)) === null) {
     await writeStoreLayoutMarker(root);
     return { layout: "split", root };
@@ -1130,7 +1264,7 @@ async function projectStoreFolder(controllerRoot, projectId, { create = false } 
   const present = await kind(identity);
   if (present === "file") {
     const value2 = JSON.parse(await readFile4(identity, "utf8"));
-    if (value2?.projectId !== projectId) fail5("store_project_identity_conflict", folder);
+    if (value2?.projectId !== projectId) fail7("store_project_identity_conflict", folder);
     return folder;
   }
   if (!create) return null;
@@ -1138,7 +1272,7 @@ async function projectStoreFolder(controllerRoot, projectId, { create = false } 
   await writeOnce(identity, `${JSON.stringify({ schemaVersion: 1, projectId }, null, 2)}
 `);
   const value = JSON.parse(await readFile4(identity, "utf8"));
-  if (value?.projectId !== projectId) fail5("store_project_identity_conflict", folder);
+  if (value?.projectId !== projectId) fail7("store_project_identity_conflict", folder);
   return folder;
 }
 async function writeOnce(target, text3) {
@@ -1162,7 +1296,7 @@ async function mountedProjects(controllerRoot) {
     if (await kind(identity) !== "file") continue;
     const value = JSON.parse(await readFile4(identity, "utf8"));
     if (typeof value?.projectId !== "string" || projectFolderName(value.projectId) !== entry.name) {
-      fail5("store_project_identity_conflict", folder);
+      fail7("store_project_identity_conflict", folder);
     }
     found.push({ projectId: value.projectId, folder });
   }
@@ -1176,8 +1310,8 @@ import path5 from "node:path";
 var WORLD_FOLDER = ".world";
 var REGISTRY_FILE = "registry.json";
 var TASKS_FOLDER = "tasks";
-var ID3 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
-function fail6(code, detail) {
+var ID5 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
+function fail8(code, detail) {
   throw Object.assign(new Error(detail ? `${code}: ${detail}` : code), { code });
 }
 var compare = (a, b) => a < b ? -1 : a > b ? 1 : 0;
@@ -1201,17 +1335,17 @@ async function readWorldRegistry(controllerRoot) {
   const file = registryPath(controllerRoot);
   if (!await exists(file)) return { schemaVersion: 1, projects: {} };
   const value = JSON.parse(await readFile5(file, "utf8"));
-  if (value?.schemaVersion !== 1 || !value.projects || typeof value.projects !== "object") fail6("world_registry_invalid");
+  if (value?.schemaVersion !== 1 || !value.projects || typeof value.projects !== "object") fail8("world_registry_invalid");
   return value;
 }
 function location(value) {
-  if (value === null || typeof value !== "object" || value.machineId !== null && !MACHINE_ID.test(String(value.machineId)) || typeof value.atUtc !== "string" || !Number.isFinite(Date.parse(value.atUtc))) fail6("world_registry_invalid", "location");
+  if (value === null || typeof value !== "object" || value.machineId !== null && !MACHINE_ID.test(String(value.machineId)) || typeof value.atUtc !== "string" || !Number.isFinite(Date.parse(value.atUtc))) fail8("world_registry_invalid", "location");
   return { machineId: value.machineId, atUtc: value.atUtc };
 }
 function summary(value) {
-  const count = (item) => Number.isSafeInteger(item) && item >= 0 ? item : fail6("world_registry_invalid", "summary");
+  const count = (item) => Number.isSafeInteger(item) && item >= 0 ? item : fail8("world_registry_invalid", "summary");
   const at = value?.lastActivityUtc;
-  if (at !== null && (typeof at !== "string" || !Number.isFinite(Date.parse(at)))) fail6("world_registry_invalid", "summary");
+  if (at !== null && (typeof at !== "string" || !Number.isFinite(Date.parse(at)))) fail8("world_registry_invalid", "summary");
   return { agents: count(value.agents), quarters: count(value.quarters), tasksOpen: count(value.tasksOpen), lastActivityUtc: at };
 }
 function projectSummary({ projectId, agents = [], scopes = [], archive = null, tasks = [] }) {
@@ -1228,8 +1362,8 @@ function projectSummary({ projectId, agents = [], scopes = [], archive = null, t
 async function recordWorldProjects(controllerRoot, entries) {
   const registry = await readWorldRegistry(controllerRoot);
   for (const entry of entries) {
-    if (typeof entry?.projectId !== "string" || !ID3.test(entry.projectId) || entry.projectId === WORLD_PROJECT_ID) {
-      fail6("world_registry_invalid", String(entry?.projectId));
+    if (typeof entry?.projectId !== "string" || !ID5.test(entry.projectId) || entry.projectId === WORLD_PROJECT_ID) {
+      fail8("world_registry_invalid", String(entry?.projectId));
     }
     const current = registry.projects[entry.projectId] ?? { title: entry.projectId, policy: { homeOnly: false, allowedMachines: null }, archived: false };
     registry.projects[entry.projectId] = {
@@ -1240,7 +1374,7 @@ async function recordWorldProjects(controllerRoot, entries) {
       summary: entry.summary !== void 0 ? summary(entry.summary) : current.summary ?? null
     };
   }
-  const projects = Object.fromEntries(Object.keys(registry.projects).sort(compare).map((id3) => [id3, registry.projects[id3]]));
+  const projects = Object.fromEntries(Object.keys(registry.projects).sort(compare).map((id5) => [id5, registry.projects[id5]]));
   await writeJson2(registryPath(controllerRoot), { schemaVersion: 1, projects });
   return projects;
 }
@@ -1303,7 +1437,7 @@ var PROJECT_PACKAGE_EXPORT_VERSION = "v0.1.0";
 var PROJECT_PACKAGE_SCHEMA = "agents-factory.project-package/1";
 var MANIFEST = "project.af.json";
 var DESK = ".desk";
-var ID4 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
+var ID6 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
 var MEMORY_SCHEMA = 2;
 var ARCHIVE_SCHEMAS = /* @__PURE__ */ new Set([1, 2]);
 var MEMORY_TABLES = ["memory_documents", "memory_operations", "memory_revisions", "memory_scopes", "memory_write_grants"];
@@ -1317,21 +1451,21 @@ var ProjectPackageError = class extends Error {
     this.code = code;
   }
 };
-function fail7(code, detail) {
+function fail9(code, detail) {
   throw new ProjectPackageError(code, detail);
 }
-var sha2563 = (value) => createHash6("sha256").update(value).digest("hex");
+var sha2565 = (value) => createHash8("sha256").update(value).digest("hex");
 var compare2 = (a, b) => a < b ? -1 : a > b ? 1 : 0;
 function deskSourceIdOf(agentId) {
-  return /^[a-z0-9][a-z0-9-]{0,47}$/u.test(agentId) ? `desk-${agentId}` : `desk-${sha2563(agentId).slice(0, 16)}`;
+  return /^[a-z0-9][a-z0-9-]{0,47}$/u.test(agentId) ? `desk-${agentId}` : `desk-${sha2565(agentId).slice(0, 16)}`;
 }
 function artifactsKeyOf(agentId) {
-  return `agent-artifacts-${sha2563(JSON.stringify(agentId))}`;
+  return `agent-artifacts-${sha2565(JSON.stringify(agentId))}`;
 }
 function canonicalJson(value) {
   if (value === null || typeof value !== "object") {
-    if (value === void 0 || typeof value === "function" || typeof value === "symbol") fail7("export_value_invalid");
-    if (typeof value === "number" && !Number.isFinite(value)) fail7("export_value_invalid");
+    if (value === void 0 || typeof value === "function" || typeof value === "symbol") fail9("export_value_invalid");
+    if (typeof value === "number" && !Number.isFinite(value)) fail9("export_value_invalid");
     return JSON.stringify(value);
   }
   if (Array.isArray(value)) return `[${value.map((item) => canonicalJson(item === void 0 ? null : item)).join(",")}]`;
@@ -1345,7 +1479,7 @@ function parsed(text3, what) {
   try {
     return JSON.parse(text3);
   } catch {
-    return fail7("export_source_invalid", what);
+    return fail9("export_source_invalid", what);
   }
 }
 async function exists2(target) {
@@ -1390,7 +1524,7 @@ async function instancePaths(root, projectId, options = {}) {
 }
 async function openReadOnly(file) {
   const sqlite = await loadNodeSqlite();
-  if (sqlite === null) fail7("memory_sqlite_required");
+  if (sqlite === null) fail9("memory_sqlite_required");
   return openReadOnlyDatabase(sqlite, file);
 }
 function tableNames(db) {
@@ -1400,7 +1534,7 @@ function readMemory(db) {
   const version2 = db.prepare("PRAGMA user_version").get().user_version;
   const tables = tableNames(db);
   if (version2 !== MEMORY_SCHEMA || MEMORY_TABLES.some((name) => !tables.has(name))) {
-    fail7("memory_schema_unsupported", `user_version ${version2}`);
+    fail9("memory_schema_unsupported", `user_version ${version2}`);
   }
   return {
     scopes: db.prepare("SELECT * FROM memory_scopes").all(),
@@ -1414,7 +1548,7 @@ function readArchive(db) {
   const version2 = db.prepare("PRAGMA user_version").get().user_version;
   const tables = tableNames(db);
   if (!ARCHIVE_SCHEMAS.has(version2) || !tables.has("conversations") || !tables.has("entries")) {
-    fail7("archive_schema_unsupported", `user_version ${version2}`);
+    fail9("archive_schema_unsupported", `user_version ${version2}`);
   }
   return {
     version: version2,
@@ -1435,7 +1569,7 @@ function selectProjectRecords({ memory, archive, projectId }) {
   })).sort((a, b) => compare2(a.scopeId, b.scopeId));
   let projectScope = scopes.find((scope) => scope.kind === "project") ?? null;
   if (projectScope === null && world) projectScope = { title: "World" };
-  if (projectScope === null) fail7("project_not_found", projectId);
+  if (projectScope === null) fail9("project_not_found", projectId);
   const scopeIds = new Set(scopes.map((scope) => scope.scopeId));
   const scopeProjects = new Map(memory.scopes.map((row2) => [row2.scope_id, row2.project_id]));
   const revisions = memory.revisions.filter((row2) => scopeIds.has(row2.scope_id)).map((row2) => ({
@@ -1488,18 +1622,20 @@ function selectProjectRecords({ memory, archive, projectId }) {
   const owners = /* @__PURE__ */ new Map();
   for (const agent of allAgents) {
     if (typeof agent?.agentId !== "string") continue;
-    owners.set(`${APPROVALS_KEY}:${sha2563(agent.agentId).slice(0, 32)}`, agent.projectId);
+    owners.set(`${APPROVALS_KEY}:${sha2565(agent.agentId).slice(0, 32)}`, agent.projectId);
     owners.set(artifactsKeyOf(agent.agentId), agent.projectId);
   }
   const knownProjects = /* @__PURE__ */ new Set([
     ...memory.scopes.map((row2) => row2.project_id),
-    ...allAgents.map((agent) => agent?.projectId).filter((id3) => typeof id3 === "string")
+    ...allAgents.map((agent) => agent?.projectId).filter((id5) => typeof id5 === "string")
   ]);
-  const bindings = new Map([...knownProjects].map((id3) => [`workspace-${sha2563(id3)}`, id3]));
-  for (const id3 of knownProjects) {
+  const bindings = new Map([...knownProjects].map((id5) => [`workspace-${sha2565(id5)}`, id5]));
+  for (const id5 of knownProjects) {
     try {
-      owners.set(journalKeyOf(id3), id3);
-      owners.set(namesKeyOf(id3), id3);
+      owners.set(journalKeyOf(id5), id5);
+      owners.set(namesKeyOf(id5), id5);
+      owners.set(tasksKeyOf(id5), id5);
+      owners.set(changesKeyOf(id5), id5);
     } catch {
     }
   }
@@ -1525,7 +1661,7 @@ function selectProjectRecords({ memory, archive, projectId }) {
   }
   exported.sort((a, b) => compare2(a.key, b.key));
   unassignedDocuments.sort(compare2);
-  const binding = documents.get(`workspace-${sha2563(projectId)}`)?.value ?? null;
+  const binding = documents.get(`workspace-${sha2565(projectId)}`)?.value ?? null;
   const threads = new Map(allAgents.filter((agent) => agent?.binding?.threadId).map((agent) => [agent.binding.threadId, agent]));
   const conversations = [];
   const entriesByConversation = /* @__PURE__ */ new Map();
@@ -1584,7 +1720,7 @@ async function filesOf(folder, skipTop = /* @__PURE__ */ new Set()) {
       if (relative === "" && skipTop.has(entry.name)) continue;
       const full = path6.join(current, entry.name);
       const rel = relative === "" ? entry.name : `${relative}/${entry.name}`;
-      if (entry.isSymbolicLink()) fail7("export_link_refused", rel);
+      if (entry.isSymbolicLink()) fail9("export_link_refused", rel);
       if (entry.isDirectory()) await walk(full, rel);
       else if (entry.isFile()) found.push({ full, rel });
     }
@@ -1608,7 +1744,7 @@ async function projectFiles({ layout, agents }) {
   const dshSlugs = await subfolders(dshSessions);
   for (const agent of [...agents].sort((a, b) => compare2(a.agentId, b.agentId))) {
     const threadId = agent.binding?.threadId;
-    if (typeof threadId === "string" && ID4.test(threadId)) {
+    if (typeof threadId === "string" && ID6.test(threadId)) {
       await folder(path6.join(layout.claudeSessions, threadId), `sessions/claude/${threadId}`);
       await folder(path6.join(layout.acpSessions, threadId), `sessions/acp/${threadId}`);
       for (const slug of claudeSlugs) {
@@ -1649,7 +1785,7 @@ async function projectFiles({ layout, agents }) {
   }
   const seen = /* @__PURE__ */ new Set();
   for (const file of files) {
-    if (seen.has(file.target)) fail7("export_file_twice", file.target);
+    if (seen.has(file.target)) fail9("export_file_twice", file.target);
     seen.add(file.target);
   }
   return files.sort((a, b) => compare2(a.target, b.target));
@@ -1670,11 +1806,11 @@ async function previousManifest(out, projectId) {
   if (!await exists2(out)) return null;
   const manifest = await readJsonFile2(path6.join(out, MANIFEST));
   if (manifest !== null) {
-    if (manifest.projectId !== projectId) fail7("package_other_project", manifest.projectId);
+    if (manifest.projectId !== projectId) fail9("package_other_project", manifest.projectId);
     return manifest;
   }
   const present = (await readdir3(out)).filter((name) => ![".git", "workspace"].includes(name));
-  if (present.length > 0) fail7("package_folder_not_empty", out);
+  if (present.length > 0) fail9("package_folder_not_empty", out);
   return null;
 }
 async function exportProject({
@@ -1688,13 +1824,13 @@ async function exportProject({
   dshHome,
   allowRunningGateway = false
 }) {
-  if (typeof projectId !== "string" || !ID4.test(projectId)) fail7("project_id_invalid");
-  if (typeof out !== "string" || !path6.isAbsolute(out)) fail7("package_folder_invalid");
+  if (typeof projectId !== "string" || !ID6.test(projectId)) fail9("project_id_invalid");
+  if (typeof out !== "string" || !path6.isAbsolute(out)) fail9("package_folder_invalid");
   const root = await realpath2(controllerRoot);
   const layout = await instancePaths(root, projectId, { claudeConfigDir, dshHome });
-  if (!allowRunningGateway && await gatewayRunning(layout.gatewayStatus)) fail7("gateway_running");
-  if (layout.memoryDb === null) fail7("project_not_found", projectId);
-  if (!await exists2(layout.memoryDb)) fail7("memory_store_missing");
+  if (!allowRunningGateway && await gatewayRunning(layout.gatewayStatus)) fail9("gateway_running");
+  if (layout.memoryDb === null) fail9("project_not_found", projectId);
+  if (!await exists2(layout.memoryDb)) fail9("memory_store_missing");
   const memoryDb = await openReadOnly(layout.memoryDb);
   let memory;
   try {
@@ -1713,7 +1849,7 @@ async function exportProject({
   }
   const selected = selectProjectRecords({ memory, archive, projectId });
   const busy = selected.agents.filter((agent) => agent.currentOperationId);
-  if (busy.length > 0) fail7("project_not_quiescent", busy.map((agent) => agent.agentId).join(","));
+  if (busy.length > 0) fail9("project_not_quiescent", busy.map((agent) => agent.agentId).join(","));
   const texts = /* @__PURE__ */ new Map([
     ["memory/scopes.jsonl", jsonLines(selected.scopes)],
     ["memory/revisions.jsonl", jsonLines(selected.revisions)],
@@ -1725,7 +1861,7 @@ async function exportProject({
     texts.set("archive/conversations.jsonl", jsonLines(selected.conversations));
     for (const conversation of selected.conversations) {
       const name = conversation.conversationId.replace(/^conversation:/u, "");
-      if (!/^[A-Za-z0-9._-]{1,128}$/u.test(name)) fail7("export_name_invalid", conversation.conversationId);
+      if (!/^[A-Za-z0-9._-]{1,128}$/u.test(name)) fail9("export_name_invalid", conversation.conversationId);
       texts.set(`archive/entries/${name}.jsonl`, jsonLines(selected.entriesByConversation.get(conversation.conversationId)));
     }
   }
@@ -1742,7 +1878,7 @@ async function exportProject({
       const target = path6.join(staging, ...relative.split("/"));
       await mkdir5(path6.dirname(target), { recursive: true });
       await writeFile5(target, bytes);
-      files[`${DESK}/${relative}`] = { bytes: bytes.length, sha256: sha2563(bytes) };
+      files[`${DESK}/${relative}`] = { bytes: bytes.length, sha256: sha2565(bytes) };
     };
     for (const [relative, text3] of texts) await put(relative, Buffer.from(text3, "utf8"));
     for (const file of copied) await put(file.target, await readFile6(file.full));
@@ -1805,7 +1941,7 @@ async function exportProject({
 }
 
 // orchestrator/src/project-package-import.mjs
-import { createHash as createHash8, randomUUID as randomUUID6 } from "node:crypto";
+import { createHash as createHash10, randomUUID as randomUUID6 } from "node:crypto";
 import { copyFile, lstat as lstat7, mkdir as mkdir7, readFile as readFile8, readdir as readdir5, realpath as realpath4, rename as rename8, rm as rm6, writeFile as writeFile6 } from "node:fs/promises";
 import path11 from "node:path";
 
@@ -1817,7 +1953,7 @@ var ArchiveFailure = class extends Error {
     this.code = code;
   }
 };
-function fail8(code) {
+function fail10(code) {
   throw new ArchiveFailure(code);
 }
 var encoded = (value) => pythonJson(value, { sortKeys: true });
@@ -1827,9 +1963,9 @@ function loads(text3) {
 }
 function initialize(db, projectId) {
   const version2 = db.value("PRAGMA user_version");
-  if (![0, 1, 2].includes(version2)) fail8("archive_unsupported_schema");
+  if (![0, 1, 2].includes(version2)) fail10("archive_unsupported_schema");
   if (version2 === 0) {
-    if (db.get("SELECT name FROM sqlite_master WHERE type='table'") !== null) fail8("archive_unsupported_schema");
+    if (db.get("SELECT name FROM sqlite_master WHERE type='table'") !== null) fail10("archive_unsupported_schema");
     db.exec("CREATE TABLE archive_meta (project_id TEXT NOT NULL)");
     db.run("INSERT INTO archive_meta VALUES (?)", [projectId]);
     db.exec(`CREATE TABLE conversations (
@@ -1843,7 +1979,7 @@ function initialize(db, projectId) {
     db.exec("PRAGMA user_version=1");
   }
   const row2 = db.get("SELECT project_id FROM archive_meta");
-  if (row2 === null || !pyEquals(row2.project_id, projectId)) fail8("archive_identity_conflict");
+  if (row2 === null || !pyEquals(row2.project_id, projectId)) fail10("archive_identity_conflict");
   if (version2 < 2) {
     db.exec(`CREATE TABLE import_checkpoints (
             conversation_id TEXT PRIMARY KEY REFERENCES conversations(id),
@@ -1854,10 +1990,10 @@ function initialize(db, projectId) {
 function checkScope(db, payload, create = false) {
   const identity = pyItem(payload, "conversationId");
   const binding = pyItem(payload, "binding");
-  if (!pyEquals(pyItem(binding, "projectId"), pyItem(payload, "projectId"))) fail8("archive_identity_conflict");
+  if (!pyEquals(pyItem(binding, "projectId"), pyItem(payload, "projectId"))) fail10("archive_identity_conflict");
   const serialized = encoded(binding);
   const row2 = db.get("SELECT binding FROM conversations WHERE id=?", [identity]);
-  if (row2 !== null && row2.binding !== serialized) fail8("archive_identity_conflict");
+  if (row2 !== null && row2.binding !== serialized) fail10("archive_identity_conflict");
   if (row2 === null && create) db.run("INSERT INTO conversations VALUES (?,?)", [identity, serialized]);
   return identity;
 }
@@ -1873,7 +2009,7 @@ function append(db, payload) {
     return { conversationId: identity, sequence: latest.sequence, replay: true, contentSha256: latest.content_sha256 };
   }
   if (latest !== null && (pyEquals(pyItem(record, "kind"), "submission") || pyEquals(pyItem(loads(latest.record), "kind"), "submission"))) {
-    fail8("archive_identity_conflict");
+    fail10("archive_identity_conflict");
   }
   const inserted = db.run(`INSERT INTO entries
         (conversation_id,record_id,content_sha256,observed_at_utc,record)
@@ -1907,7 +2043,7 @@ function readPage(db, payload) {
   const requested = pyItem(payload, "revision");
   const revision2 = requested !== null ? requested : current;
   if (comparable(revision2) > current || comparable(revision2) < 0 || comparable(pyItem(payload, "after")) > revision2) {
-    fail8("archive_invalid_cursor");
+    fail10("archive_invalid_cursor");
   }
   const limit = comparable(pyItem(payload, "limit"));
   const rows = db.all(
@@ -1973,11 +2109,11 @@ var IMPORT_ROWS = {
 function importRows(db, payload) {
   const insert = IMPORT_ROWS[pyItem(payload, "table")];
   const rows = pyItem(payload, "rows");
-  if (insert === void 0 || !Array.isArray(rows) || rows.some((row2) => !isDict(row2))) fail8("archive_invalid_input");
+  if (insert === void 0 || !Array.isArray(rows) || rows.some((row2) => !isDict(row2))) fail10("archive_invalid_input");
   try {
     for (const row2 of rows) insert(db, row2);
   } catch (error) {
-    if (/constraint/iu.test(String(error?.message))) fail8("archive_identity_conflict");
+    if (/constraint/iu.test(String(error?.message))) fail10("archive_identity_conflict");
     throw error;
   }
   return { schemaVersion: 1, imported: rows.length };
@@ -1992,7 +2128,7 @@ var OPERATIONS = {
 };
 var MAX_PAYLOAD_BYTES = 2097152;
 function run(sqlite, database, command, payload) {
-  if (!COMMANDS.has(command) || !isDict(payload)) fail8("archive_invalid_input");
+  if (!COMMANDS.has(command) || !isDict(payload)) fail10("archive_invalid_input");
   const db = new NodeSqliteConnection(sqlite, database, { timeoutMs: 1e4 });
   try {
     db.exec("PRAGMA foreign_keys=ON");
@@ -2004,10 +2140,10 @@ function run(sqlite, database, command, payload) {
         initialize(db, pyItem(payload, "projectId"));
         result = { schemaVersion: 1, ready: true };
       } else {
-        if (db.value("PRAGMA user_version") !== 2) fail8("archive_unsupported_schema");
+        if (db.value("PRAGMA user_version") !== 2) fail10("archive_unsupported_schema");
         const meta = db.get("SELECT project_id FROM archive_meta");
         if (meta === null) throw new PythonError("TypeError", "'NoneType' object is not subscriptable");
-        if (!pyEquals(meta.project_id, pyItem(payload, "projectId"))) fail8("archive_identity_conflict");
+        if (!pyEquals(meta.project_id, pyItem(payload, "projectId"))) fail10("archive_identity_conflict");
         result = OPERATIONS[command](db, payload);
       }
     } catch (error) {
@@ -2045,7 +2181,7 @@ var NodeConversationArchiveBridge = class {
     let result;
     try {
       const request = jsonTransport(payload);
-      if (Buffer.byteLength(JSON.stringify(request), "utf8") + 1 > MAX_PAYLOAD_BYTES) fail8("archive_invalid_input");
+      if (Buffer.byteLength(JSON.stringify(request), "utf8") + 1 > MAX_PAYLOAD_BYTES) fail10("archive_invalid_input");
       result = run(this.sqlite, this.databasePath, command, request);
     } catch (error) {
       throw bridgeFailure(command, errorCode(error));
@@ -2066,7 +2202,7 @@ var MemoryFailure = class extends Error {
     this.code = code;
   }
 };
-function fail9(code) {
+function fail11(code) {
   throw new MemoryFailure(code);
 }
 var TABLES = ["memory_documents", "memory_operations", "memory_revisions", "memory_scopes", "memory_write_grants"];
@@ -2088,7 +2224,7 @@ function decodedStored(value) {
     if (typeof value !== "string") throw new TypeError("not text");
     return JSON.parse(value);
   } catch {
-    return fail9("memory_identity_conflict");
+    return fail11("memory_identity_conflict");
   }
 }
 function presentTables(db) {
@@ -2106,22 +2242,22 @@ function migrateV1(db) {
   db.exec("DROP TABLE memory_scopes");
   db.exec("ALTER TABLE memory_scopes_v2 RENAME TO memory_scopes");
   scopeIndexes(db);
-  if (db.get("PRAGMA foreign_key_check") !== null) fail9("memory_unsupported_schema");
+  if (db.get("PRAGMA foreign_key_check") !== null) fail11("memory_unsupported_schema");
   db.exec(`PRAGMA user_version=${SCHEMA_VERSION}`);
 }
 function initialize2(db) {
   const version2 = db.value("PRAGMA user_version");
-  if (![0, 1, SCHEMA_VERSION].includes(version2)) fail9("memory_unsupported_schema");
+  if (![0, 1, SCHEMA_VERSION].includes(version2)) fail11("memory_unsupported_schema");
   if (version2 === 1 || version2 === SCHEMA_VERSION) {
     const present = presentTables(db);
     if (present.size !== TABLES.length || TABLES.some((name) => !present.has(name))) {
-      fail9("memory_unsupported_schema");
+      fail11("memory_unsupported_schema");
     }
     if (version2 === 1) migrateV1(db);
     return;
   }
   const existing = db.get("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'");
-  if (existing !== null) fail9("memory_unsupported_schema");
+  if (existing !== null) fail11("memory_unsupported_schema");
   db.exec(scopesTable("memory_scopes"));
   scopeIndexes(db);
   db.exec(`CREATE TABLE memory_revisions (
@@ -2156,7 +2292,7 @@ function initialize2(db) {
 }
 function verifyHash(payload, fields) {
   const expected = valueSha256(Object.fromEntries(fields.map((field) => [field, pyItem(payload, field)])));
-  if (!pyEquals(payload.requestSha256 ?? null, expected)) fail9("memory_invalid_input");
+  if (!pyEquals(payload.requestSha256 ?? null, expected)) fail11("memory_invalid_input");
 }
 function operationReplay(db, operationId, kind2, requestSha256) {
   const row2 = db.get(
@@ -2165,21 +2301,21 @@ function operationReplay(db, operationId, kind2, requestSha256) {
   );
   if (row2 === null) return null;
   if (!pyEquals(row2.operation_kind, kind2) || !pyEquals(row2.request_sha256, requestSha256)) {
-    fail9("memory_operation_conflict");
+    fail11("memory_operation_conflict");
   }
   return decodedStored(row2.result_json);
 }
 function scopeRecord(db, scopeId) {
   const row2 = db.get(`SELECT ${SCOPE_COLUMNS} FROM memory_scopes WHERE scope_id=?`, [scopeId]);
-  if (row2 === null) fail9("memory_scope_not_found");
+  if (row2 === null) fail11("memory_scope_not_found");
   return row2;
 }
 function scopeDto(db, scope, requestedRevision = null) {
   const selected = requestedRevision === null ? scope.current_revision : requestedRevision;
   const row2 = db.get("SELECT content_sha256,entries_json,author,updated_at_utc FROM memory_revisions WHERE scope_id=? AND revision=?", [scope.scope_id, selected]);
-  if (row2 === null) fail9("memory_revision_not_found");
+  if (row2 === null) fail11("memory_revision_not_found");
   const entries = decodedStored(row2.entries_json);
-  if (!pyEquals(valueSha256(entries), row2.content_sha256)) fail9("memory_identity_conflict");
+  if (!pyEquals(valueSha256(entries), row2.content_sha256)) fail11("memory_identity_conflict");
   return {
     schemaVersion: 1,
     scopeId: scope.scope_id,
@@ -2202,9 +2338,9 @@ function createScope(db, payload) {
   verifyHash(payload, ["scopeId", "kind", "projectId", "quarterId", "title", "operationId"]);
   const replay = operationReplay(db, pyItem(payload, "operationId"), "create", pyItem(payload, "requestSha256"));
   if (replay !== null) return replay;
-  if (!pyEquals(pyItem(payload, "contentSha256"), valueSha256([]))) fail9("memory_invalid_input");
+  if (!pyEquals(pyItem(payload, "contentSha256"), valueSha256([]))) fail11("memory_invalid_input");
   if (db.get("SELECT 1 AS present FROM memory_scopes WHERE scope_id=?", [payload.scopeId]) !== null) {
-    fail9("memory_scope_conflict");
+    fail11("memory_scope_conflict");
   }
   let logical;
   if (pyEquals(payload.kind, "project")) {
@@ -2216,20 +2352,20 @@ function createScope(db, payload) {
     if (db.get(
       "SELECT 1 AS present FROM memory_scopes WHERE kind='quarter' AND project_id=? AND quarter_id=?",
       [payload.projectId, payload.quarterId]
-    ) === null) fail9("memory_scope_not_found");
+    ) === null) fail11("memory_scope_not_found");
     logical = null;
   } else {
     const parent = db.get(
       "SELECT 1 AS present FROM memory_scopes WHERE kind='project' AND project_id=?",
       [payload.projectId]
     );
-    if (parent === null) fail9("memory_project_scope_required");
+    if (parent === null) fail11("memory_project_scope_required");
     logical = db.get(
       "SELECT 1 AS present FROM memory_scopes WHERE kind='quarter' AND project_id=? AND quarter_id=?",
       [payload.projectId, payload.quarterId]
     );
   }
-  if (logical !== null) fail9("memory_scope_conflict");
+  if (logical !== null) fail11("memory_scope_conflict");
   try {
     db.run(
       "INSERT INTO memory_scopes VALUES (?,?,?,?,?,1)",
@@ -2240,7 +2376,7 @@ function createScope(db, payload) {
       [payload.scopeId, 1, pyItem(payload, "contentSha256"), encoded2([]), "system", pyItem(payload, "updatedAtUtc")]
     );
   } catch (error) {
-    if (isIntegrityError(error)) fail9("memory_scope_conflict");
+    if (isIntegrityError(error)) fail11("memory_scope_conflict");
     throw error;
   }
   const result = scopeDto(db, scopeRecord(db, payload.scopeId));
@@ -2263,7 +2399,7 @@ function dictValues(value) {
 var COPY_FIELDS = ["sourceProjectId", "targetProjectId", "targetProjectScopeId", "quarterScopeIds", "operationId"];
 function copyProject(db, payload) {
   verifyHash(payload, COPY_FIELDS);
-  if (pyEquals(payload.sourceProjectId, payload.targetProjectId)) fail9("memory_invalid_input");
+  if (pyEquals(payload.sourceProjectId, payload.targetProjectId)) fail11("memory_invalid_input");
   const replay = operationReplay(db, payload.operationId, "create", pyItem(payload, "requestSha256"));
   if (replay !== null) return replay;
   const rows = db.all(`SELECT ${SCOPE_COLUMNS} FROM memory_scopes WHERE project_id=? AND kind IN ('project','quarter') ORDER BY CASE kind WHEN 'project' THEN 0 ELSE 1 END, quarter_id,scope_id LIMIT 513`, [payload.sourceProjectId]);
@@ -2271,13 +2407,13 @@ function copyProject(db, payload) {
 }
 function copyProjectFrom(db, payload) {
   verifyHash(payload, COPY_FIELDS);
-  if (pyEquals(payload.sourceProjectId, payload.targetProjectId)) fail9("memory_invalid_input");
+  if (pyEquals(payload.sourceProjectId, payload.targetProjectId)) fail11("memory_invalid_input");
   const replay = operationReplay(db, payload.operationId, "create", pyItem(payload, "requestSha256"));
   if (replay !== null) return replay;
   const sources = pyItem(payload, "sources");
-  if (!Array.isArray(sources) || sources.length > 513) fail9("memory_invalid_input");
+  if (!Array.isArray(sources) || sources.length > 513) fail11("memory_invalid_input");
   return copyRows(db, payload, sources.map((source) => {
-    if (!isDict(source) || !["project", "quarter"].includes(source.kind) || !pyEquals(source.projectId, payload.sourceProjectId) || !pyEquals(valueSha256(source.entries), source.sha256)) fail9("memory_invalid_input");
+    if (!isDict(source) || !["project", "quarter"].includes(source.kind) || !pyEquals(source.projectId, payload.sourceProjectId) || !pyEquals(valueSha256(source.entries), source.sha256)) fail11("memory_invalid_input");
     return {
       row: { scope_id: source.scopeId, kind: source.kind, quarter_id: source.quarterId, title: source.title },
       source: () => source
@@ -2285,18 +2421,18 @@ function copyProjectFrom(db, payload) {
   }));
 }
 function copyRows(db, payload, rows) {
-  if (rows.length === 0 || rows[0].row.kind !== "project") fail9("memory_project_scope_required");
-  if (rows.length > 512 || rows.filter(({ row: row2 }) => row2.kind === "project").length !== 1) fail9("memory_limit_exceeded");
+  if (rows.length === 0 || rows[0].row.kind !== "project") fail11("memory_project_scope_required");
+  if (rows.length > 512 || rows.filter(({ row: row2 }) => row2.kind === "project").length !== 1) fail11("memory_limit_exceeded");
   if (db.get("SELECT 1 AS present FROM memory_scopes WHERE project_id=? LIMIT 1", [payload.targetProjectId]) !== null) {
-    fail9("memory_scope_conflict");
+    fail11("memory_scope_conflict");
   }
   const expectedQuarters = new Set(rows.filter(({ row: row2 }) => row2.kind === "quarter").map(({ row: row2 }) => pyHashKey(row2.quarter_id)));
-  if (!sameSet(pySet(payload.quarterScopeIds), expectedQuarters)) fail9("memory_invalid_input");
+  if (!sameSet(pySet(payload.quarterScopeIds), expectedQuarters)) fail11("memory_invalid_input");
   const targets = [payload.targetProjectScopeId, ...dictValues(payload.quarterScopeIds)];
-  if (new Set(targets.map(pyHashKey)).size !== targets.length) fail9("memory_invalid_input");
+  if (new Set(targets.map(pyHashKey)).size !== targets.length) fail11("memory_invalid_input");
   for (const target of targets) {
     if (db.get("SELECT 1 AS present FROM memory_scopes WHERE scope_id=?", [target]) !== null) {
-      fail9("memory_scope_conflict");
+      fail11("memory_scope_conflict");
     }
   }
   const copied = [];
@@ -2375,11 +2511,11 @@ function authorizeWrite(db, payload) {
     [payload.commandId]
   );
   if (row2 !== null) {
-    if (!pyEquals(row2.request_sha256, pyItem(payload, "requestSha256"))) fail9("memory_command_conflict");
+    if (!pyEquals(row2.request_sha256, pyItem(payload, "requestSha256"))) fail11("memory_command_conflict");
     return decodedStored(row2.result_json);
   }
   const scope = scopeRecord(db, payload.scopeId);
-  if (!pyEquals(scope.current_revision, payload.expectedRevision)) fail9("memory_revision_conflict");
+  if (!pyEquals(scope.current_revision, payload.expectedRevision)) fail11("memory_revision_conflict");
   const result = {
     schemaVersion: 1,
     commandId: payload.commandId,
@@ -2403,17 +2539,17 @@ function authorizeWrite(db, payload) {
 }
 function writeScope(db, payload) {
   verifyHash(payload, ["scopeId", "expectedRevision", "entries", "operationId", "commandId", "actorId"]);
-  if (!pyEquals(valueSha256(payload.entries), pyItem(payload, "contentSha256"))) fail9("memory_invalid_input");
+  if (!pyEquals(valueSha256(payload.entries), pyItem(payload, "contentSha256"))) fail11("memory_invalid_input");
   const replay = operationReplay(db, payload.operationId, "write", pyItem(payload, "requestSha256"));
   if (replay !== null) return replay;
   const grant = db.get("SELECT scope_id,expected_revision,content_sha256,consumed_operation_id FROM memory_write_grants WHERE command_id=?", [payload.commandId]);
-  if (grant === null) fail9("memory_authorization_required");
+  if (grant === null) fail11("memory_authorization_required");
   if (!pyEquals(grant.scope_id, payload.scopeId) || !pyEquals(grant.expected_revision, payload.expectedRevision) || !pyEquals(grant.content_sha256, payload.contentSha256)) {
-    fail9("memory_authorization_mismatch");
+    fail11("memory_authorization_mismatch");
   }
-  if (grant.consumed_operation_id !== null) fail9("memory_authorization_consumed");
+  if (grant.consumed_operation_id !== null) fail11("memory_authorization_consumed");
   const scope = scopeRecord(db, payload.scopeId);
-  if (!pyEquals(scope.current_revision, payload.expectedRevision)) fail9("memory_revision_conflict");
+  if (!pyEquals(scope.current_revision, payload.expectedRevision)) fail11("memory_revision_conflict");
   const nextRevision = pyIntOperand(payload.expectedRevision) + 1;
   try {
     db.run("INSERT INTO memory_revisions VALUES (?,?,?,?,?,?)", [
@@ -2428,14 +2564,14 @@ function writeScope(db, payload) {
       "UPDATE memory_scopes SET current_revision=? WHERE scope_id=? AND current_revision=?",
       [nextRevision, payload.scopeId, payload.expectedRevision]
     );
-    if (updated.changes !== 1) fail9("memory_revision_conflict");
+    if (updated.changes !== 1) fail11("memory_revision_conflict");
     const consumed = db.run(
       "UPDATE memory_write_grants SET consumed_operation_id=?,consumed_at_utc=? WHERE command_id=? AND consumed_operation_id IS NULL",
       [payload.operationId, payload.updatedAtUtc, payload.commandId]
     );
-    if (consumed.changes !== 1) fail9("memory_authorization_consumed");
+    if (consumed.changes !== 1) fail11("memory_authorization_consumed");
   } catch (error) {
-    if (isIntegrityError(error)) fail9("memory_revision_conflict");
+    if (isIntegrityError(error)) fail11("memory_revision_conflict");
     throw error;
   }
   const result = {
@@ -2465,12 +2601,12 @@ function readPair(db, payload) {
     `SELECT ${SCOPE_COLUMNS} FROM memory_scopes WHERE kind='quarter' AND project_id=? AND quarter_id=?`,
     [payload.projectId, pyItem(payload, "quarterId")]
   );
-  if (project === null || quarter === null) fail9("memory_scope_not_found");
+  if (project === null || quarter === null) fail11("memory_scope_not_found");
   return { project: scopeDto(db, project), quarter: scopeDto(db, quarter) };
 }
 function readScopeSet(db, payload) {
   const scopeIds = pyItem(payload, "scopeIds");
-  if (!Array.isArray(scopeIds) || scopeIds.length > 128) fail9("memory_invalid_input");
+  if (!Array.isArray(scopeIds) || scopeIds.length > 128) fail11("memory_invalid_input");
   const scopes = [];
   for (const scopeId of scopeIds) {
     const row2 = db.get(`SELECT ${SCOPE_COLUMNS} FROM memory_scopes WHERE scope_id=?`, [scopeId]);
@@ -2506,7 +2642,7 @@ var IMPORT_ROWS2 = {
     [row2.scopeId, row2.kind, row2.projectId, row2.quarterId, row2.title, row2.currentRevision]
   ),
   revisions: (db, row2) => {
-    if (!pyEquals(valueSha256(row2.entries), row2.contentSha256)) fail9("memory_identity_conflict");
+    if (!pyEquals(valueSha256(row2.entries), row2.contentSha256)) fail11("memory_identity_conflict");
     db.run(
       "INSERT INTO memory_revisions VALUES (?,?,?,?,?,?)",
       [row2.scopeId, row2.revision, row2.contentSha256, encoded2(row2.entries), row2.author, row2.updatedAtUtc]
@@ -2539,11 +2675,11 @@ var IMPORT_ROWS2 = {
 function importRows2(db, payload) {
   const insert = IMPORT_ROWS2[pyItem(payload, "table")];
   const rows = pyItem(payload, "rows");
-  if (insert === void 0 || !Array.isArray(rows) || rows.some((row2) => !isDict(row2))) fail9("memory_invalid_input");
+  if (insert === void 0 || !Array.isArray(rows) || rows.some((row2) => !isDict(row2))) fail11("memory_invalid_input");
   try {
     for (const row2 of rows) insert(db, row2);
   } catch (error) {
-    if (isIntegrityError(error)) fail9("memory_identity_conflict");
+    if (isIntegrityError(error)) fail11("memory_identity_conflict");
     throw error;
   }
   return { schemaVersion: 1, imported: rows.length };
@@ -2565,8 +2701,8 @@ var OPERATIONS2 = {
 };
 var MAX_PAYLOAD_BYTES2 = 524288;
 function run2(sqlite, database, command, payload) {
-  if (command !== "init" && !Object.hasOwn(OPERATIONS2, command)) fail9("memory_invalid_input");
-  if (!isDict(payload)) fail9("memory_invalid_input");
+  if (command !== "init" && !Object.hasOwn(OPERATIONS2, command)) fail11("memory_invalid_input");
+  if (!isDict(payload)) fail11("memory_invalid_input");
   const db = new NodeSqliteConnection(sqlite, database, { timeoutMs: 1e4 });
   try {
     db.exec(command === "init" ? "PRAGMA foreign_keys=OFF" : "PRAGMA foreign_keys=ON");
@@ -2580,7 +2716,7 @@ function run2(sqlite, database, command, payload) {
         initialize2(db);
         result = { schemaVersion: 1, ready: true };
       } else {
-        if (db.value("PRAGMA user_version") !== SCHEMA_VERSION) fail9("memory_unsupported_schema");
+        if (db.value("PRAGMA user_version") !== SCHEMA_VERSION) fail11("memory_unsupported_schema");
         result = OPERATIONS2[command](db, payload);
       }
     } catch (error) {
@@ -2620,7 +2756,7 @@ var NodeProjectMemoryBridge = class {
     let result;
     try {
       const request = jsonTransport(payload);
-      if (Buffer.byteLength(JSON.stringify(request), "utf8") + 1 > MAX_PAYLOAD_BYTES2) fail9("memory_limit_exceeded");
+      if (Buffer.byteLength(JSON.stringify(request), "utf8") + 1 > MAX_PAYLOAD_BYTES2) fail11("memory_limit_exceeded");
       result = run2(this.sqlite, this.databasePath, command, request);
     } catch (error) {
       throw bridgeFailure2(command, errorCode2(error));
@@ -2634,7 +2770,7 @@ var NodeProjectMemoryBridge = class {
 };
 
 // orchestrator/src/project-memory-split.mjs
-import { createHash as createHash7 } from "node:crypto";
+import { createHash as createHash9 } from "node:crypto";
 import path9 from "node:path";
 var CATALOG_KEY2 = "memory-agents-v1";
 var ARCHIVE_KEY2 = "memory-project-archive-v1";
@@ -2642,7 +2778,7 @@ var APPROVALS_PREFIX = "memory-document-approvals-v1:";
 var MERGED = /* @__PURE__ */ new Set([CATALOG_KEY2, ARCHIVE_KEY2]);
 var SCOPE_COMMANDS = /* @__PURE__ */ new Set(["read-scope", "authorize-write", "write"]);
 var MEMORY_FILE = "memory.sqlite";
-var sha2564 = (value) => createHash7("sha256").update(value).digest("hex");
+var sha2566 = (value) => createHash9("sha256").update(value).digest("hex");
 var compare3 = (a, b) => a < b ? -1 : a > b ? 1 : 0;
 function canonical(value) {
   if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
@@ -2766,10 +2902,15 @@ var SplitProjectMemoryBridge = class {
   async #documentOwner(key) {
     if (key.startsWith("workspace-")) {
       const hash2 = key.slice("workspace-".length);
-      for (const { projectId } of await mountedProjects(this.#root)) if (sha2564(projectId) === hash2) return projectId;
+      for (const { projectId } of await mountedProjects(this.#root)) if (sha2566(projectId) === hash2) return projectId;
       return WORLD_PROJECT_ID;
     }
-    for (const [prefix, keyOf] of [[ACTION_JOURNAL_PREFIX, journalKeyOf], [NAMES_PREFIX, namesKeyOf]]) {
+    for (const [prefix, keyOf] of [
+      [ACTION_JOURNAL_PREFIX, journalKeyOf],
+      [NAMES_PREFIX, namesKeyOf],
+      [TASKS_PREFIX, tasksKeyOf],
+      [CHANGES_PREFIX, changesKeyOf]
+    ]) {
       if (!key.startsWith(prefix)) continue;
       for (const { projectId } of await mountedProjects(this.#root)) if (keyOf(projectId) === key) return projectId;
       return WORLD_PROJECT_ID;
@@ -2777,7 +2918,7 @@ var SplitProjectMemoryBridge = class {
     if (key.startsWith(APPROVALS_PREFIX) || key.startsWith("agent-artifacts-")) {
       for (const agent of await this.#catalogAgents()) {
         if (typeof agent?.agentId !== "string") continue;
-        if (key === `${APPROVALS_PREFIX}${sha2564(agent.agentId).slice(0, 32)}` || key === artifactsKeyOf(agent.agentId)) {
+        if (key === `${APPROVALS_PREFIX}${sha2566(agent.agentId).slice(0, 32)}` || key === artifactsKeyOf(agent.agentId)) {
           return await this.#bridge(agent.projectId) === null ? WORLD_PROJECT_ID : agent.projectId;
         }
       }
@@ -2958,7 +3099,7 @@ var SplitProjectMemoryBridge = class {
           const set = await (await this.#bridge(projectId)).invoke(command, { ...payload, scopeIds });
           for (const scope of set.scopes) found.set(scope.scopeId, scope);
         }
-        return { schemaVersion: 1, scopes: (payload.scopeIds ?? []).filter((id3) => found.has(id3)).map((id3) => found.get(id3)) };
+        return { schemaVersion: 1, scopes: (payload.scopeIds ?? []).filter((id5) => found.has(id5)).map((id5) => found.get(id5)) };
       }
       case "read-document":
         if (MERGED.has(payload.key)) return this.#mergedRead(payload.key);
@@ -2966,7 +3107,7 @@ var SplitProjectMemoryBridge = class {
       case "compare-and-swap-document": {
         if (MERGED.has(payload.key)) return this.#mergedSwap(payload.key, payload.expectedRevision, payload.value);
         const bound2 = payload.value?.projectId;
-        if (payload.key.startsWith("workspace-") && typeof bound2 === "string" && payload.key === `workspace-${sha2564(bound2)}`) {
+        if (payload.key.startsWith("workspace-") && typeof bound2 === "string" && payload.key === `workspace-${sha2566(bound2)}`) {
           return (await this.#bridge(bound2, { create: true })).invoke(command, payload);
         }
         return (await this.#bridge(await this.#documentOwner(payload.key))).invoke(command, payload);
@@ -3069,7 +3210,7 @@ var LEGACY_DOCUMENT_KEYS = Object.freeze([
 var MAX_RECORD_BYTES = 4 * 1024;
 
 // orchestrator/src/provider-mutation-lease-store.mjs
-var ID5 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/;
+var ID7 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/;
 var MAX_CONTRACT_BYTES = 64 * 1024;
 var MAX_DOCUMENT_BYTES = 2 * 1024 * 1024;
 var MAX_SETTLEMENT_BYTES = 8 * 1024;
@@ -3080,11 +3221,11 @@ var ProviderMutationLeaseStoreError = class extends Error {
     this.code = code;
   }
 };
-function fail10(code, message) {
+function fail12(code, message) {
   throw new ProviderMutationLeaseStoreError(code, message);
 }
 function boundedId(value, label) {
-  if (typeof value !== "string" || !ID5.test(value)) fail10("invalid_identity", `${label} is invalid`);
+  if (typeof value !== "string" || !ID7.test(value)) fail12("invalid_identity", `${label} is invalid`);
   return value;
 }
 async function readBoundedJson(filePath, maximumBytes, { optional = false } = {}) {
@@ -3093,19 +3234,19 @@ async function readBoundedJson(filePath, maximumBytes, { optional = false } = {}
     metadata = await lstat6(filePath);
   } catch (error) {
     if (optional && error.code === "ENOENT") return null;
-    fail10("store_unavailable", `Cannot inspect ${path10.basename(filePath)}`);
+    fail12("store_unavailable", `Cannot inspect ${path10.basename(filePath)}`);
   }
   if (!metadata.isFile() || metadata.isSymbolicLink() || metadata.size > maximumBytes) {
-    fail10("invalid_store_file", `${path10.basename(filePath)} is not a bounded regular file`);
+    fail12("invalid_store_file", `${path10.basename(filePath)} is not a bounded regular file`);
   }
   const bytes = await readFile7(filePath);
-  if (bytes.byteLength > maximumBytes) fail10("invalid_store_file", "Store file changed beyond its bound");
+  if (bytes.byteLength > maximumBytes) fail12("invalid_store_file", "Store file changed beyond its bound");
   try {
     const parsed2 = JSON.parse(bytes.toString("utf8"));
     if (!parsed2 || typeof parsed2 !== "object" || Array.isArray(parsed2)) throw new Error("shape");
     return parsed2;
   } catch {
-    fail10("invalid_store_json", `${path10.basename(filePath)} is not valid JSON`);
+    fail12("invalid_store_json", `${path10.basename(filePath)} is not valid JSON`);
   }
 }
 async function resolveProviderMutationProjectId(controllerRoot) {
@@ -3128,10 +3269,10 @@ var MEMORY_SCHEMA2 = 2;
 var ARCHIVE_SCHEMAS2 = /* @__PURE__ */ new Set([null, 1, 2]);
 var MEMORY_CHUNK_BYTES = 384 * 1024;
 var ARCHIVE_CHUNK_BYTES = 1536 * 1024;
-function fail11(code, detail) {
+function fail13(code, detail) {
   throw new ProjectPackageError(code, detail);
 }
-var sha2565 = (value) => createHash8("sha256").update(value).digest("hex");
+var sha2567 = (value) => createHash10("sha256").update(value).digest("hex");
 var compare4 = (a, b) => a < b ? -1 : a > b ? 1 : 0;
 async function exists3(target) {
   return lstat7(target).then(() => true, (error) => {
@@ -3144,7 +3285,7 @@ async function readJson2(target, fallback = null) {
   try {
     return JSON.parse(await readFile8(target, "utf8"));
   } catch {
-    return fail11("package_invalid", path11.basename(target));
+    return fail13("package_invalid", path11.basename(target));
   }
 }
 async function filesUnder(folder) {
@@ -3152,7 +3293,7 @@ async function filesUnder(folder) {
   const walk = async (current, relative) => {
     for (const entry of await readdir5(current, { withFileTypes: true })) {
       const rel = relative ? `${relative}/${entry.name}` : entry.name;
-      if (entry.isSymbolicLink()) fail11("package_link_refused", rel);
+      if (entry.isSymbolicLink()) fail13("package_link_refused", rel);
       if (entry.isDirectory()) await walk(path11.join(current, entry.name), rel);
       else if (entry.isFile()) found.push(rel);
     }
@@ -3167,7 +3308,7 @@ function chunks(rows, limit) {
   let size = 0;
   for (const row2 of rows) {
     const bytes = Buffer.byteLength(JSON.stringify(row2), "utf8");
-    if (bytes > limit) fail11("package_record_too_large");
+    if (bytes > limit) fail13("package_record_too_large");
     if (current.length > 0 && size + bytes > limit) {
       result.push(current);
       current = [];
@@ -3183,7 +3324,7 @@ function packagePlacement(relative, paths) {
   const parts = relative.split("/");
   const rest = (from) => parts.slice(from);
   const join = (base, list) => {
-    if (list.length === 0 || list.some((part) => part === "" || part === "." || part === "..")) fail11("package_path_invalid", relative);
+    if (list.length === 0 || list.some((part) => part === "" || part === "." || part === "..")) fail13("package_path_invalid", relative);
     return path11.join(base, ...list);
   };
   switch (parts[0]) {
@@ -3209,24 +3350,24 @@ function packagePlacement(relative, paths) {
     default:
       break;
   }
-  return fail11("package_path_unknown", relative);
+  return fail13("package_path_unknown", relative);
 }
 async function readProjectPackage(packageDir) {
   const manifest = await readJson2(path11.join(packageDir, MANIFEST2));
-  if (manifest === null || manifest.schema !== PROJECT_PACKAGE_SCHEMA) fail11("package_invalid", MANIFEST2);
-  if (typeof manifest.projectId !== "string") fail11("package_invalid", "projectId");
-  if (manifest.storeSchemas?.memory !== MEMORY_SCHEMA2) fail11("package_schema_newer", `memory ${manifest.storeSchemas?.memory}`);
-  if (!ARCHIVE_SCHEMAS2.has(manifest.storeSchemas?.archive ?? null)) fail11("package_schema_newer", "archive");
+  if (manifest === null || manifest.schema !== PROJECT_PACKAGE_SCHEMA) fail13("package_invalid", MANIFEST2);
+  if (typeof manifest.projectId !== "string") fail13("package_invalid", "projectId");
+  if (manifest.storeSchemas?.memory !== MEMORY_SCHEMA2) fail13("package_schema_newer", `memory ${manifest.storeSchemas?.memory}`);
+  if (!ARCHIVE_SCHEMAS2.has(manifest.storeSchemas?.archive ?? null)) fail13("package_schema_newer", "archive");
   const listed = Object.keys(manifest.files ?? {}).sort(compare4);
   const present = (await filesUnder(path11.join(packageDir, DESK2))).map((name) => `${DESK2}/${name}`);
   if (listed.length !== present.length || listed.some((name, index) => name !== present[index])) {
-    fail11("package_files_mismatch");
+    fail13("package_files_mismatch");
   }
   const bytes = /* @__PURE__ */ new Map();
   for (const name of listed) {
     const content = await readFile8(path11.join(packageDir, ...name.split("/")));
     const expected = manifest.files[name];
-    if (content.length !== expected.bytes || sha2565(content) !== expected.sha256) fail11("package_hash_mismatch", name);
+    if (content.length !== expected.bytes || sha2567(content) !== expected.sha256) fail13("package_hash_mismatch", name);
     bytes.set(name.slice(DESK2.length + 1), content);
   }
   return { manifest, files: bytes };
@@ -3244,14 +3385,14 @@ async function storeIsEmpty(folder) {
 }
 async function importProject({ controllerRoot, packageDir, claudeConfigDir, dshHome }) {
   const root = await realpath4(controllerRoot);
-  if ((await resolveStoreLayout(root, { env: {} })).layout !== "split") fail11("store_layout_single", "migrate the instance first");
+  if ((await resolveStoreLayout(root, { env: {} })).layout !== "split") fail13("store_layout_single", "migrate the instance first");
   const sqlite = await loadNodeSqlite();
-  if (sqlite === null) fail11("memory_sqlite_required");
-  if (await gatewayRunning(path11.join(root, ".project-local", "application-gateway", "status.v1.json"))) fail11("gateway_running");
+  if (sqlite === null) fail13("memory_sqlite_required");
+  if (await gatewayRunning(path11.join(root, ".project-local", "application-gateway", "status.v1.json"))) fail13("gateway_running");
   const { manifest, files } = await readProjectPackage(path11.resolve(packageDir));
   const projectId = manifest.projectId;
   const instance = await readJson2(path11.join(root, "instance.json"), {});
-  if (typeof manifest.worldId === "string" && typeof instance?.instanceId === "string" && manifest.worldId !== instance.instanceId) fail11("package_world_mismatch", manifest.worldId);
+  if (typeof manifest.worldId === "string" && typeof instance?.instanceId === "string" && manifest.worldId !== instance.instanceId) fail13("package_world_mismatch", manifest.worldId);
   const controllerId = await resolveProviderMutationProjectId(root);
   const text3 = (name) => files.has(name) ? files.get(name).toString("utf8") : "";
   const memory = {
@@ -3261,10 +3402,10 @@ async function importProject({ controllerRoot, packageDir, claudeConfigDir, dshH
     operations: lines(text3("memory/operations.jsonl")),
     documents: lines(text3("memory/documents.jsonl"))
   };
-  if (memory.scopes.some((scope) => scope.projectId !== projectId)) fail11("package_invalid", "scope of another project");
+  if (memory.scopes.some((scope) => scope.projectId !== projectId)) fail13("package_invalid", "scope of another project");
   const conversations = lines(text3("archive/conversations.jsonl"));
   if (conversations.some((conversation) => conversation.binding?.projectId !== controllerId)) {
-    fail11("package_world_mismatch", "controller");
+    fail13("package_world_mismatch", "controller");
   }
   const entries = conversations.flatMap((conversation) => lines(
     text3(`archive/entries/${conversation.conversationId.replace(/^conversation:/u, "")}.jsonl`)
@@ -3273,7 +3414,7 @@ async function importProject({ controllerRoot, packageDir, claudeConfigDir, dshH
   const hint = manifest.workspace?.boundPathHint;
   if (typeof hint === "string" && typeof manifest.workspace?.workspaceKey === "string") {
     memory.documents.push({
-      key: `workspace-${sha2565(projectId)}`,
+      key: `workspace-${sha2567(projectId)}`,
       revision: 1,
       value: { projectId, workspacePath: hint, workspaceKey: manifest.workspace.workspaceKey }
     });
@@ -3281,7 +3422,7 @@ async function importProject({ controllerRoot, packageDir, claudeConfigDir, dshH
   }
   const existing = await projectStoreFolder(root, projectId);
   if (existing !== null && !(projectId === WORLD_PROJECT_ID && await storeIsEmpty(existing))) {
-    fail11("project_already_mounted", projectId);
+    fail13("project_already_mounted", projectId);
   }
   const paths = await instancePaths(root, projectId, { claudeConfigDir, dshHome });
   const writes = [];
@@ -3290,7 +3431,7 @@ async function importProject({ controllerRoot, packageDir, claudeConfigDir, dshH
     const target = packagePlacement(name, paths);
     if (target === null) continue;
     if (await exists3(target)) {
-      if (!(await readFile8(target)).equals(content)) fail11("import_file_conflict", target);
+      if (!(await readFile8(target)).equals(content)) fail13("import_file_conflict", target);
       identical += 1;
     } else {
       writes.push({ target, content });
@@ -3343,7 +3484,7 @@ async function importProject({ controllerRoot, packageDir, claudeConfigDir, dshH
 async function deskTree(folder) {
   const tree = /* @__PURE__ */ new Map();
   for (const name of await filesUnder(path11.join(folder, DESK2))) {
-    tree.set(name, sha2565(await readFile8(path11.join(folder, DESK2, ...name.split("/")))));
+    tree.set(name, sha2567(await readFile8(path11.join(folder, DESK2, ...name.split("/")))));
   }
   return tree;
 }
@@ -3401,13 +3542,13 @@ async function verifyDocuments(root) {
       if (row2.key === "memory-agents-v1") {
         const byId = (value) => new Map((value?.agents ?? []).map((agent) => [agent.agentId, canonical2(agent)]));
         const [a, b] = [byId(before), byId(after)];
-        same = a.size === b.size && [...a].every(([id3, text3]) => b.get(id3) === text3);
+        same = a.size === b.size && [...a].every(([id5, text3]) => b.get(id5) === text3);
       } else if (row2.key === "memory-project-archive-v1") {
         same = canonical2(before?.projects ?? {}) === canonical2(after?.projects ?? {}) && canonical2(before?.quarters ?? {}) === canonical2(after?.quarters ?? {});
       } else {
         same = canonical2(before) === canonical2(after);
       }
-      if (!same) fail11("store_layout_verify_failed", `document ${row2.key}`);
+      if (!same) fail13("store_layout_verify_failed", `document ${row2.key}`);
     }
   } finally {
     await split.close();
@@ -3430,11 +3571,11 @@ async function archiveTotals(root) {
 }
 async function migrateToSplitLayout({ controllerRoot, now = () => /* @__PURE__ */ new Date(), claudeConfigDir, dshHome }) {
   const root = await realpath4(controllerRoot);
-  if ((await resolveStoreLayout(root, { env: {} })).layout === "split") fail11("store_layout_already_split");
+  if ((await resolveStoreLayout(root, { env: {} })).layout === "split") fail13("store_layout_already_split");
   const sqlite = await loadNodeSqlite();
-  if (sqlite === null) fail11("memory_sqlite_required");
+  if (sqlite === null) fail13("memory_sqlite_required");
   const projectsFolder = projectsRoot(root);
-  if (await exists3(projectsFolder) && (await readdir5(projectsFolder)).length > 0) fail11("store_layout_projects_present", projectsFolder);
+  if (await exists3(projectsFolder) && (await readdir5(projectsFolder)).length > 0) fail13("store_layout_projects_present", projectsFolder);
   if (!await exists3(singleMemoryDatabase(root))) {
     await writeStoreLayoutMarker(root, { now });
     return { migrated: false, layout: "split", projects: [] };
@@ -3449,7 +3590,7 @@ async function migrateToSplitLayout({ controllerRoot, now = () => /* @__PURE__ *
   }
   const stamp3 = now().toISOString().replace(/[-:]/gu, "").replace(/\.\d+Z$/u, "Z");
   const work = path11.join(root, ".project-local", "backups", `split-${stamp3}`);
-  if (await exists3(work)) fail11("store_layout_backup_exists", work);
+  if (await exists3(work)) fail13("store_layout_backup_exists", work);
   const stores = path11.join(work, "stores");
   await mkdir7(stores, { recursive: true });
   for (const source of [
@@ -3483,7 +3624,7 @@ async function migrateToSplitLayout({ controllerRoot, now = () => /* @__PURE__ *
     entries: sum("entries")
   };
   for (const name of Object.keys(found)) {
-    if (found[name] !== expected[name]) fail11("store_layout_export_incomplete", `${name}: ${found[name]} of ${expected[name]}`);
+    if (found[name] !== expected[name]) fail13("store_layout_export_incomplete", `${name}: ${found[name]} of ${expected[name]}`);
   }
   await writeStoreLayoutMarker(root, { now });
   try {
@@ -3494,7 +3635,7 @@ async function migrateToSplitLayout({ controllerRoot, now = () => /* @__PURE__ *
       await exportProject({ controllerRoot: root, projectId: item.projectId, out: again, now, claudeConfigDir, dshHome });
       const [before, after] = [await deskTree(item.out), await deskTree(again)];
       const same = before.size === after.size && [...before].every(([name, hash2]) => after.get(name) === hash2);
-      if (!same) fail11("store_layout_verify_failed", item.projectId);
+      if (!same) fail13("store_layout_verify_failed", item.projectId);
     }
     found.documents = await verifyDocuments(root);
     const entries = [];
@@ -3527,12 +3668,12 @@ async function migrateToSplitLayout({ controllerRoot, now = () => /* @__PURE__ *
 }
 
 // orchestrator/src/instance-relocate.mjs
-import { createHash as createHash12, randomUUID as randomUUID9 } from "node:crypto";
+import { createHash as createHash14, randomUUID as randomUUID9 } from "node:crypto";
 import { copyFile as copyFile2, lstat as lstat10, mkdir as mkdir10, readdir as readdir7, readFile as readFile10, realpath as realpath8, rename as rename10, writeFile as writeFile8 } from "node:fs/promises";
 import path18 from "node:path";
 
 // orchestrator/src/project-memory-store.mjs
-import { createHash as createHash10 } from "node:crypto";
+import { createHash as createHash12 } from "node:crypto";
 import path15 from "node:path";
 import { lstat as lstat8, mkdir as mkdir8, realpath as realpath5 } from "node:fs/promises";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
@@ -3543,7 +3684,7 @@ import { spawn as spawn2 } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 // orchestrator/src/sqlite-control-store-node.mjs
-import { randomUUID as randomUUID7, createHash as createHash9 } from "node:crypto";
+import { randomUUID as randomUUID7, createHash as createHash11 } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, realpathSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path12 from "node:path";
@@ -5036,14 +5177,14 @@ function commandCompact(connection, payload) {
 `).join("");
   const uncompressed = utf8(lines2);
   writeFileSync(archivePath, gzipSync(uncompressed, { level: 9 }));
-  const compressedHash = createHash9("sha256").update(readFileSync(archivePath)).digest("hex");
+  const compressedHash = createHash11("sha256").update(readFileSync(archivePath)).digest("hex");
   const manifest = {
     schemaVersion: 1,
     archiveFile: fileName,
     eventCount: rows.length,
     firstSequence,
     lastSequence,
-    uncompressedSha256: createHash9("sha256").update(uncompressed).digest("hex"),
+    uncompressedSha256: createHash11("sha256").update(uncompressed).digest("hex"),
     compressedSha256: compressedHash,
     createdAtUtc: utcNow()
   };
@@ -5412,12 +5553,12 @@ var PersistentSqliteBridge = class {
       else request.reject(failure2(request.command, typeof answer.error === "string" ? answer.error : this.unavailableCode));
     }
   }
-  #settle(id3) {
-    const request = this.#pending.get(id3);
+  #settle(id5) {
+    const request = this.#pending.get(id5);
     if (!request) return;
     clearTimeout(request.timer);
-    this.#pending.delete(id3);
-    this.#order = this.#order.filter((entry) => entry !== id3);
+    this.#pending.delete(id5);
+    this.#order = this.#order.filter((entry) => entry !== id5);
     this.#hold();
   }
   /** The process keeps Node alive only while a call waits for it. */
@@ -5433,9 +5574,9 @@ var PersistentSqliteBridge = class {
     }
   }
   #failAll(reason) {
-    for (const id3 of [...this.#order]) {
-      const request = this.#pending.get(id3);
-      this.#settle(id3);
+    for (const id5 of [...this.#order]) {
+      const request = this.#pending.get(id5);
+      this.#settle(id5);
       request?.reject(failure2(request.command, this.unavailableCode, `${reason}${this.#stderr ? `: ${this.#stderr.trim().slice(-300)}` : ""}`));
     }
   }
@@ -5458,13 +5599,13 @@ var PersistentSqliteBridge = class {
         reject(failure2(command, this.unavailableCode, error?.message ?? "spawn_failed"));
         return;
       }
-      const id3 = this.#nextId++;
+      const id5 = this.#nextId++;
       const timer = setTimeout(() => this.#kill(`timeout after ${this.timeoutMs} ms`), this.timeoutMs);
       timer.unref?.();
-      this.#pending.set(id3, { command, resolve, reject, timer });
-      this.#order.push(id3);
+      this.#pending.set(id5, { command, resolve, reject, timer });
+      this.#order.push(id5);
       this.#hold();
-      child.stdin.write(`${JSON.stringify({ id: id3, command, payload })}
+      child.stdin.write(`${JSON.stringify({ id: id5, command, payload })}
 `, "utf8");
     });
   }
@@ -5526,7 +5667,7 @@ var PROJECT_MEMORY_LIMITS = Object.freeze({
   listScopes: 512,
   documentBytes: 256 * 1024
 });
-var ID6 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/;
+var ID8 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/;
 var SHA256 = /^[a-f0-9]{64}$/;
 var FORBIDDEN_CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u;
 var SENSITIVE_TEXT = Object.freeze([
@@ -5560,16 +5701,16 @@ var ProjectMemoryStoreError = class extends Error {
     this.code = code;
   }
 };
-function fail12(code = "memory_invalid_input") {
+function fail14(code = "memory_invalid_input") {
   throw new ProjectMemoryStoreError(code);
 }
 function exact(value, required, optional = []) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) fail12();
+  if (!value || typeof value !== "object" || Array.isArray(value)) fail14();
   const allowed = /* @__PURE__ */ new Set([...required, ...optional]);
-  if (required.some((field) => !Object.hasOwn(value, field)) || Object.keys(value).some((field) => !allowed.has(field))) fail12();
+  if (required.some((field) => !Object.hasOwn(value, field)) || Object.keys(value).some((field) => !allowed.has(field))) fail14();
 }
 function identifier(value) {
-  if (typeof value !== "string" || !ID6.test(value)) fail12();
+  if (typeof value !== "string" || !ID8.test(value)) fail14();
   return value;
 }
 function hasUnpairedSurrogate(value) {
@@ -5586,8 +5727,8 @@ function hasUnpairedSurrogate(value) {
   return false;
 }
 function boundedText2(value, { allowEmpty = false, maximumBytes = 65536 } = {}) {
-  if (typeof value !== "string" || !allowEmpty && value.length === 0 || FORBIDDEN_CONTROL.test(value) || hasUnpairedSurrogate(value) || SENSITIVE_TEXT.some((pattern) => pattern.test(value))) fail12();
-  if (Buffer.byteLength(value, "utf8") > maximumBytes) fail12("memory_limit_exceeded");
+  if (typeof value !== "string" || !allowEmpty && value.length === 0 || FORBIDDEN_CONTROL.test(value) || hasUnpairedSurrogate(value) || SENSITIVE_TEXT.some((pattern) => pattern.test(value))) fail14();
+  if (Buffer.byteLength(value, "utf8") > maximumBytes) fail14("memory_limit_exceeded");
   return value;
 }
 function canonicalValue(value) {
@@ -5601,18 +5742,18 @@ function canonicalJson2(value) {
   return JSON.stringify(canonicalValue(value));
 }
 function hash(value) {
-  return createHash10("sha256").update(canonicalJson2(value), "utf8").digest("hex");
+  return createHash12("sha256").update(canonicalJson2(value), "utf8").digest("hex");
 }
 function revision(value, { allowZero = false, incrementable = false } = {}) {
-  if (!Number.isSafeInteger(value) || value < (allowZero ? 0 : 1) || incrementable && value >= Number.MAX_SAFE_INTEGER) fail12();
+  if (!Number.isSafeInteger(value) || value < (allowZero ? 0 : 1) || incrementable && value >= Number.MAX_SAFE_INTEGER) fail14();
   return value;
 }
 function timestamp(value) {
-  if (typeof value !== "string" || value.length > 32 || !value.endsWith("Z") || !Number.isFinite(Date.parse(value))) fail12("memory_unavailable");
+  if (typeof value !== "string" || value.length > 32 || !value.endsWith("Z") || !Number.isFinite(Date.parse(value))) fail14("memory_unavailable");
   return value;
 }
 function normalizeEntries(value) {
-  if (!Array.isArray(value) || value.length > PROJECT_MEMORY_LIMITS.entries) fail12();
+  if (!Array.isArray(value) || value.length > PROJECT_MEMORY_LIMITS.entries) fail14();
   const ids = /* @__PURE__ */ new Set();
   const entries = value.map((entry) => {
     exact(entry, ["id", "title", "text"]);
@@ -5621,19 +5762,19 @@ function normalizeEntries(value) {
       title: boundedText2(entry.title, { maximumBytes: 512 }),
       text: boundedText2(entry.text, { allowEmpty: true })
     };
-    if (ids.has(normalized.id)) fail12();
+    if (ids.has(normalized.id)) fail14();
     ids.add(normalized.id);
     return normalized;
   });
   if (Buffer.byteLength(canonicalJson2(entries), "utf8") > PROJECT_MEMORY_LIMITS.contentBytes) {
-    fail12("memory_limit_exceeded");
+    fail14("memory_limit_exceeded");
   }
   return entries;
 }
 var PROJECT_MEMORY_SCOPE_KINDS = Object.freeze(["project", "quarter", "agent"]);
 function normalizeScope(value) {
   exact(value, ["scopeId", "kind", "projectId", "quarterId", "title", "operationId"]);
-  if (!PROJECT_MEMORY_SCOPE_KINDS.includes(value.kind)) fail12();
+  if (!PROJECT_MEMORY_SCOPE_KINDS.includes(value.kind)) fail14();
   const scope = {
     scopeId: identifier(value.scopeId),
     kind: value.kind,
@@ -5642,34 +5783,34 @@ function normalizeScope(value) {
     title: boundedText2(value.title, { maximumBytes: 512 }),
     operationId: identifier(value.operationId)
   };
-  if (scope.kind === "project" !== (scope.quarterId === null)) fail12();
+  if (scope.kind === "project" !== (scope.quarterId === null)) fail14();
   return scope;
 }
 function validateJson(value, state = { depth: 0, nodes: 0 }) {
   state.nodes += 1;
-  if (state.depth > 24 || state.nodes > 8192) fail12("memory_limit_exceeded");
+  if (state.depth > 24 || state.nodes > 8192) fail14("memory_limit_exceeded");
   if (value === null || typeof value === "boolean") return value;
   if (typeof value === "number") {
-    if (!Number.isFinite(value)) fail12();
+    if (!Number.isFinite(value)) fail14();
     return Object.is(value, -0) ? 0 : value;
   }
   if (typeof value === "string") return boundedText2(value, {
     allowEmpty: true,
     maximumBytes: PROJECT_MEMORY_LIMITS.documentBytes
   });
-  if (!value || typeof value !== "object") fail12();
+  if (!value || typeof value !== "object") fail14();
   const childState = { ...state, depth: state.depth + 1 };
   if (Array.isArray(value)) {
-    if (value.length > 2048) fail12("memory_limit_exceeded");
+    if (value.length > 2048) fail14("memory_limit_exceeded");
     const result2 = value.map((item) => validateJson(item, childState));
     state.nodes = childState.nodes;
     return result2;
   }
   const keys = Object.keys(value);
-  if (Object.getPrototypeOf(value) !== Object.prototype || keys.length > 512) fail12();
+  if (Object.getPrototypeOf(value) !== Object.prototype || keys.length > 512) fail14();
   const result = {};
   for (const key of keys) {
-    if (!key || Buffer.byteLength(key, "utf8") > 256 || FORBIDDEN_CONTROL.test(key)) fail12();
+    if (!key || Buffer.byteLength(key, "utf8") > 256 || FORBIDDEN_CONTROL.test(key)) fail14();
     result[key] = validateJson(value[key], childState);
   }
   state.nodes = childState.nodes;
@@ -5678,7 +5819,7 @@ function validateJson(value, state = { depth: 0, nodes: 0 }) {
 function normalizeDocumentValue(value) {
   const normalized = validateJson(value);
   if (Buffer.byteLength(canonicalJson2(normalized), "utf8") > PROJECT_MEMORY_LIMITS.documentBytes) {
-    fail12("memory_limit_exceeded");
+    fail14("memory_limit_exceeded");
   }
   return normalized;
 }
@@ -5695,13 +5836,13 @@ function validateMetadata(value) {
     "author",
     "updatedAtUtc"
   ]);
-  if (value.schemaVersion !== 1 || !PROJECT_MEMORY_SCOPE_KINDS.includes(value.kind) || value.kind === "project" !== (value.quarterId === null)) fail12("memory_unavailable");
+  if (value.schemaVersion !== 1 || !PROJECT_MEMORY_SCOPE_KINDS.includes(value.kind) || value.kind === "project" !== (value.quarterId === null)) fail14("memory_unavailable");
   identifier(value.scopeId);
   identifier(value.projectId);
   if (value.quarterId !== null) identifier(value.quarterId);
   boundedText2(value.title, { maximumBytes: 512 });
   revision(value.revision);
-  if (typeof value.sha256 !== "string" || !SHA256.test(value.sha256)) fail12("memory_unavailable");
+  if (typeof value.sha256 !== "string" || !SHA256.test(value.sha256)) fail14("memory_unavailable");
   identifier(value.author);
   timestamp(value.updatedAtUtc);
   return structuredClone(value);
@@ -5722,7 +5863,7 @@ function validateScopeDto(value) {
   ]);
   const metadata = validateMetadata(Object.fromEntries(Object.entries(value).filter(([key]) => key !== "entries")));
   const entries = normalizeEntries(value.entries);
-  if (hash(entries) !== metadata.sha256) fail12("memory_unavailable");
+  if (hash(entries) !== metadata.sha256) fail14("memory_unavailable");
   return { ...metadata, entries };
 }
 function validateWriteReceipt(value) {
@@ -5737,12 +5878,12 @@ function validateWriteReceipt(value) {
     "author",
     "updatedAtUtc"
   ]);
-  if (value.schemaVersion !== 1) fail12("memory_unavailable");
+  if (value.schemaVersion !== 1) fail14("memory_unavailable");
   for (const field of ["operationId", "commandId", "scopeId", "author"]) identifier(value[field]);
   revision(value.previousRevision);
   revision(value.revision);
   if (value.revision !== value.previousRevision + 1 || !SHA256.test(value.sha256)) {
-    fail12("memory_unavailable");
+    fail14("memory_unavailable");
   }
   timestamp(value.updatedAtUtc);
   return structuredClone(value);
@@ -5757,7 +5898,7 @@ function validateGrant(value) {
     "requestedBy",
     "authorizedAtUtc"
   ]);
-  if (value.schemaVersion !== 1 || !SHA256.test(value.contentSha256)) fail12("memory_unavailable");
+  if (value.schemaVersion !== 1 || !SHA256.test(value.contentSha256)) fail14("memory_unavailable");
   for (const field of ["commandId", "scopeId", "requestedBy"]) identifier(value[field]);
   revision(value.expectedRevision);
   timestamp(value.authorizedAtUtc);
@@ -5768,7 +5909,7 @@ function nowUtc2(now) {
   try {
     value = now().toISOString();
   } catch {
-    fail12("memory_unavailable");
+    fail14("memory_unavailable");
   }
   return timestamp(value);
 }
@@ -5776,12 +5917,12 @@ function bridgeValue(validate) {
   try {
     return validate();
   } catch {
-    fail12("memory_unavailable");
+    fail14("memory_unavailable");
   }
 }
 var ProjectMemoryStore = class {
   constructor({ store, now = () => /* @__PURE__ */ new Date() }) {
-    if (!store || typeof store.invoke !== "function" || typeof now !== "function") fail12();
+    if (!store || typeof store.invoke !== "function" || typeof now !== "function") fail14();
     this.store = store;
     this.now = now;
   }
@@ -5794,7 +5935,7 @@ var ProjectMemoryStore = class {
         code = JSON.parse(error.stderr.trim().split(/\r?\n/u).at(-1)).error;
       } catch {
       }
-      fail12(BRIDGE_ERRORS.has(code) ? code : "memory_unavailable");
+      fail14(BRIDGE_ERRORS.has(code) ? code : "memory_unavailable");
     }
   }
   async createScope(value) {
@@ -5818,11 +5959,11 @@ var ProjectMemoryStore = class {
     ]);
     const sourceProjectId = identifier(value.sourceProjectId);
     const targetProjectId = identifier(value.targetProjectId);
-    if (sourceProjectId === targetProjectId) fail12();
-    if (!value.quarterScopeIds || typeof value.quarterScopeIds !== "object" || Array.isArray(value.quarterScopeIds) || Object.keys(value.quarterScopeIds).length > PROJECT_MEMORY_LIMITS.listScopes - 1) fail12();
+    if (sourceProjectId === targetProjectId) fail14();
+    if (!value.quarterScopeIds || typeof value.quarterScopeIds !== "object" || Array.isArray(value.quarterScopeIds) || Object.keys(value.quarterScopeIds).length > PROJECT_MEMORY_LIMITS.listScopes - 1) fail14();
     const quarterScopeIds = Object.fromEntries(Object.entries(value.quarterScopeIds).map(([quarterId, scopeId]) => [identifier(quarterId), identifier(scopeId)]));
     const scopeIds = [identifier(value.targetProjectScopeId), ...Object.values(quarterScopeIds)];
-    if (new Set(scopeIds).size !== scopeIds.length) fail12();
+    if (new Set(scopeIds).size !== scopeIds.length) fail14();
     const request = {
       sourceProjectId,
       targetProjectId,
@@ -5845,7 +5986,7 @@ var ProjectMemoryStore = class {
         "scopes",
         "copiedAtUtc"
       ]);
-      if (result.schemaVersion !== 1 || result.outcome !== "complete" || result.sourceProjectId !== sourceProjectId || result.targetProjectId !== targetProjectId || result.operationId !== request.operationId || !Array.isArray(result.scopes) || result.scopes.length !== scopeIds.length) fail12("memory_unavailable");
+      if (result.schemaVersion !== 1 || result.outcome !== "complete" || result.sourceProjectId !== sourceProjectId || result.targetProjectId !== targetProjectId || result.operationId !== request.operationId || !Array.isArray(result.scopes) || result.scopes.length !== scopeIds.length) fail14("memory_unavailable");
       for (const scope of result.scopes) {
         exact(scope, [
           "sourceScopeId",
@@ -5858,7 +5999,7 @@ var ProjectMemoryStore = class {
           "targetSha256"
         ]);
         identifier(scope.sourceScopeId);
-        if (!scopeIds.includes(identifier(scope.targetScopeId)) || !["project", "quarter"].includes(scope.kind) || scope.quarterId !== null && !Object.hasOwn(quarterScopeIds, identifier(scope.quarterId)) || !Number.isInteger(scope.sourceRevision) || scope.sourceRevision < 1 || scope.targetRevision !== 1 || !SHA256.test(scope.sourceSha256) || scope.sourceSha256 !== scope.targetSha256) fail12("memory_unavailable");
+        if (!scopeIds.includes(identifier(scope.targetScopeId)) || !["project", "quarter"].includes(scope.kind) || scope.quarterId !== null && !Object.hasOwn(quarterScopeIds, identifier(scope.quarterId)) || !Number.isInteger(scope.sourceRevision) || scope.sourceRevision < 1 || scope.targetRevision !== 1 || !SHA256.test(scope.sourceSha256) || scope.sourceSha256 !== scope.targetSha256) fail14("memory_unavailable");
       }
       return result;
     });
@@ -5887,7 +6028,7 @@ var ProjectMemoryStore = class {
     });
     try {
       exact(result, ["schemaVersion", "scopes", "truncated"]);
-      if (result.schemaVersion !== 1 || !Array.isArray(result.scopes) || result.scopes.length > PROJECT_MEMORY_LIMITS.listScopes || typeof result.truncated !== "boolean") fail12("memory_unavailable");
+      if (result.schemaVersion !== 1 || !Array.isArray(result.scopes) || result.scopes.length > PROJECT_MEMORY_LIMITS.listScopes || typeof result.truncated !== "boolean") fail14("memory_unavailable");
       return {
         schemaVersion: 1,
         scopes: result.scopes.map(validateMetadata),
@@ -5895,7 +6036,7 @@ var ProjectMemoryStore = class {
       };
     } catch (error) {
       if (error instanceof ProjectMemoryStoreError && error.code === "memory_unavailable") throw error;
-      fail12("memory_unavailable");
+      fail14("memory_unavailable");
     }
   }
   async authorizeWrite(value) {
@@ -5942,15 +6083,15 @@ var ProjectMemoryStore = class {
   /** Current versions of the named scopes that exist, in one store call. */
   async readScopes(value) {
     exact(value, ["scopeIds"]);
-    if (!Array.isArray(value.scopeIds) || value.scopeIds.length > 128) fail12();
+    if (!Array.isArray(value.scopeIds) || value.scopeIds.length > 128) fail14();
     const scopeIds = [...new Set(value.scopeIds.map(identifier))];
     if (scopeIds.length === 0) return [];
     const result = await this.#invoke("read-scope-set", { scopeIds });
     return bridgeValue(() => {
       exact(result, ["schemaVersion", "scopes"]);
-      if (result.schemaVersion !== 1 || !Array.isArray(result.scopes)) fail12("memory_unavailable");
+      if (result.schemaVersion !== 1 || !Array.isArray(result.scopes)) fail14("memory_unavailable");
       const scopes = result.scopes.map(validateScopeDto);
-      if (scopes.some((scope) => !scopeIds.includes(scope.scopeId))) fail12("memory_unavailable");
+      if (scopes.some((scope) => !scopeIds.includes(scope.scopeId))) fail14("memory_unavailable");
       return scopes;
     });
   }
@@ -5966,11 +6107,11 @@ var ProjectMemoryStore = class {
         project: validateScopeDto(result.project),
         quarter: validateScopeDto(result.quarter)
       };
-      if (pair.project.kind !== "project" || pair.quarter.kind !== "quarter" || pair.project.projectId !== value.projectId || pair.quarter.projectId !== value.projectId || pair.quarter.quarterId !== value.quarterId) fail12("memory_unavailable");
+      if (pair.project.kind !== "project" || pair.quarter.kind !== "quarter" || pair.project.projectId !== value.projectId || pair.quarter.projectId !== value.projectId || pair.quarter.quarterId !== value.quarterId) fail14("memory_unavailable");
       return pair;
     } catch (error) {
       if (error instanceof ProjectMemoryStoreError && error.code === "memory_unavailable") throw error;
-      fail12("memory_unavailable");
+      fail14("memory_unavailable");
     }
   }
   async readDocument(value) {
@@ -5982,7 +6123,7 @@ var ProjectMemoryStore = class {
       const normalized = normalizeDocumentValue(result.value);
       return { revision: revision(result.revision), value: normalized };
     } catch {
-      fail12("memory_unavailable");
+      fail14("memory_unavailable");
     }
   }
   async compareAndSwapDocument(value) {
@@ -5992,7 +6133,7 @@ var ProjectMemoryStore = class {
       expectedRevision: revision(value.expectedRevision, { allowZero: true, incrementable: true }),
       value: normalizeDocumentValue(value.value)
     });
-    if (typeof result !== "boolean") fail12("memory_unavailable");
+    if (typeof result !== "boolean") fail14("memory_unavailable");
     return result;
   }
   transactionDocument(value) {
@@ -6000,38 +6141,38 @@ var ProjectMemoryStore = class {
   }
   async initialize() {
     const result = await this.#invoke("init");
-    if (result?.schemaVersion !== 1 || result?.ready !== true || Object.keys(result).length !== 2) fail12("memory_unavailable");
+    if (result?.schemaVersion !== 1 || result?.ready !== true || Object.keys(result).length !== 2) fail14("memory_unavailable");
   }
 };
 async function checkedBridgePath(value) {
-  if (typeof value !== "string" || !value) fail12();
+  if (typeof value !== "string" || !value) fail14();
   const resolved = path15.resolve(value);
   const info = await lstat8(resolved).catch(() => null);
-  if (info === null || !info.isFile() || info.isSymbolicLink()) fail12("memory_identity_conflict");
+  if (info === null || !info.isFile() || info.isSymbolicLink()) fail14("memory_identity_conflict");
   const canonical3 = await realpath5(resolved);
-  if (path15.relative(resolved, canonical3) !== "") fail12("memory_identity_conflict");
+  if (path15.relative(resolved, canonical3) !== "") fail14("memory_identity_conflict");
   return canonical3;
 }
 async function openSplitMemoryBridge(controllerRoot, sqliteBackend) {
-  if (typeof controllerRoot !== "string" || !controllerRoot) fail12();
+  if (typeof controllerRoot !== "string" || !controllerRoot) fail14();
   let layout;
   try {
     layout = await resolveStoreLayout(controllerRoot);
   } catch {
-    fail12("memory_identity_conflict");
+    fail14("memory_identity_conflict");
   }
   if (layout.layout !== "split") return null;
   const { backend, sqlite } = await resolveSqliteBackend({ backend: sqliteBackend });
-  if (backend !== "node") fail12("memory_sqlite_required");
+  if (backend !== "node") fail14("memory_sqlite_required");
   return new SplitProjectMemoryBridge({ controllerRoot: layout.root, sqlite });
 }
 async function checkedDatabaseDirectory(controllerRoot) {
-  if (typeof controllerRoot !== "string" || !controllerRoot) fail12();
+  if (typeof controllerRoot !== "string" || !controllerRoot) fail14();
   let root;
   try {
     root = await realpath5(controllerRoot);
   } catch {
-    fail12("memory_identity_conflict");
+    fail14("memory_identity_conflict");
   }
   let directory = root;
   for (const segment of [".project-local", "orchestration", "project-memory"]) {
@@ -6042,12 +6183,12 @@ async function checkedDatabaseDirectory(controllerRoot) {
     });
     if (existing === null) await mkdir8(candidate);
     else if (!existing.isDirectory() || existing.isSymbolicLink()) {
-      fail12("memory_identity_conflict");
+      fail14("memory_identity_conflict");
     }
     const canonical3 = await realpath5(candidate);
     const relative = path15.relative(root, canonical3);
     if (path15.isAbsolute(relative) || relative === ".." || relative.startsWith(`..${path15.sep}`)) {
-      fail12("memory_identity_conflict");
+      fail14("memory_identity_conflict");
     }
     directory = canonical3;
   }
@@ -6060,7 +6201,7 @@ async function rejectLinkedDatabase(databasePath) {
       return null;
     });
     if (info !== null && (!info.isFile() || info.isSymbolicLink())) {
-      fail12("memory_identity_conflict");
+      fail14("memory_identity_conflict");
     }
   }
 }
@@ -6071,11 +6212,11 @@ async function createProjectMemoryStore({
   bridgePath = fileURLToPath2(new URL("project-memory-store.py", import.meta.url)),
   sqliteBackend
 }) {
-  if (typeof now !== "function") fail12();
+  if (typeof now !== "function") fail14();
   try {
     sqliteBackendOption(sqliteBackend);
   } catch {
-    fail12();
+    fail14();
   }
   const split = await openSplitMemoryBridge(controllerRoot, sqliteBackend);
   if (split !== null) {
@@ -6114,30 +6255,30 @@ import path17 from "node:path";
 // orchestrator/src/project-workspace-binding.mjs
 import path16 from "node:path";
 import { stat, realpath as realpath6 } from "node:fs/promises";
-import { createHash as createHash11 } from "node:crypto";
-function fail13(code) {
+import { createHash as createHash13 } from "node:crypto";
+function fail15(code) {
   throw Object.assign(new Error(code), { code });
 }
 function workspaceDocumentKey(projectId) {
   if (typeof projectId !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/.test(projectId)) {
-    fail13("memory_invalid_input");
+    fail15("memory_invalid_input");
   }
-  return `workspace-${createHash11("sha256").update(projectId).digest("hex")}`;
+  return `workspace-${createHash13("sha256").update(projectId).digest("hex")}`;
 }
 async function workspaceIdentity(workspacePath) {
-  if (typeof workspacePath !== "string" || !path16.isAbsolute(workspacePath)) fail13("memory_invalid_input");
+  if (typeof workspacePath !== "string" || !path16.isAbsolute(workspacePath)) fail15("memory_invalid_input");
   const root = await realpath6(workspacePath);
-  if (!(await stat(root)).isDirectory()) fail13("memory_invalid_input");
+  if (!(await stat(root)).isDirectory()) fail15("memory_invalid_input");
   const identity = process.platform === "win32" ? root.toLowerCase() : root;
-  return { workspacePath: root, workspaceKey: createHash11("sha256").update(identity).digest("hex") };
+  return { workspacePath: root, workspaceKey: createHash13("sha256").update(identity).digest("hex") };
 }
 async function bindProjectWorkspace(store, input) {
-  if (!input || Object.keys(input).sort().join() !== "projectId,workspacePath") fail13("memory_invalid_input");
+  if (!input || Object.keys(input).sort().join() !== "projectId,workspacePath") fail15("memory_invalid_input");
   const documentKey = workspaceDocumentKey(input.projectId);
   const value = { projectId: input.projectId, ...await workspaceIdentity(input.workspacePath) };
   const existing = await store.readDocument({ key: documentKey });
   if (existing) {
-    if (existing.value.workspaceKey !== value.workspaceKey) fail13("memory_workspace_conflict");
+    if (existing.value.workspaceKey !== value.workspaceKey) fail15("memory_workspace_conflict");
   } else if (!await store.compareAndSwapDocument({ key: documentKey, expectedRevision: 0, value })) {
     return bindProjectWorkspace(store, input);
   }
@@ -6145,7 +6286,7 @@ async function bindProjectWorkspace(store, input) {
 }
 var AGENTS_KEY = "memory-agents-v1";
 async function rebindProjectWorkspace(store, input) {
-  if (!input || Object.keys(input).sort().join() !== "projectId,workspacePath") fail13("memory_invalid_input");
+  if (!input || Object.keys(input).sort().join() !== "projectId,workspacePath") fail15("memory_invalid_input");
   const documentKey = workspaceDocumentKey(input.projectId);
   const value = { projectId: input.projectId, ...await workspaceIdentity(input.workspacePath) };
   const existing = await store.readDocument({ key: documentKey });
@@ -6155,14 +6296,14 @@ async function rebindProjectWorkspace(store, input) {
   }
   const agents = ((await store.readDocument({ key: AGENTS_KEY }))?.value?.agents ?? []).filter((agent) => agent.projectId === input.projectId);
   const worked = (agent) => Array.isArray(agent.operations) && agent.operations.length > 0;
-  if (agents.some((agent) => agent.state !== "archived" || worked(agent))) fail13("memory_workspace_in_use");
+  if (agents.some((agent) => agent.state !== "archived" || worked(agent))) fail15("memory_workspace_in_use");
   if (!await store.compareAndSwapDocument({ key: documentKey, expectedRevision: existing.revision, value })) {
-    fail13("memory_contention");
+    fail15("memory_contention");
   }
   return { projectId: input.projectId, workspaceKey: value.workspaceKey, configured: true, changed: true };
 }
 async function readProjectWorkspace(store, input) {
-  if (!input || Object.keys(input).join() !== "projectId") fail13("memory_invalid_input");
+  if (!input || Object.keys(input).join() !== "projectId") fail15("memory_invalid_input");
   const record = await store.readDocument({ key: workspaceDocumentKey(input.projectId) });
   if (!record) return { projectId: input.projectId, configured: false };
   let available = true;
@@ -6176,7 +6317,7 @@ async function readProjectWorkspace(store, input) {
 
 // orchestrator/src/project-rebind.mjs
 var RECEIPTS = path17.join(".project-local", "rebind-receipts");
-function fail14(code, detail) {
+function fail16(code, detail) {
   throw new ProjectPackageError(code, detail);
 }
 async function exists4(target) {
@@ -6208,11 +6349,11 @@ async function rebindWorkedProject({
   claudeConfigDir,
   dshHome
 }) {
-  if (confirm !== projectId) fail14("rebind_confirmation_required", projectId);
+  if (confirm !== projectId) fail16("rebind_confirmation_required", projectId);
   const root = await realpath7(controllerRoot);
   const current = await readProjectWorkspace(store, { projectId });
   if (!current.configured) return rebindProjectWorkspace(store, { projectId, workspacePath });
-  const target = await realpath7(workspacePath).catch(() => fail14("rebind_folder_missing", workspacePath));
+  const target = await realpath7(workspacePath).catch(() => fail16("rebind_folder_missing", workspacePath));
   if (current.workspacePath.toLowerCase() === target.toLowerCase()) {
     return rebindProjectWorkspace(store, { projectId, workspacePath: target });
   }
@@ -6220,9 +6361,9 @@ async function rebindWorkedProject({
   const agents = (catalog?.value?.agents ?? []).filter((agent) => agent.projectId === projectId);
   const worked = agents.some((agent) => agent.state !== "archived" || (agent.operations ?? []).length > 0);
   if (!worked) return rebindProjectWorkspace(store, { projectId, workspacePath: target });
-  if (agents.some((agent) => agent.currentOperationId)) fail14("rebind_project_busy", projectId);
+  if (agents.some((agent) => agent.currentOperationId)) fail16("rebind_project_busy", projectId);
   const paths = await instancePaths(root, projectId, { claudeConfigDir, dshHome });
-  if (await gatewayRunning(paths.gatewayStatus)) fail14("gateway_running");
+  if (await gatewayRunning(paths.gatewayStatus)) fail16("gateway_running");
   const moves = [];
   const journals = [];
   const caches = [];
@@ -6234,7 +6375,7 @@ async function rebindWorkedProject({
       if (!await exists4(journal)) continue;
       const session = JSON.parse(await readFile9(journal, "utf8"));
       if (typeof session.cwd !== "string" || session.cwd.toLowerCase() !== current.workspacePath.toLowerCase()) {
-        fail14("rebind_session_elsewhere", `${threadId}: ${session.cwd}`);
+        fail16("rebind_session_elsewhere", `${threadId}: ${session.cwd}`);
       }
       journals.push({ journal, session, threadId });
       const oldCwd = session.cwd;
@@ -6243,9 +6384,9 @@ async function rebindWorkedProject({
         for (const slug of await readdir6(claudeProjects).catch(() => [])) {
           const from = path17.join(claudeProjects, slug, name);
           if (!await exists4(from)) continue;
-          if (slug !== claudeProjectSlug(oldCwd)) fail14("rebind_provider_folder_unknown", from);
+          if (slug !== claudeProjectSlug(oldCwd)) fail16("rebind_provider_folder_unknown", from);
           const to = path17.join(claudeProjects, claudeProjectSlug(target), name);
-          if (await exists4(to)) fail14("rebind_target_exists", to);
+          if (await exists4(to)) fail16("rebind_target_exists", to);
           moves.push({ from, to });
         }
       }
@@ -6254,9 +6395,9 @@ async function rebindWorkedProject({
         const from = path17.join(dshSessions, slug, threadId);
         if (!await exists4(from)) continue;
         const newSlug = dshSessionSlug(target);
-        if (slug !== dshSessionSlug(oldCwd) || newSlug === null) fail14("rebind_provider_folder_unknown", from);
+        if (slug !== dshSessionSlug(oldCwd) || newSlug === null) fail16("rebind_provider_folder_unknown", from);
         const to = path17.join(dshSessions, newSlug, threadId);
-        if (await exists4(to)) fail14("rebind_target_exists", to);
+        if (await exists4(to)) fail16("rebind_target_exists", to);
         moves.push({ from, to });
       }
       const cache = path17.join(paths.dshHome, "storages", "session_projcache", "sessions", `${threadId}.json`);
@@ -6280,7 +6421,7 @@ async function rebindWorkedProject({
     const identity = await workspaceIdentity(target);
     const keyed = { ...catalog.value, agents: catalog.value.agents.map((agent) => agent.projectId === projectId ? { ...agent, workspaceKey: identity.workspaceKey } : agent) };
     if (!await store.compareAndSwapDocument({ key: "memory-agents-v1", expectedRevision: catalog.revision, value: keyed })) {
-      fail14("rebind_contention");
+      fail16("rebind_contention");
     }
     const bindingKey = workspaceDocumentKey(projectId);
     const binding = await store.readDocument({ key: bindingKey });
@@ -6291,7 +6432,7 @@ async function rebindWorkedProject({
     })) {
       const back = await store.readDocument({ key: "memory-agents-v1" });
       await store.compareAndSwapDocument({ key: "memory-agents-v1", expectedRevision: back.revision, value: catalog.value });
-      fail14("rebind_contention");
+      fail16("rebind_contention");
     }
   } catch (error) {
     for (const move of done.reverse()) await rename9(move.to, move.from).catch(() => {
@@ -6339,7 +6480,7 @@ var SKIP_SCAN = /* @__PURE__ */ new Set([
   "move-receipts",
   "rebind-receipts"
 ]);
-function fail15(code, detail) {
+function fail17(code, detail) {
   throw new ProjectPackageError(code, detail);
 }
 async function exists5(target) {
@@ -6351,7 +6492,7 @@ async function exists5(target) {
 function instancePathHash(root) {
   const resolved = path18.resolve(root);
   const normalized = process.platform === "win32" ? resolved.toLowerCase() : resolved;
-  return createHash12("sha256").update(JSON.stringify({ workspaceRoot: normalized })).digest("hex");
+  return createHash14("sha256").update(JSON.stringify({ workspaceRoot: normalized })).digest("hex");
 }
 function moved(value, from, to) {
   if (typeof value !== "string" || !path18.isAbsolute(value)) return null;
@@ -6399,7 +6540,7 @@ async function relocateAtlas(atlasConfig, from, to) {
   const oldHash = instancePathHash(from);
   const newHash = instancePathHash(to);
   if (typeof config.controllerRoot === "string" && path18.resolve(config.controllerRoot).toLowerCase() !== path18.resolve(from).toLowerCase()) {
-    fail15("relocate_atlas_other_instance", config.controllerRoot);
+    fail17("relocate_atlas_other_instance", config.controllerRoot);
   }
   const next = {
     ...config,
@@ -6437,12 +6578,12 @@ async function relocateAtlas(atlasConfig, from, to) {
   return result;
 }
 async function relocateInstance({ controllerRoot, from, confirm, atlasConfig = null, now = () => /* @__PURE__ */ new Date() }) {
-  if (typeof from !== "string" || !path18.isAbsolute(from)) fail15("relocate_from_invalid");
-  if (confirm !== from) fail15("relocate_confirmation_required", from);
+  if (typeof from !== "string" || !path18.isAbsolute(from)) fail17("relocate_from_invalid");
+  if (confirm !== from) fail17("relocate_confirmation_required", from);
   const root = await realpath8(controllerRoot);
   const old = path18.resolve(from);
-  if (old.toLowerCase() === root.toLowerCase()) fail15("relocate_same_path");
-  if (await gatewayRunning(path18.join(root, ".project-local", "application-gateway", "status.v1.json"))) fail15("gateway_running");
+  if (old.toLowerCase() === root.toLowerCase()) fail17("relocate_same_path");
+  if (await gatewayRunning(path18.join(root, ".project-local", "application-gateway", "status.v1.json"))) fail17("gateway_running");
   const configs = [];
   for (const parts of CONFIGS) {
     const file2 = path18.join(root, ...parts);
@@ -6497,7 +6638,7 @@ var GATEWAY = [".project-local", "application-gateway"];
 var DEAD_GATEWAY_RECORDS = ["status.v1.json", "monitor-owner.v1.json", "monitor-status.v1.json"];
 var DESCRIPTOR = "connection.v1.json";
 var MOVED_FILE = path19.join(".project-local", "moved-to.json");
-function fail16(code, detail) {
+function fail18(code, detail) {
   throw new ProjectPackageError(code, detail);
 }
 async function exists6(target) {
@@ -6521,7 +6662,7 @@ async function movedTo(controllerRoot) {
 }
 async function assertNotMovedAway(controllerRoot) {
   const to = await movedTo(controllerRoot);
-  if (to !== null) fail16("instance_moved_away", to);
+  if (to !== null) fail18("instance_moved_away", to);
 }
 async function copyTree(from, to, root, target, counts) {
   await mkdir11(to, { recursive: true });
@@ -6536,7 +6677,7 @@ async function copyTree(from, to, root, target, counts) {
       try {
         await symlink(pointed, destination, process.platform === "win32" ? kind2 === "dir" ? "junction" : "file" : void 0);
       } catch (error) {
-        fail16("move_link_not_copied", `${path19.relative(root, source)}: ${error.code ?? "failed"}`);
+        fail18("move_link_not_copied", `${path19.relative(root, source)}: ${error.code ?? "failed"}`);
       }
       counts.links += 1;
     } else if (entry.isDirectory()) {
@@ -6587,17 +6728,17 @@ async function moveInstance({
   machine = null,
   now = () => /* @__PURE__ */ new Date()
 }) {
-  if (typeof to !== "string" || !path19.isAbsolute(to)) fail16("move_target_invalid");
-  if (confirm !== to) fail16("move_confirmation_required", to);
+  if (typeof to !== "string" || !path19.isAbsolute(to)) fail18("move_target_invalid");
+  if (confirm !== to) fail18("move_confirmation_required", to);
   const root = await realpath9(controllerRoot);
   const target = path19.resolve(to);
-  if (inside(root, target) || inside(target, root)) fail16("move_target_overlaps", target);
+  if (inside(root, target) || inside(target, root)) fail18("move_target_overlaps", target);
   if (await exists6(target)) {
-    if (!(await lstat11(target)).isDirectory() || (await readdir8(target)).length > 0) fail16("move_target_not_empty", target);
+    if (!(await lstat11(target)).isDirectory() || (await readdir8(target)).length > 0) fail18("move_target_not_empty", target);
   }
-  if (await movedTo(root) !== null) fail16("instance_moved_away", await movedTo(root));
-  if (await gatewayRunning(path19.join(root, ...GATEWAY, "status.v1.json"))) fail16("gateway_running");
-  if (machine !== null && typeof machine.machineId !== "string") fail16("machine_id_invalid");
+  if (await movedTo(root) !== null) fail18("instance_moved_away", await movedTo(root));
+  if (await gatewayRunning(path19.join(root, ...GATEWAY, "status.v1.json"))) fail18("gateway_running");
+  if (machine !== null && typeof machine.machineId !== "string") fail18("machine_id_invalid");
   const startedAtUtc = now().toISOString();
   const counts = { files: 0, folders: 0, links: 0, bytes: 0 };
   await copyTree(root, target, root, target, counts);
@@ -6620,7 +6761,7 @@ async function moveInstance({
     step = "atlas";
     if (atlasConfig !== null) atlas = await relocateAtlas(path19.resolve(atlasConfig), root, copy);
   } catch (error) {
-    fail16("move_incomplete", `${step}: ${error?.message || error?.code || "failed"} — the copy in ${copy} is not complete (delete it); ${root} is unchanged`);
+    fail18("move_incomplete", `${step}: ${error?.message || error?.code || "failed"} — the copy in ${copy} is not complete (delete it); ${root} is unchanged`);
   }
   await writeFile9(path19.join(root, MOVED_FILE), `${JSON.stringify({ schemaVersion: 1, to: copy, movedAtUtc: now().toISOString() }, null, 2)}
 `, "utf8");
@@ -6649,7 +6790,7 @@ async function moveInstance({
 }
 
 // orchestrator/src/sync-engine.mjs
-import { createHash as createHash16, randomUUID as randomUUID11 } from "node:crypto";
+import { createHash as createHash18, randomUUID as randomUUID11 } from "node:crypto";
 import { lstat as lstat17, mkdir as mkdir15, readFile as readFile18, realpath as realpath11, rename as rename14, rm as rm10, writeFile as writeFile12 } from "node:fs/promises";
 import path27 from "node:path";
 
@@ -6658,12 +6799,12 @@ import { readdir as readdir10, readFile as readFile17, realpath as realpath10, r
 import path26 from "node:path";
 
 // orchestrator/src/world-task-board.mjs
-import { createHash as createHash15 } from "node:crypto";
+import { createHash as createHash17 } from "node:crypto";
 import { lstat as lstat16, readdir as readdir9, readFile as readFile16 } from "node:fs/promises";
 import path25 from "node:path";
 
 // orchestrator/src/desk-agent-sources.mjs
-import { createHash as createHash14, randomUUID as randomUUID10 } from "node:crypto";
+import { createHash as createHash16, randomUUID as randomUUID10 } from "node:crypto";
 import { lstat as lstat15, mkdir as mkdir14, readFile as readFile15, rename as rename13, rm as rm8, writeFile as writeFile11 } from "node:fs/promises";
 import path23 from "node:path";
 
@@ -6726,7 +6867,7 @@ import { lstat as lstat14, mkdir as mkdir13, readFile as readFile14, stat as sta
 import path22 from "node:path";
 
 // orchestrator/src/desk-task-common.mjs
-import { createHash as createHash13 } from "node:crypto";
+import { createHash as createHash15 } from "node:crypto";
 import { appendFile, copyFile as copyFile4, lstat as lstat13, mkdir as mkdir12, readFile as readFile13, rename as rename12, rm as rm7, stat as stat3, writeFile as writeFile10 } from "node:fs/promises";
 import os from "node:os";
 import path21 from "node:path";
@@ -7052,7 +7193,7 @@ async function isFile(file) {
 async function isDirectory(file) {
   return Boolean((await stat3(file).catch(() => null))?.isDirectory());
 }
-var sha256Bytes = (bytes) => createHash13("sha256").update(bytes).digest("hex");
+var sha256Bytes = (bytes) => createHash15("sha256").update(bytes).digest("hex");
 async function sha256File2(file) {
   return sha256Bytes(await readFile13(file));
 }
@@ -7512,12 +7653,12 @@ async function dispatchChildTask(parameters, { output, clock = () => /* @__PURE_
       const artifactPath = psString(propertyValue(artifact, "path"));
       if (!psIn(kind2, ["file", "image", "audio", "video", "directory", "log"])) refuse(`Unsupported artifact kind '${kind2}'.`);
       assertControlRelativeReference(artifactPath, "artifact path");
-      const sha2568 = psString(propertyValue(artifact, "sha256"));
-      if (sha2568 && !netMatch("^[a-fA-F0-9]{64}$", sha2568)) refuse("Artifact sha256 must contain 64 hexadecimal characters.");
+      const sha25610 = psString(propertyValue(artifact, "sha256"));
+      if (sha25610 && !netMatch("^[a-fA-F0-9]{64}$", sha25610)) refuse("Artifact sha256 must contain 64 hexadecimal characters.");
       artifactReferences.push(psCustomObject({
         kind: kind2,
         path: artifactPath.replaceAll("\\", "/"),
-        sha256: sha2568 ? sha2568.toLowerCase() : null
+        sha256: sha25610 ? sha25610.toLowerCase() : null
       }));
     }
     const priority = psString(hasProperty(definition, "priority") ? propertyValue(definition, "priority") : "normal");
@@ -7974,13 +8115,13 @@ var CONTROLLER_TOOLS = Object.freeze({
 
 // orchestrator/src/desk-agent-sources.mjs
 var DESK_AGENT_FOLDER = path23.join(".project-local", "desk-agents");
-function fail17(code) {
+function fail19(code) {
   throw Object.assign(new Error(code), { code });
 }
-var sha2566 = (value) => createHash14("sha256").update(value).digest("hex");
+var sha2568 = (value) => createHash16("sha256").update(value).digest("hex");
 function deskAgentSourceId(agentId) {
-  if (typeof agentId !== "string" || !agentId) fail17("desk_source_agent_invalid");
-  return /^[a-z0-9][a-z0-9-]{0,47}$/u.test(agentId) ? `desk-${agentId}` : `desk-${sha2566(agentId).slice(0, 16)}`;
+  if (typeof agentId !== "string" || !agentId) fail19("desk_source_agent_invalid");
+  return /^[a-z0-9][a-z0-9-]{0,47}$/u.test(agentId) ? `desk-${agentId}` : `desk-${sha2568(agentId).slice(0, 16)}`;
 }
 async function readJson5(file, fallback = void 0) {
   let text3;
@@ -8016,7 +8157,7 @@ var MAX_RECORD_BYTES2 = 1024 * 1024;
 
 // orchestrator/src/world-task-board.mjs
 var TASK_BOARD_LIMITS = Object.freeze({ sources: 128, tasks: 200, tasksPerSource: 512, text: 400 });
-var TASK_STAGES = Object.freeze([
+var TASK_STAGES2 = Object.freeze([
   "dispatched",
   "started",
   "accepted",
@@ -8027,7 +8168,7 @@ var TASK_STAGES = Object.freeze([
   "declined"
 ]);
 var TASK_ID = /^[a-z0-9][a-z0-9.-]{2,95}$/u;
-var ID7 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
+var ID9 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
 var MAX_FILE_BYTES = 1024 * 1024;
 var IMPLEMENTING = /* @__PURE__ */ new Set(["implementation", "validation", "reporting", "complete"]);
 var PLANNING = /* @__PURE__ */ new Set(["planning", "awaiting_confirmation"]);
@@ -8042,7 +8183,7 @@ var WORKING_STATES = /* @__PURE__ */ new Set([
   "cancelling",
   "cancelled"
 ]);
-function fail18(code) {
+function fail20(code) {
   throw Object.assign(new Error(code), { code });
 }
 async function readBounded(file) {
@@ -8060,7 +8201,7 @@ async function readJson6(file) {
     return null;
   }
 }
-var sha2567 = (bytes) => createHash15("sha256").update(bytes).digest("hex");
+var sha2569 = (bytes) => createHash17("sha256").update(bytes).digest("hex");
 var text = (value, limit = TASK_BOARD_LIMITS.text) => typeof value === "string" && value.trim() !== "" ? value.trim().slice(0, limit) : null;
 var token = (value) => typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$/u.test(value) ? value : null;
 var time = (value) => typeof value === "string" && value.length <= 64 && Number.isFinite(Date.parse(value)) ? value : null;
@@ -8089,7 +8230,7 @@ async function readSources(root) {
   const sources = [];
   for (const entry of entries) {
     if (sources.length >= TASK_BOARD_LIMITS.sources) break;
-    if (typeof entry?.deskAgentId !== "string" || !ID7.test(entry.deskAgentId) || typeof entry.id !== "string") continue;
+    if (typeof entry?.deskAgentId !== "string" || !ID9.test(entry.deskAgentId) || typeof entry.id !== "string") continue;
     const found = await readDeskAgentSource({ controllerRoot: root, agentId: entry.deskAgentId }).catch(() => null);
     sources.push({
       agentId: entry.deskAgentId,
@@ -8136,11 +8277,11 @@ async function readTask(root, source, taskId) {
     contractVersion: token(packet.contractVersion),
     priority: token(packet.priority),
     dispatchedAtUtc: time(packet.dispatchedAtUtc),
-    verified: dispatchedBytes !== null && sha2567(dispatchedBytes) === sha2567(inboxBytes),
+    verified: dispatchedBytes !== null && sha2569(dispatchedBytes) === sha2569(inboxBytes),
     dispatchedByCoordinator: definition?.isFile() === true,
     start: start === null ? null : {
       startedAtUtc: time(start.startedAtUtc),
-      coordinatorAgentId: typeof start.coordinatorAgentId === "string" && ID7.test(start.coordinatorAgentId) ? start.coordinatorAgentId : null,
+      coordinatorAgentId: typeof start.coordinatorAgentId === "string" && ID9.test(start.coordinatorAgentId) ? start.coordinatorAgentId : null,
       reportOperation: token(start.reportOperation),
       continuationPolicy: token(start.continuationPolicy),
       returnState: token(start.returnState),
@@ -8170,8 +8311,8 @@ async function readTask(root, source, taskId) {
   return { ...task, stage: taskStageOf(task) };
 }
 async function readWorldTaskBoard({ controllerRoot, agentId = null }) {
-  if (typeof controllerRoot !== "string" || !path25.isAbsolute(controllerRoot)) fail18("memory_invalid_input");
-  if (agentId !== null && (typeof agentId !== "string" || !ID7.test(agentId))) fail18("memory_invalid_input");
+  if (typeof controllerRoot !== "string" || !path25.isAbsolute(controllerRoot)) fail20("memory_invalid_input");
+  if (agentId !== null && (typeof agentId !== "string" || !ID9.test(agentId))) fail20("memory_invalid_input");
   const root = path25.resolve(controllerRoot);
   const sources = await readSources(root);
   const tasks = [];
@@ -8213,7 +8354,7 @@ async function readWorldTaskBoard({ controllerRoot, agentId = null }) {
         report: null,
         acceptance: null,
         review: null,
-        stage: TASK_STAGES.includes(entry.stage) ? entry.stage : "dispatched",
+        stage: TASK_STAGES2.includes(entry.stage) ? entry.stage : "dispatched",
         availability: "not-here",
         projectTitle: text(index.title, 200)
       });
@@ -8225,7 +8366,7 @@ async function readWorldTaskBoard({ controllerRoot, agentId = null }) {
 }
 
 // orchestrator/src/project-mount.mjs
-function fail19(code, detail) {
+function fail21(code, detail) {
   throw new ProjectPackageError(code, detail);
 }
 async function removeEmptyParents(file, stopAt) {
@@ -8268,7 +8409,7 @@ async function interactionStoresOf(root, threadIds) {
       try {
         record = JSON.parse(await readFile17(path26.join(records, name), "utf8"));
       } catch {
-        fail19("unmount_interaction_unreadable", path26.join(records, name));
+        fail21("unmount_interaction_unreadable", path26.join(records, name));
       }
       if (!threadIds.has(record?.providerRequest?.threadId)) continue;
       mine = true;
@@ -8296,12 +8437,12 @@ async function unmountProject({
   claudeConfigDir,
   dshHome
 }) {
-  if (confirm !== projectId) fail19("unmount_confirmation_required", projectId);
-  if (projectId === WORLD_PROJECT_ID) fail19("unmount_world_refused");
+  if (confirm !== projectId) fail21("unmount_confirmation_required", projectId);
+  if (projectId === WORLD_PROJECT_ID) fail21("unmount_world_refused");
   const root = await realpath10(controllerRoot);
-  if ((await resolveStoreLayout(root, { env: {} })).layout !== "split") fail19("store_layout_single", "migrate the instance first");
+  if ((await resolveStoreLayout(root, { env: {} })).layout !== "split") fail21("store_layout_single", "migrate the instance first");
   const folder = await projectStoreFolder(root, projectId);
-  if (folder === null) fail19("project_not_mounted", projectId);
+  if (folder === null) fail21("project_not_mounted", projectId);
   const board = await readWorldTaskBoard({ controllerRoot: root });
   const exported = await exportProject({ controllerRoot: root, projectId, out, now, policy, claudeConfigDir, dshHome });
   const { manifest, files } = await readProjectPackage(out);
@@ -8311,14 +8452,14 @@ async function unmountProject({
     root,
     new Set(catalog.map((agent) => agent.binding?.threadId).filter((threadId) => typeof threadId === "string"))
   );
-  if (interactions.some((store) => store.open)) fail19("unmount_interactions_open", projectId);
+  if (interactions.some((store) => store.open)) fail21("unmount_interactions_open", projectId);
   const paths = await instancePaths(root, projectId, { claudeConfigDir, dshHome });
   const removals = [];
   for (const [name, content] of files) {
     const target = packagePlacement(name, paths);
     if (target === null) continue;
     const present = await readFile17(target).catch(() => null);
-    if (present === null || !present.equals(content)) fail19("unmount_file_changed", target);
+    if (present === null || !present.equals(content)) fail21("unmount_file_changed", target);
     removals.push(target);
   }
   const archived = documentValue(files, "memory-project-archive-v1");
@@ -8397,7 +8538,7 @@ async function mountProject({ controllerRoot, packageDir, claudeConfigDir, dshHo
 // orchestrator/src/sync-git.mjs
 import { execFile } from "node:child_process";
 var MAX_OUTPUT = 16 * 1024 * 1024;
-function fail20(code, detail) {
+function fail22(code, detail) {
   throw new ProjectPackageError(code, detail);
 }
 function git(cwd, args, { timeoutMs = 18e4, allowFail = false } = {}) {
@@ -8460,7 +8601,7 @@ async function fastForward(dir, remote, branch) {
     return;
   }
   const merged = await git(dir, ["merge", "--ff-only", target], { allowFail: true });
-  if (merged.code !== 0) fail20("sync_diverged", `${branch} of ${remote}`);
+  if (merged.code !== 0) fail22("sync_diverged", `${branch} of ${remote}`);
 }
 async function stageAll(dir) {
   await git(dir, ["add", "-A"]);
@@ -8476,8 +8617,8 @@ async function pushAll(dir, remotes, branch) {
   const primary = remotes.find((remote) => remote.primary);
   const pushed = await git(dir, ["push", "--porcelain", primary.name, `HEAD:refs/heads/${branch}`], { allowFail: true });
   if (pushed.code !== 0) {
-    if (/rejected|non-fast-forward|fetch first/iu.test(pushed.stdout + pushed.stderr)) fail20("sync_race", primary.name);
-    fail20("sync_push_failed", `${primary.name}: ${(pushed.stderr.trim().split(/\r?\n/u).at(-1) ?? "").slice(0, 300)}`);
+    if (/rejected|non-fast-forward|fetch first/iu.test(pushed.stdout + pushed.stderr)) fail22("sync_race", primary.name);
+    fail22("sync_push_failed", `${primary.name}: ${(pushed.stderr.trim().split(/\r?\n/u).at(-1) ?? "").slice(0, 300)}`);
   }
   const mirrors = [];
   for (const remote of remotes.filter((item) => !item.primary)) {
@@ -8507,9 +8648,9 @@ var STATE_FILE = path27.join(".project-local", "sync-state.json");
 var LOCK_FILE = "sync-lock.json";
 var WORLD_PACKAGE = path27.join(".world", "package");
 var NAME = /^[a-z][a-z0-9-]{0,31}$/u;
-var ID8 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
+var ID10 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
 var NO_POLICY = Object.freeze({ homeOnly: false, allowedMachines: null });
-function fail21(code, detail) {
+function fail23(code, detail) {
   throw new ProjectPackageError(code, detail);
 }
 async function exists8(target) {
@@ -8525,16 +8666,16 @@ async function writeJsonOver3(target, value) {
   await rename14(temporary, target);
 }
 function remotesOf(value, label) {
-  if (!Array.isArray(value) || value.length === 0 || value.length > 4) fail21("sync_config_invalid", `${label}.remotes`);
+  if (!Array.isArray(value) || value.length === 0 || value.length > 4) fail23("sync_config_invalid", `${label}.remotes`);
   const names = /* @__PURE__ */ new Set();
   const remotes = value.map((remote) => {
     if (!remote || typeof remote !== "object" || typeof remote.url !== "string" || remote.url.trim() === "" || typeof remote.name !== "string" || !NAME.test(remote.name) || names.has(remote.name)) {
-      fail21("sync_config_invalid", `${label}.remotes`);
+      fail23("sync_config_invalid", `${label}.remotes`);
     }
     names.add(remote.name);
     return { name: remote.name, url: remote.url, primary: remote.primary === true, home: remote.home === true };
   });
-  if (remotes.filter((remote) => remote.primary).length !== 1) fail21("sync_config_invalid", `${label}: one primary remote`);
+  if (remotes.filter((remote) => remote.primary).length !== 1) fail23("sync_config_invalid", `${label}: one primary remote`);
   return remotes;
 }
 async function readSyncConfig(controllerRoot) {
@@ -8543,7 +8684,7 @@ async function readSyncConfig(controllerRoot) {
     value = JSON.parse(await readFile18(path27.join(controllerRoot, CONFIG_FILE), "utf8"));
   } catch (error) {
     if (error?.code === "ENOENT") return null;
-    fail21("sync_config_invalid", "sync.json");
+    fail23("sync_config_invalid", "sync.json");
   }
   return syncConfigOf(value);
 }
@@ -8557,16 +8698,16 @@ async function recordedMode(root) {
   }
 }
 function syncConfigOf(value) {
-  if (value?.schemaVersion !== 1) fail21("sync_config_invalid", "schemaVersion");
+  if (value?.schemaVersion !== 1) fail23("sync_config_invalid", "schemaVersion");
   const branch = value.branch ?? "main";
-  if (typeof branch !== "string" || !/^[A-Za-z0-9._-]{1,64}$/u.test(branch)) fail21("sync_config_invalid", "branch");
-  if (typeof value.packagesRoot !== "string" || !path27.isAbsolute(value.packagesRoot)) fail21("sync_config_invalid", "packagesRoot");
+  if (typeof branch !== "string" || !/^[A-Za-z0-9._-]{1,64}$/u.test(branch)) fail23("sync_config_invalid", "branch");
+  if (typeof value.packagesRoot !== "string" || !path27.isAbsolute(value.packagesRoot)) fail23("sync_config_invalid", "packagesRoot");
   if (typeof value.author?.name !== "string" || typeof value.author?.email !== "string" || value.author.name.trim() === "" || !/^[^\s@]+@[^\s@]+$/u.test(value.author.email)) {
-    fail21("sync_config_invalid", "author");
+    fail23("sync_config_invalid", "author");
   }
   const projects = {};
   for (const [projectId, entry] of Object.entries(value.projects ?? {})) {
-    if (!ID8.test(projectId) || projectId === WORLD_PROJECT_ID) fail21("sync_config_invalid", `projects.${projectId}`);
+    if (!ID10.test(projectId) || projectId === WORLD_PROJECT_ID) fail23("sync_config_invalid", `projects.${projectId}`);
     projects[projectId] = { remotes: remotesOf(entry?.remotes, projectId) };
   }
   return {
@@ -8585,7 +8726,7 @@ async function readSyncState(controllerRoot) {
     const value = JSON.parse(await readFile18(path27.join(controllerRoot, STATE_FILE), "utf8"));
     if (value?.schemaVersion === 1) return { world: { held: false, releasedSha256: null, ...value.world }, projects: value.projects ?? {} };
   } catch (error) {
-    if (error?.code !== "ENOENT") fail21("sync_state_invalid", "sync-state.json");
+    if (error?.code !== "ENOENT") fail23("sync_state_invalid", "sync-state.json");
   }
   return { world: { held: false, releasedSha256: null }, projects: {} };
 }
@@ -8598,9 +8739,9 @@ function lockOf(text3, label) {
   try {
     value = JSON.parse(text3);
   } catch {
-    fail21("sync_lock_invalid", label);
+    fail23("sync_lock_invalid", label);
   }
-  if (value?.schemaVersion !== 1 || !Number.isSafeInteger(value.sequence) || value.sequence < 0 || !(value.holder === null || typeof value.holder === "string" && value.holder !== "")) fail21("sync_lock_invalid", label);
+  if (value?.schemaVersion !== 1 || !Number.isSafeInteger(value.sequence) || value.sequence < 0 || !(value.holder === null || typeof value.holder === "string" && value.holder !== "")) fail23("sync_lock_invalid", label);
   return value;
 }
 async function remoteLock(dir, remote, branch, label) {
@@ -8612,7 +8753,7 @@ async function writeLock(dir, lock) {
 }
 async function packageHash(dir) {
   const manifest = JSON.parse(await readFile18(path27.join(dir, "project.af.json"), "utf8"));
-  return createHash16("sha256").update(canonicalJson(manifest.files ?? {})).digest("hex");
+  return createHash18("sha256").update(canonicalJson(manifest.files ?? {})).digest("hex");
 }
 var SECRET_FILES = /* @__PURE__ */ new Set([".credentials.json", ".claude.json", "connection.v1.json"]);
 var SECRET_PATTERNS = [
@@ -8624,14 +8765,14 @@ var SECRET_PATTERNS = [
 ];
 async function scanStaged(dir, files) {
   for (const name of files) {
-    if (SECRET_FILES.has(path27.basename(name))) fail21("sync_secret_found", name);
+    if (SECRET_FILES.has(path27.basename(name))) fail23("sync_secret_found", name);
     const full = path27.join(dir, name);
     const info = await lstat17(full).catch(() => null);
     if (info === null || !info.isFile() || info.size > 32 * 1024 * 1024) continue;
     const content = await readFile18(full);
     if (content.includes(0)) continue;
     const text3 = content.toString("utf8");
-    if (SECRET_PATTERNS.some((pattern) => pattern.test(text3))) fail21("sync_secret_found", name);
+    if (SECRET_PATTERNS.some((pattern) => pattern.test(text3))) fail23("sync_secret_found", name);
   }
 }
 async function commitAndPush(dir, remotes, branch, message) {
@@ -8651,13 +8792,13 @@ function onlyHere(policy, machine, machines) {
 }
 async function context(controllerRoot, { needGatewayStopped = true } = {}) {
   const root = await realpath11(controllerRoot);
-  if (await recordedMode(root) === "local") fail21("sync_mode_local", "agents-factory instance mode --set synced");
+  if (await recordedMode(root) === "local") fail23("sync_mode_local", "agents-factory instance mode --set synced");
   const config = await readSyncConfig(root);
-  if (config === null) fail21("sync_not_configured", CONFIG_FILE);
+  if (config === null) fail23("sync_not_configured", CONFIG_FILE);
   const machine = await readThisMachine(root);
-  if (machine === null) fail21("sync_machine_unnamed", "agents-factory machine set");
+  if (machine === null) fail23("sync_machine_unnamed", "agents-factory machine set");
   if (needGatewayStopped && await gatewayRunning(path27.join(root, ".project-local", "application-gateway", "status.v1.json"))) {
-    fail21("gateway_running");
+    fail23("gateway_running");
   }
   return { root, config, machine, machines: await readMachines(root), state: await readSyncState(root) };
 }
@@ -8698,7 +8839,7 @@ async function initWorld({ controllerRoot, now = () => /* @__PURE__ */ new Date(
   const { root, config, machine, state } = await context(controllerRoot);
   await ensureRepo(root, { branch: config.branch, author: config.author, remotes: config.world.remotes });
   const primary = primaryOf(config.world.remotes);
-  if (await fetchBranch(root, primary.name, config.branch)) fail21("sync_already_initialized", primary.name);
+  if (await fetchBranch(root, primary.name, config.branch)) fail23("sync_already_initialized", primary.name);
   await recordHeldProjects(root, machine, now);
   await exportProject({ controllerRoot: root, projectId: WORLD_PROJECT_ID, out: path27.join(root, WORLD_PACKAGE), now });
   const releasedSha256 = await packageHash(path27.join(root, WORLD_PACKAGE));
@@ -8712,9 +8853,9 @@ async function releaseWorld({ controllerRoot, now = () => /* @__PURE__ */ new Da
   const { root, config, machine, state } = await context(controllerRoot);
   await ensureRepo(root, { branch: config.branch, author: config.author, remotes: config.world.remotes });
   const primary = primaryOf(config.world.remotes);
-  if (!await fetchBranch(root, primary.name, config.branch)) fail21("sync_not_initialized", "world");
+  if (!await fetchBranch(root, primary.name, config.branch)) fail23("sync_not_initialized", "world");
   const lock = await remoteLock(root, primary, config.branch, "world");
-  if (lock?.holder !== machine.machineId) fail21("sync_not_holder", lock?.holder ?? "free");
+  if (lock?.holder !== machine.machineId) fail23("sync_not_holder", lock?.holder ?? "free");
   await fastForward(root, primary.name, config.branch);
   const held = await recordHeldProjects(root, machine, now);
   await exportProject({ controllerRoot: root, projectId: WORLD_PROJECT_ID, out: path27.join(root, WORLD_PACKAGE), now });
@@ -8732,7 +8873,7 @@ async function checkLocalWorld(root, state, incomingSha256, now) {
   await exportProject({ controllerRoot: root, projectId: WORLD_PROJECT_ID, out: backup, now });
   const here = await packageHash(backup);
   if (here === incomingSha256) return { backup, same: true, store };
-  if (here !== state.world.releasedSha256) fail21("sync_world_changed_here", backup);
+  if (here !== state.world.releasedSha256) fail23("sync_world_changed_here", backup);
   return { backup, same: false, store };
 }
 async function replaceWorldStore(root, local) {
@@ -8753,16 +8894,16 @@ async function takeWorld({ controllerRoot, now = () => /* @__PURE__ */ new Date(
   const { root, config, machine, state } = await context(controllerRoot);
   await ensureRepo(root, { branch: config.branch, author: config.author, remotes: config.world.remotes });
   const primary = primaryOf(config.world.remotes);
-  if (!await fetchBranch(root, primary.name, config.branch)) fail21("sync_not_initialized", "world");
+  if (!await fetchBranch(root, primary.name, config.branch)) fail23("sync_not_initialized", "world");
   const lock = await remoteLock(root, primary, config.branch, "world");
-  if (lock === null) fail21("sync_lock_invalid", "world: no lock");
-  if (lock.holder !== null && lock.holder !== machine.machineId) fail21("sync_held_elsewhere", lock.holder);
+  if (lock === null) fail23("sync_lock_invalid", "world: no lock");
+  if (lock.holder !== null && lock.holder !== machine.machineId) fail23("sync_held_elsewhere", lock.holder);
   if (lock.holder === machine.machineId && state.world.held) return { target: "world", action: "already-held" };
   const own = `machine/${machine.machineId}.json`;
   const changes = (await localChanges(root)).filter((line) => line.slice(3).replace(/^"|"$/gu, "") !== own);
-  if (changes.length > 0) fail21("sync_local_changes", changes.slice(0, 5).join("; "));
+  if (changes.length > 0) fail23("sync_local_changes", changes.slice(0, 5).join("; "));
   if ((await resolveStoreLayout(root, { env: {} })).layout !== "split") {
-    if (await exists8(singleMemoryDatabase(root))) fail21("store_layout_single", "migrate the instance first");
+    if (await exists8(singleMemoryDatabase(root))) fail23("store_layout_single", "migrate the instance first");
     await writeStoreLayoutMarker(root, { now });
   }
   const local = await checkLocalWorld(root, state, lock.releasedSha256, now);
@@ -8787,8 +8928,8 @@ async function projectPolicyOf(root, projectId) {
 }
 function projectRemotes(config, projectId, policy) {
   const entry = config.projects[projectId];
-  if (entry === void 0) fail21("sync_project_not_configured", projectId);
-  if (policy.homeOnly && entry.remotes.some((remote) => !remote.home)) fail21("sync_remote_not_home", projectId);
+  if (entry === void 0) fail23("sync_project_not_configured", projectId);
+  if (policy.homeOnly && entry.remotes.some((remote) => !remote.home)) fail23("sync_remote_not_home", projectId);
   return entry.remotes;
 }
 async function pushWorkspace(root, projectId) {
@@ -8802,13 +8943,13 @@ async function pushWorkspace(root, projectId) {
   if (!workspace.configured) return { workspace: "none" };
   const folder = workspace.workspacePath;
   if (!await exists8(folder) || !await isRepo(folder)) return { workspace: "not-synced", folder };
-  if ((await localChanges(folder)).length > 0) fail21("sync_workspace_not_pushed", `${folder}: uncommitted changes`);
+  if ((await localChanges(folder)).length > 0) fail23("sync_workspace_not_pushed", `${folder}: uncommitted changes`);
   const upstream = await git(folder, ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"], { allowFail: true });
-  if (upstream.code !== 0) fail21("sync_workspace_not_pushed", `${folder}: no upstream`);
+  if (upstream.code !== 0) fail23("sync_workspace_not_pushed", `${folder}: no upstream`);
   const ahead = Number((await git(folder, ["rev-list", "--count", "@{u}..HEAD"])).stdout.trim());
   if (ahead > 0) {
     const pushed = await git(folder, ["push", "--porcelain"], { allowFail: true });
-    if (pushed.code !== 0) fail21("sync_workspace_not_pushed", `${folder}: push refused`);
+    if (pushed.code !== 0) fail23("sync_workspace_not_pushed", `${folder}: push refused`);
   }
   return { workspace: "pushed", folder, commits: ahead };
 }
@@ -8822,12 +8963,12 @@ async function releaseProject({ controllerRoot, projectId, now = () => /* @__PUR
   const { root, config, machine, machines, state } = await context(controllerRoot);
   const policy = await projectPolicyOf(root, projectId);
   const remotes = projectRemotes(config, projectId, policy);
-  if (await projectStoreFolder(root, projectId) === null) fail21("project_not_mounted", projectId);
+  if (await projectStoreFolder(root, projectId) === null) fail23("project_not_mounted", projectId);
   const dir = await packageRepo(config, projectId, remotes);
   const primary = primaryOf(remotes);
   const known = await fetchBranch(dir, primary.name, config.branch);
   const lock = known ? await remoteLock(dir, primary, config.branch, projectId) : null;
-  if (lock?.holder && lock.holder !== machine.machineId) fail21("sync_held_elsewhere", lock.holder);
+  if (lock?.holder && lock.holder !== machine.machineId) fail23("sync_held_elsewhere", lock.holder);
   if (known) await fastForward(dir, primary.name, config.branch);
   const stays = onlyHere(policy, machine, machines);
   let workspace = null;
@@ -8853,7 +8994,7 @@ async function releaseProject({ controllerRoot, projectId, now = () => /* @__PUR
 async function takeProject({ controllerRoot, projectId, now = () => /* @__PURE__ */ new Date() }) {
   const { root, config, machine, state } = await context(controllerRoot);
   const policy = await projectPolicyOf(root, projectId);
-  if (!mayHold(policy, machine)) fail21("sync_policy_denied", projectId);
+  if (!mayHold(policy, machine)) fail23("sync_policy_denied", projectId);
   const remotes = projectRemotes(config, projectId, policy);
   const dir = path27.join(config.packagesRoot, projectId);
   const primary = primaryOf(remotes);
@@ -8862,12 +9003,12 @@ async function takeProject({ controllerRoot, projectId, now = () => /* @__PURE__
     await cloneRepo(config.packagesRoot, dir, primary, config.branch);
   }
   await ensureRepo(dir, { branch: config.branch, author: config.author, remotes });
-  if (!await fetchBranch(dir, primary.name, config.branch)) fail21("sync_not_initialized", projectId);
+  if (!await fetchBranch(dir, primary.name, config.branch)) fail23("sync_not_initialized", projectId);
   const lock = await remoteLock(dir, primary, config.branch, projectId);
-  if (lock === null) fail21("sync_lock_invalid", `${projectId}: no lock`);
-  if (lock.holder !== null && lock.holder !== machine.machineId) fail21("sync_held_elsewhere", lock.holder);
+  if (lock === null) fail23("sync_lock_invalid", `${projectId}: no lock`);
+  if (lock.holder !== null && lock.holder !== machine.machineId) fail23("sync_held_elsewhere", lock.holder);
   const changes = await localChanges(dir);
-  if (changes.length > 0) fail21("sync_local_changes", `${projectId}: ${changes.slice(0, 5).join("; ")}`);
+  if (changes.length > 0) fail23("sync_local_changes", `${projectId}: ${changes.slice(0, 5).join("; ")}`);
   await fastForward(dir, primary.name, config.branch);
   let pushed = null;
   if (lock.holder !== machine.machineId) {
@@ -8942,7 +9083,7 @@ async function syncStatus({ controllerRoot, remote = false }) {
     }
   };
   const projects = [];
-  for (const projectId of [.../* @__PURE__ */ new Set([...Object.keys(config.projects), ...[...mounted].filter((id3) => id3 !== WORLD_PROJECT_ID)])].sort()) {
+  for (const projectId of [.../* @__PURE__ */ new Set([...Object.keys(config.projects), ...[...mounted].filter((id5) => id5 !== WORLD_PROJECT_ID)])].sort()) {
     const policy = registry.projects[projectId]?.policy ?? NO_POLICY;
     const entry = config.projects[projectId];
     projects.push({
@@ -9158,7 +9299,7 @@ async function assertWorldHeld(controllerRoot) {
   const root = await realpath11(controllerRoot);
   if (await recordedMode(root) === "local" || await readSyncConfig(root) === null) return;
   if (!await syncBegun(root)) return;
-  if ((await readSyncState(root)).world.held !== true) fail21("sync_world_not_held", "take the world first (agents-factory sync take)");
+  if ((await readSyncState(root)).world.held !== true) fail23("sync_world_not_held", "take the world first (agents-factory sync take)");
 }
 
 // orchestrator/src/agents-factory-gateway.mjs
@@ -9797,7 +9938,7 @@ import { mkdir as mkdir17, readFile as readFile20, realpath as realpath12, renam
 import { randomUUID as randomUUID13 } from "node:crypto";
 import path29 from "node:path";
 var SYNC_CONFIG = path29.join(".project-local", "sync.json");
-function fail22(code, detail) {
+function fail24(code, detail) {
   throw new ProjectPackageError(code, detail);
 }
 async function writeJsonOver4(target, value) {
@@ -9834,8 +9975,8 @@ async function setInstanceMode({
   machine = null,
   now = () => /* @__PURE__ */ new Date()
 }) {
-  if (!INSTANCE_MODES.includes(mode)) fail22("mode_invalid", String(mode));
-  if (confirm !== mode) fail22("mode_confirmation_required", mode);
+  if (!INSTANCE_MODES.includes(mode)) fail24("mode_invalid", String(mode));
+  if (confirm !== mode) fail24("mode_confirmation_required", mode);
   const root = await realpath12(controllerRoot);
   const recordFile = path29.join(root, "instance.json");
   let record;
@@ -9844,11 +9985,11 @@ async function setInstanceMode({
   } catch {
     record = null;
   }
-  if (record === null || typeof record !== "object") fail22("instance_not_initialized", "instance.json");
+  if (record === null || typeof record !== "object") fail24("instance_not_initialized", "instance.json");
   const previous = await readInstanceMode(root);
   if (mode === "local") {
     if (previous.begun && (await readSyncState(root)).world.held !== true) {
-      fail22("mode_world_elsewhere", "take the world first (agents-factory sync take)");
+      fail24("mode_world_elsewhere", "take the world first (agents-factory sync take)");
     }
   } else {
     let candidate = null;
@@ -9856,14 +9997,14 @@ async function setInstanceMode({
       try {
         candidate = JSON.parse(await readFile20(syncConfig, "utf8"));
       } catch {
-        fail22("sync_config_invalid", syncConfig);
+        fail24("sync_config_invalid", syncConfig);
       }
       syncConfigOf(candidate);
     } else if (await readSyncConfig(root) === null) {
-      fail22("sync_not_configured", "--sync-config <file>");
+      fail24("sync_not_configured", "--sync-config <file>");
     }
     if (machine !== null) await setThisMachine(root, machine);
-    if (await readThisMachine(root) === null) fail22("sync_machine_unnamed", "--machine-id <id>");
+    if (await readThisMachine(root) === null) fail24("sync_machine_unnamed", "--machine-id <id>");
     if (candidate !== null) await writeJsonOver4(path29.join(root, SYNC_CONFIG), candidate);
   }
   await writeJsonOver4(recordFile, { ...record, mode, updatedAtUtc: now().toISOString() });
@@ -9998,7 +10139,7 @@ async function migrateInstance({
     dryRun,
     schemaVersion: record.schemaVersion,
     targetSchemaVersion: targetVersion,
-    pending: pending.map(({ id: id3, from, to, description }) => ({ id: id3, from, to, description: description ?? null }))
+    pending: pending.map(({ id: id5, from, to, description }) => ({ id: id5, from, to, description: description ?? null }))
   };
   if (dryRun || pending.length === 0) {
     return { ...summary2, state: pending.length === 0 ? "current" : "pending", applied: [], backup: null };
@@ -10019,7 +10160,7 @@ async function migrateInstance({
 }
 
 // orchestrator/src/agents-factory-sdk.mjs
-import { createHash as createHash17, randomUUID as randomUUID14 } from "node:crypto";
+import { createHash as createHash19, randomUUID as randomUUID14 } from "node:crypto";
 import { createWriteStream } from "node:fs";
 import { mkdir as mkdir20, readdir as readdir12, readFile as readFile21, rm as rm12 } from "node:fs/promises";
 import path32 from "node:path";
@@ -10428,7 +10569,7 @@ async function download(url, file, integrity, fetchImpl, maxBytes) {
   }
   if (!response.ok || response.body === null) fail("claude_sdk_download_failed", `A tarball download answered ${response.status}`);
   checkDownloadUrl(response.url || url);
-  const digest = createHash17("sha512");
+  const digest = createHash19("sha512");
   let bytes = 0;
   await new Promise((resolve, reject) => {
     const output = createWriteStream(file, { flags: "wx" });
@@ -10647,12 +10788,12 @@ async function nearestExisting(target) {
   while (await pathKind(probe) === null && path33.dirname(probe) !== probe) probe = path33.dirname(probe);
   return probe;
 }
-async function check2(id3, action) {
+async function check2(id5, action) {
   try {
-    return { id: id3, ...await action() };
+    return { id: id5, ...await action() };
   } catch (error) {
     return {
-      id: id3,
+      id: id5,
       status: "error",
       code: typeof error?.code === "string" ? error.code : "check_failed",
       hint: typeof error?.message === "string" ? error.message.slice(0, 300) : null
@@ -10676,7 +10817,7 @@ async function runDoctor({
   serviceManager = null
 }) {
   const checks = [];
-  const add = async (id3, action) => checks.push(await check2(id3, action));
+  const add = async (id5, action) => checks.push(await check2(id5, action));
   await add("runtime", async () => {
     const [major, minor] = process.versions.node.split(".").map(Number);
     const sqlite = isBuiltin("node:sqlite");
@@ -10851,6 +10992,7 @@ async function runDoctor({
 }
 
 // orchestrator/src/agents-factory-paths.mjs
+import { existsSync as existsSync2 } from "node:fs";
 import os2 from "node:os";
 import path34 from "node:path";
 var AGENTS_FACTORY_INSTANCE_ENV = "AGENTS_FACTORY_HOME";
@@ -10874,6 +11016,16 @@ function agentsFactoryDataDir({
   if (platform === "darwin") return api.join(homeDir, "Library", "Application Support", "AgentsFactory");
   const xdg = env.XDG_DATA_HOME && api.isAbsolute(env.XDG_DATA_HOME) ? env.XDG_DATA_HOME : api.join(homeDir, ".local", "share");
   return api.join(xdg, "agents-factory");
+}
+function instanceOfCli(cliPath, { platform = process.platform, exists: exists9 = existsSync2 } = {}) {
+  if (typeof cliPath !== "string" || cliPath === "") return null;
+  const api = pathApi(platform);
+  const runtime = api.dirname(api.resolve(cliPath));
+  const orchestrator = api.dirname(runtime);
+  const same = (a, b) => platform === "win32" ? a.toLowerCase() === b.toLowerCase() : a === b;
+  if (!same(api.basename(cliPath), "agents-factory.mjs") || !same(api.basename(runtime), "runtime") || !same(api.basename(orchestrator), ".orchestrator")) return null;
+  const instance = api.dirname(orchestrator);
+  return exists9(api.join(instance, "instance.json")) ? instance : null;
 }
 function agentsFactoryLayout({ dataDir, instanceDir, platform = process.platform }) {
   const api = pathApi(platform);
@@ -10904,15 +11056,22 @@ function agentsFactoryLayout({ dataDir, instanceDir, platform = process.platform
     backupsDir: api.join(instanceDir, ".project-local", "backups")
   });
 }
-function resolveLayout({ options = {}, env = process.env, platform = process.platform, homeDir = os2.homedir() } = {}) {
+function resolveLayout({
+  options = {},
+  env = process.env,
+  platform = process.platform,
+  homeDir = os2.homedir(),
+  cliPath = null,
+  exists: exists9 = existsSync2
+} = {}) {
   const api = pathApi(platform);
   const dataDir = options["data-dir"] ? api.resolve(options["data-dir"]) : agentsFactoryDataDir({ env, platform, homeDir });
-  const instanceDir = options.instance ? api.resolve(options.instance) : typeof env[AGENTS_FACTORY_INSTANCE_ENV] === "string" && env[AGENTS_FACTORY_INSTANCE_ENV].trim() !== "" ? api.resolve(env[AGENTS_FACTORY_INSTANCE_ENV]) : api.join(dataDir, "controller");
+  const instanceDir = options.instance ? api.resolve(options.instance) : typeof env[AGENTS_FACTORY_INSTANCE_ENV] === "string" && env[AGENTS_FACTORY_INSTANCE_ENV].trim() !== "" ? api.resolve(env[AGENTS_FACTORY_INSTANCE_ENV]) : instanceOfCli(cliPath, { platform, exists: exists9 }) ?? api.join(dataDir, "controller");
   return agentsFactoryLayout({ dataDir, instanceDir, platform });
 }
 
 // orchestrator/src/agents-factory-service.mjs
-import { createHash as createHash18 } from "node:crypto";
+import { createHash as createHash20 } from "node:crypto";
 import { mkdir as mkdir21, readFile as readFile22, rm as rm13, writeFile as writeFile14 } from "node:fs/promises";
 import os3 from "node:os";
 import path35 from "node:path";
@@ -10921,7 +11080,7 @@ var RUN_KEY = "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run";
 var UNSAFE_FOR_CMD = /["%^&|<>!\r\n]/u;
 function serviceIdentity(instanceDir, platform = process.platform) {
   const normalized = platform === "win32" ? instanceDir.toLowerCase() : instanceDir;
-  const hash2 = createHash18("sha256").update(normalized).digest("hex").slice(0, 10);
+  const hash2 = createHash20("sha256").update(normalized).digest("hex").slice(0, 10);
   return {
     hash: hash2,
     windowsName: `AgentsFactory-Gateway-${hash2}`,
@@ -11734,8 +11893,9 @@ Usage: agents-factory <command> [options] [--instance <folder>] [--data-dir <fol
   migrate [--dry-run]
   version
 
-The instance defaults to AGENTS_FACTORY_HOME, else <data>/controller; the data
-folder defaults to the OS's (AGENTS_FACTORY_DATA_DIR overrides).
+The instance defaults to AGENTS_FACTORY_HOME, else the instance this CLI is
+installed in (<instance>/.orchestrator/runtime), else <data>/controller; the
+data folder defaults to the OS's (AGENTS_FACTORY_DATA_DIR overrides).
 `;
 var FLAG_NAMES = new Set([GLOBAL_OPTIONS, ...Object.values(COMMANDS2)].flatMap((spec) => Object.entries(spec)).filter(([, kind2]) => kind2 === "flag").map(([name]) => name));
 function parseCommandLine(argv) {
@@ -11888,7 +12048,7 @@ async function versionInfo({ layout }) {
 }
 async function executeCommand(command, options, io) {
   const { env, platform, executor } = io;
-  const layout = resolveLayout({ options, env, platform, homeDir: io.homeDir });
+  const layout = resolveLayout({ options, env, platform, homeDir: io.homeDir, cliPath: io.cliPath ?? null });
   const keyStore = io.keyStore ?? createKeyStore({ platform, layout, executor, env });
   const gatewayContext = () => createGatewayContext({ layout, options, env, platform, executor, launcher: io.launcher ?? null, keyStore });
   const timeout = (fallback) => integerOption(options, "timeout-seconds", fallback, 1, 600) * 1e3;
@@ -12171,6 +12331,8 @@ async function runCli(argv, io = {}) {
     env: io.env ?? process.env,
     platform: io.platform ?? process.platform,
     homeDir: io.homeDir ?? os4.homedir(),
+    // The script node runs: a CLI installed in an instance works on that instance (agents-factory-paths.mjs).
+    cliPath: io.cliPath ?? null,
     executor: io.executor ?? defaultExecutor,
     stdin: io.stdin ?? process.stdin,
     stdout: io.stdout ?? process.stdout,
@@ -12208,4 +12370,4 @@ async function runCli(argv, io = {}) {
 }
 
 // orchestrator/src/agents-factory-cli.mjs
-process.exitCode = await runCli(process.argv.slice(2));
+process.exitCode = await runCli(process.argv.slice(2), { cliPath: process.argv[1] ?? null });

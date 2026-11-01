@@ -170,9 +170,12 @@ async function run() {
   }
   // Each agent's own permission mode, as the memory CLI keeps it; the provider's is acceptEdits.
   if (options.action === "read-permission-modes") {
-    const modes = (await readState(statePath)).permissionModes ?? {};
-    return { defaultMode: "acceptEdits",
-      agents: Object.entries(modes).map(([agentId, permissionMode]) => ({ agentId, permissionMode })) };
+    const state = await readState(statePath);
+    const modes = state.permissionModes ?? {};
+    const autonomy = state.memoryAutonomy ?? {};
+    const agentIds = [...new Set([...Object.keys(modes), ...Object.keys(autonomy)])];
+    return { defaultMode: "acceptEdits", agents: agentIds.map((agentId) => ({ agentId, permissionMode: modes[agentId] ?? null,
+      ownMemoryWithoutAsking: autonomy[agentId] === true })) };
   }
   const inputPath = path.resolve(root, options["input-file"]);
   const relative = path.relative(root, inputPath);
@@ -191,6 +194,140 @@ async function run() {
     state.journal.push(recorded);
     return recorded;
   };
+  // The agents' own memory changes, as the memory CLI keeps them (memory-changes.mjs). The fixture
+  // has one waiting: core-scheduler-1 asks to add an entry to its own memory and change another.
+  if (["read-memory-changes", "approve-memory-change", "reject-memory-change", "set-memory-autonomy"].includes(options.action)) {
+    if (state.memoryChanges === undefined) {
+      state.memoryChanges = [{ schemaVersion: 1, changeId: "mem-a1b2", projectId: "platform-core", quarterId: "core-q1",
+        agentId: "core-scheduler-1", target: { kind: "own", scopeId: "agent-memory:core-scheduler-1", agentId: "core-scheduler-1" },
+        baseRevision: 1, diff: [{ title: "Build", change: "added", text: "Use pnpm, not npm.", previous: null },
+          { title: "Style", change: "changed", text: "Short answers; code in English.", previous: "Short answers." }],
+        reason: "The person asked to remember the build tool.", state: "pending",
+        createdAtUtc: "2026-11-01T12:00:00.000Z", decidedAtUtc: null, writtenRevision: null }];
+    }
+    let result;
+    if (options.action === "read-memory-changes") {
+      const changes = state.memoryChanges.filter((change) => (!input.projectId || change.projectId === input.projectId)
+        && (!input.agentId || change.agentId === input.agentId) && (!input.states || input.states.includes(change.state)));
+      result = { schemaVersion: 1, projectId: input.projectId ?? null, changes, truncated: false };
+    } else if (options.action === "set-memory-autonomy") {
+      if (options["confirm-agent"] !== input.agentId) throw new Error("invalid_argument:confirm-agent");
+      state.memoryAutonomy ??= {};
+      const changed = (state.memoryAutonomy[input.agentId] === true) !== input.allowed;
+      state.memoryAutonomy[input.agentId] = input.allowed;
+      result = { agentId: input.agentId, allowed: input.allowed, changed };
+    } else {
+      if (options["confirm-change"] !== input.changeId) throw new Error("invalid_argument:confirm-change");
+      const change = state.memoryChanges.find((item) => item.changeId === input.changeId && item.projectId === input.projectId);
+      if (!change) throw new CliFailure({ status: "failed", code: "memory_change_not_found" });
+      if (change.state !== "pending") throw new CliFailure({ status: "failed", code: "memory_change_decided" });
+      const approve = options.action === "approve-memory-change";
+      Object.assign(change, { state: approve ? "approved" : "rejected", decidedAtUtc: new Date().toISOString(),
+        writtenRevision: approve ? change.baseRevision + 1 : null });
+      if (approve) {
+        journal({ action: "memory.write", projectId: change.projectId, quarterId: change.quarterId, agentId: change.agentId,
+          summary: "Memory of " + change.agentId + ", revision " + change.writtenRevision, undo: { kind: "memory-revision" } });
+      }
+      result = change;
+    }
+    await writeFile(statePath, JSON.stringify(state), "utf8");
+    return result;
+  }
+  // Task mode, as the memory CLI keeps it (agent-tasks.mjs). There is no agent turn in the
+  // fixture: a task's plan is there at once - revision 1 when it starts, the next one when
+  // the person asks for changes - and an approved task is in progress, its first step done.
+  if (["read-tasks", "start-task", "revise-task", "approve-task", "cancel-task"].includes(options.action)) {
+    state.tasks ??= [];
+    const at = new Date().toISOString();
+    const fixturePlan = (revision) => ({ revision, understanding: "Add an export button to the report toolbar.",
+      questions: revision === 1 ? ["Which formats: CSV only, or CSV and JSON?", "Should it export the filtered rows only?"] : [],
+      steps: ["Read the toolbar \u2014 its code in report-toolbar.js", "Add the Export button \u2014 next to Print",
+        ...(revision > 1 ? ["Export the filtered rows \u2014 as CSV and JSON"] : ["Export the rows \u2014 as CSV"]),
+        "Add a test \u2014 for the export"], formatted: true, raw: null, atUtc: at });
+    const view = (task) => ({ ...task, waitingFor: task.stage === "awaiting-approval" ? "person"
+      : ["planning", "in-progress"].includes(task.stage) ? "agent" : null });
+    const find = (taskId) => {
+      const task = state.tasks.find((item) => item.taskId === taskId);
+      if (!task) throw new CliFailure({ status: "failed", code: "task_not_found" });
+      return task;
+    };
+    const entry = (task, action, summary) => journal({ action, projectId: task.projectId, quarterId: task.quarterId,
+      agentId: task.agentId, summary, noUndo: "task_not_undone" });
+    if (options.action === "read-tasks") {
+      // A finished task of data-ingest-1: its results, one in its Artifacts (fixture-workspace.mjs), one not.
+      const finished = { schemaVersion: 1, taskId: "task-d0ne", origin: "chat", projectId: "data-pipeline", quarterId: "data-q1",
+        agentId: "data-ingest-1", text: "Analyse why the queue drains slowly", stage: "done", stopped: null,
+        revisions: [{ ...fixturePlan(2), understanding: "Find why the ingest queue drains slowly.", steps: [
+          "Read the drain code \u2014 src/queue/drain.mjs", "Write the analysis \u2014 reports/drain-analysis.md"] }],
+        remarks: [], approved: { revision: 2, answers: [], atUtc: "2026-09-18T09:00:00.000Z" },
+        steps: [{ text: "Read the drain code \u2014 src/queue/drain.mjs", status: "done" },
+          { text: "Write the analysis \u2014 reports/drain-analysis.md", status: "done" }],
+        results: [{ path: "reports/drain-analysis.md", note: "the analysis", artifactId: "task-d0ne.1", problem: null },
+          { path: "data/export.bin", note: "the exported rows", artifactId: null, problem: "access_denied" }],
+        lastOperationId: null, createdAtUtc: "2026-09-18T08:50:00.000Z", updatedAtUtc: "2026-09-18T09:14:00.000Z" };
+      // An earlier one of the same agent: the Plan tab lists it, and it opens to its plan.
+      const older = { schemaVersion: 1, taskId: "task-0ld1", origin: "chat", projectId: "data-pipeline", quarterId: "data-q1",
+        agentId: "data-ingest-1", text: "Find where the queue lock is taken", stage: "done", stopped: null,
+        revisions: [{ revision: 1, understanding: "Find the lock.", questions: [], formatted: true, raw: null,
+          steps: ["Read the lock code \u2014 src/queue/lock.mjs"], atUtc: "2026-09-17T10:00:00.000Z" }],
+        remarks: [], approved: { revision: 1, answers: [], atUtc: "2026-09-17T10:01:00.000Z" },
+        steps: [{ text: "Read the lock code \u2014 src/queue/lock.mjs", status: "done" }],
+        lastOperationId: null, createdAtUtc: "2026-09-17T09:59:00.000Z", updatedAtUtc: "2026-09-17T10:20:00.000Z" };
+      const tasks = [...state.tasks, finished, older].filter((task) => (input.agentId ? task.agentId === input.agentId
+        : input.projectId ? task.projectId === input.projectId : true)
+        && (!input.stages || input.stages.includes(task.stage))
+        && (!input.waitingFor || view(task).waitingFor === input.waitingFor))
+        .sort((a, b) => b.updatedAtUtc.localeCompare(a.updatedAtUtc)).map(view);
+      return { schemaVersion: 1, projectId: input.projectId, tasks, truncated: false };
+    }
+    if (options["confirm-agent"] !== input.agentId) throw new Error("invalid_argument:confirm-agent");
+    let result;
+    if (options.action === "start-task") {
+      // The fake CLI runs alone (copied into the fixture's runtime): it does not know where the agent
+      // stands, so the window reads an agent's tasks by the agent.
+      const placed = { projectId: "platform-core", quarterId: "core-q1" };
+      if (state.tasks.some((task) => task.agentId === input.agentId
+          && ["planning", "awaiting-approval", "in-progress"].includes(task.stage))) {
+        throw new CliFailure({ status: "failed", code: "task_agent_busy" });
+      }
+      const task = { schemaVersion: 1, taskId: "task-" + (state.tasks.length + 1).toString(36).padStart(4, "0"),
+        origin: "chat", ...placed, agentId: input.agentId, text: input.text, stage: "awaiting-approval", stopped: null,
+        revisions: [fixturePlan(1)], remarks: [], approved: null, steps: [], lastOperationId: null,
+        createdAtUtc: at, updatedAtUtc: at };
+      state.tasks.push(task);
+      entry(task, "task.start", "Gave task " + task.taskId + " to " + task.agentId + ": a plan first");
+      result = view(task);
+    } else if (options.action === "revise-task") {
+      const task = find(input.taskId);
+      if (task.stage !== "awaiting-approval") throw new CliFailure({ status: "failed", code: "task_stage_conflict" });
+      task.remarks.push({ afterRevision: task.revisions.at(-1).revision, text: input.remarks, answers: input.answers ?? [],
+        atUtc: at });
+      task.revisions.push(fixturePlan(task.revisions.at(-1).revision + 1));
+      task.updatedAtUtc = at;
+      entry(task, "task.revise", "Asked " + task.agentId + " to change the plan of task " + task.taskId);
+      result = view(task);
+    } else if (options.action === "approve-task") {
+      const task = find(input.taskId);
+      if (task.stage !== "awaiting-approval") throw new CliFailure({ status: "failed", code: "task_stage_conflict" });
+      if (task.revisions.at(-1).revision !== input.revision) {
+        throw new CliFailure({ status: "failed", code: "task_revision_conflict" });
+      }
+      Object.assign(task, { stage: "in-progress", approved: { revision: input.revision, answers: input.answers ?? [], atUtc: at },
+        steps: task.revisions.at(-1).steps.map((text, index) => ({ text,
+          status: index === 0 ? "done" : index === 1 ? "in-progress" : "pending" })),
+        updatedAtUtc: at });
+      entry(task, "task.approve", "Approved revision " + input.revision + " of the plan of task " + task.taskId);
+      result = view(task);
+    } else {
+      const task = find(input.taskId);
+      const previousStage = task.stage;
+      Object.assign(task, { stage: "cancelled", updatedAtUtc: at });
+      entry(task, "task.cancel", "Cancelled task " + task.taskId + " of " + task.agentId);
+      result = { task: view(task), previousStage };
+    }
+    await writeFile(statePath, JSON.stringify(state), "utf8");
+    return result;
+  }
   if (options.action === "rename") {
     if (Object.keys(input).sort().join() !== "kind,name,objectId,projectId" || options["confirm-project"] !== input.projectId) {
       throw new Error("invalid_argument:confirm-project");
@@ -367,6 +504,19 @@ async function run() {
 
   // A memory document, as the memory CLI previews and approves it; the fixture's
   // document is fixed text, and "docs/memory/missing.md" is not there.
+  // A memory written as a document for the person's editor: written once, the same after.
+  if (options.action === "export-memory-document") {
+    state.exported ??= [];
+    const known = state.exported.includes(input.path);
+    if (!known) state.exported.push(input.path);
+    await writeFile(statePath, JSON.stringify(state), "utf8");
+    const text = "# Memory\n\n## Goal\nBuild the rigging tools.\n";
+    return { schemaVersion: 1, agentId: input.agentId, path: input.path, state: known ? "same" : "written",
+      contentSha256: sha256(text), bytes: Buffer.byteLength(text),
+      filePath: path.join(path.dirname(statePath), "fixture-folder", ...input.path.split("/")),
+      target: { kind: input.target, scopeId: `fixture-${input.target}-memory`, revision: 1 }, entries: 1 };
+  }
+
   if (options.action === "preview-memory-document" || options.action === "approve-memory-document") {
     if (input.path === "docs/memory/missing.md") {
       throw new CliFailure({ status: "failed", code: "memory_document_missing", phase: "memory-operation" });
@@ -377,7 +527,8 @@ async function run() {
     const entries = [{ id: "goal", title: "Goal", characters: 28 }, { id: "rules", title: "Rules", characters: 25 }];
     if (options.action === "preview-memory-document") {
       return { schemaVersion: 1, agentId: input.agentId, path: input.path, contentSha256, bytes: Buffer.byteLength(text),
-        target: { kind: input.target, scopeId, revision: 1 }, entries, excerpt: text };
+        target: { kind: input.target, scopeId, revision: 1 }, entries, excerpt: text,
+        changes: [{ title: "Goal", change: "same" }, { title: "Rules", change: "changed" }, { title: "Owners", change: "removed" }] };
     }
     if (options["confirm-user-command"] !== input.commandId) throw new Error("invalid_argument:confirm-user-command");
     if (input.expectedSha256 !== contentSha256) {

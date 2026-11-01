@@ -7,7 +7,11 @@
 // then rename), so a reader never sees a half-written state. The file holds no
 // backend data and no secret: scene names, statuses, times and an exit code.
 
-import { renameSync, writeFileSync } from "node:fs";
+import { renameSync, rmSync, writeFileSync } from "node:fs";
+
+const RENAME_ATTEMPTS = 10;
+const RENAME_PAUSE_MS = 25;
+const PAUSE = new Int32Array(new SharedArrayBuffer(4));
 
 export function createRunStatus({ file, runId, command, source, sceneNames, now = () => new Date() }) {
   const state = {
@@ -38,8 +42,23 @@ export function createRunStatus({ file, runId, command, source, sceneNames, now 
     for (const scene of state.scenes) counts[scene.status] = (counts[scene.status] ?? 0) + 1;
     state.counts = counts;
     const temporary = `${file}.${process.pid}.tmp`;
-    writeFileSync(temporary, `${JSON.stringify(state, null, 1)}\n`);
-    renameSync(temporary, file);
+    // On Windows a file a reader has open cannot be replaced (EPERM): the checks window
+    // (test-monitor.cjs) reads it twice a second. A few tries, then this state is skipped -
+    // the next one is written; the status is a side channel and never fails the run.
+    try {
+      writeFileSync(temporary, `${JSON.stringify(state, null, 1)}\n`);
+      for (let attempt = 1; ; attempt += 1) {
+        try {
+          renameSync(temporary, file);
+          return;
+        } catch (error) {
+          if (attempt >= RENAME_ATTEMPTS || !["EPERM", "EACCES", "EBUSY"].includes(error?.code)) throw error;
+          Atomics.wait(PAUSE, 0, 0, RENAME_PAUSE_MS);
+        }
+      }
+    } catch {
+      try { rmSync(temporary, { force: true }); } catch { /* the next write replaces it */ }
+    }
   }
 
   const sceneNamed = (name) => state.scenes.find((scene) => scene.name === name);

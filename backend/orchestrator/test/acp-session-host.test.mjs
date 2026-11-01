@@ -270,3 +270,30 @@ test("provider reads go to the reader the request names", async () => {
   assert.equal(listed.data.records[0].name, "qwen");
   await assert.rejects(async () => handlers["query.provider.models.list"]({ input: { provider: { ...identity, sourceId: "other" } } }));
 });
+
+test("a task's planning turn refuses every change, whatever the policy; reads still go", async (t) => {
+  const { root, make, entries } = await setup(t);
+  const host = make();
+  t.after(() => host.close());
+  await host.connect();
+  let asked = 0;
+  host.registerServerRequestHandler("item/commandExecution/requestApproval", async () => { asked += 1; return { decision: "accept" }; });
+  host.registerServerRequestHandler("item/permissions/requestApproval", async () => { asked += 1; return { permissions: { read: true } }; });
+  const threadId = await host.createSession({ cwd: root });
+  const asks = [];
+  for (const text of ["tool please", "read notes/plan.md"]) {
+    const started = await host.startTurn(threadId, [{ type: "text", text }], {
+      planning: true, policy: async (call) => { asks.push(call); return "allow"; } });
+    await ended(host, started.turn.id);
+  }
+  assert.deepEqual((await entries()).filter((entry) => entry.method === "permission").map((entry) => entry.allowed), [false, true]);
+  assert.equal(asked, 0, "the person is not asked");
+  assert.equal(asks.length, 0, "not even an allowing policy is asked");
+  const trace = await host.readTrace(threadId);
+  assert.deepEqual(trace.records.filter((record) => record.type === "permission").map((record) => [record.tool, record.decision, record.by]),
+    [["pwsh", "deny", "desk"]]);
+  // The next, ordinary turn is not a planning one.
+  const started = await host.startTurn(threadId, [{ type: "text", text: "tool please" }], { policy: async () => "allow" });
+  await ended(host, started.turn.id);
+  assert.equal((await entries()).filter((entry) => entry.method === "permission").at(-1).allowed, true);
+});

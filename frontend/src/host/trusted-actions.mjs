@@ -37,6 +37,8 @@ const TASK_STAGES = Object.freeze(["dispatched", "started", "accepted", "planned
 // Claude Code's permission modes an agent may have (the memory CLI's
 // AGENT_PERMISSION_MODES), and those the provider's own may be.
 const AGENT_PERMISSION_MODES = Object.freeze(["default", "acceptEdits", "auto", "bypassPermissions"]);
+// The stages of an agent's task from its chat (the backend's agent-tasks.mjs): the same words as the task board's columns.
+const AGENT_TASK_STAGES = Object.freeze(["planning", "awaiting-approval", "in-progress", "done", "cancelled"]);
 const PROVIDER_PERMISSION_MODES = Object.freeze(["default", "acceptEdits", "auto", "plan", "dontAsk"]);
 const MAX_ENTRIES = 64;
 const MAX_TITLE = 512;
@@ -203,7 +205,8 @@ async function hardenDirectory(directory) {
  *                 against automation of the desktop itself.
  * @param chooseDirectory async () => string | null
  */
-export function createTrustedActions({ config, confirm, chooseDirectory, journal = null, gateway = null }) {
+export function createTrustedActions({ config, confirm, chooseDirectory, journal = null, gateway = null,
+  openInEditor = null }) {
   const cliScript = path.join(config.controllerRoot, config.gatewayCli.scriptRelativePath);
   // The CLI only accepts an input file that resolves inside the controller root,
   // is a real file, not a symlink, and is at most 256 KB. This is that private,
@@ -724,9 +727,70 @@ export function createTrustedActions({ config, confirm, chooseDirectory, journal
           title: typeof entry?.title === "string" ? entry.title.slice(0, MAX_TITLE) : "",
           characters: Number.isSafeInteger(entry?.characters) ? entry.characters : null,
         })),
+        // What approving would change, by entry title: added, changed, removed or the same.
+        changes: (Array.isArray(value.changes) ? value.changes : []).slice(0, 128)
+          .filter((item) => ["added", "changed", "removed", "same"].includes(item?.change))
+          .map((item) => ({ title: typeof item.title === "string" ? item.title.slice(0, MAX_TITLE) : "", change: item.change })),
         excerpt: typeof value.excerpt === "string" ? value.excerpt.slice(0, 1200) : "",
       },
     };
+  }
+
+  /**
+   * A memory as a Markdown document of the project folder, opened in the person's text editor (the
+   * owner's choice of 01.11: "## ..." headings are its entries). A file already there that differs
+   * from the memory is replaced only when the person says so; otherwise it opens as it is. Loading
+   * it back is the memory document's preview and approval above.
+   */
+  async function exportMemoryDocument({ agentId, projectId, path: documentPath, target } = {}) {
+    if (typeof agentId !== "string" || !ID.test(agentId)) return invalid("agent_id_invalid", "agentId");
+    if (typeof projectId !== "string" || !ID.test(projectId)) return invalid("project_id_invalid", "projectId");
+    if (!documentPathOk(documentPath) || !/\.md$/iu.test(documentPath)) return invalid("document_path_invalid", "path");
+    const kind = documentTarget(target);
+    if (kind === null) return invalid("document_target_invalid", "target");
+    const ready = await availability();
+    if (!ready.available) {
+      return { ok: false, error: { code: "cli_unavailable", reasonCode: ready.reasonCode } };
+    }
+    // The document's title line in the window's language (it is no entry: loading back skips it).
+    const title = { agent: tx("Memory of agent {agentId}", { agentId }), project: tx("Project memory"),
+      quarter: tx("Quarter memory") }[kind];
+    const write = async (replace) => {
+      const result = await withInputFile({ agentId, path: documentPath, target: kind, replace, title }, (inputPath) => runCli(
+        config.gatewayCli.nodeExecutable,
+        [cliScript, "memory", "--repo-root", config.controllerRoot, "--action", "export-memory-document",
+          "--input-file", inputPath, "--json"],
+        config.controllerRoot,
+      ));
+      return result?.ok === false ? result : parseCliJson(result);
+    };
+    let written = await write(false);
+    let state = null;
+    let filePath = null;
+    if (!written.ok && written.error?.reasonCode === "memory_document_exists") {
+      const replace = await confirm({
+        title: tx("The file is already there"),
+        message: tx("“{path}” differs from the memory. Replace it with the memory as it is now?", { path: documentPath }),
+        detail: tx("If not, the file opens as it is, with the edits made in it."),
+        confirmLabel: tx("Replace"),
+      });
+      if (replace) {
+        written = await write(true);
+      } else {
+        const folder = await readProjectFolder({ projectId });
+        if (!folder.ok) return folder;
+        if (folder.data.configured !== true) return { ok: false, error: { code: "cli_failed", reasonCode: "memory_workspace_required" } };
+        state = "kept";
+        filePath = path.join(folder.data.workspacePath, ...documentPath.split("/"));
+      }
+    }
+    if (state === null) {
+      if (!written.ok) return written;
+      state = ["written", "same", "replaced"].includes(written.value?.state) ? written.value.state : "written";
+      filePath = typeof written.value?.filePath === "string" ? written.value.filePath : null;
+    }
+    const opened = filePath === null || typeof openInEditor !== "function" ? { ok: false } : await openInEditor(filePath);
+    return { ok: true, data: { agentId, path: documentPath, target: kind, state, opened: opened?.ok === true } };
   }
 
   /**
@@ -856,7 +920,9 @@ export function createTrustedActions({ config, confirm, chooseDirectory, journal
         defaultMode: PROVIDER_PERMISSION_MODES.includes(defaultMode) ? defaultMode : null,
         agents: agents.filter((item) => typeof item?.agentId === "string" && ID.test(item.agentId)).slice(0, 512)
           .map((item) => ({ agentId: item.agentId,
-            permissionMode: AGENT_PERMISSION_MODES.includes(item.permissionMode) ? item.permissionMode : null })),
+            permissionMode: AGENT_PERMISSION_MODES.includes(item.permissionMode) ? item.permissionMode : null,
+            // Whether the agent changes its own memory without asking (memory-changes.mjs).
+            ownMemoryWithoutAsking: item.ownMemoryWithoutAsking === true })),
       },
     };
   }
@@ -996,6 +1062,214 @@ export function createTrustedActions({ config, confirm, chooseDirectory, journal
     const parsed = parseCliJson(result);
     if (!parsed.ok) return parsed;
     return { ok: true, data: { response: parsed.value } };
+  }
+
+  // --- task mode (the backend's agent-tasks.mjs) -------------------------------------
+  //
+  // A task given in an agent's chat is planned first, read-only; the person
+  // approves the plan, asks for changes or cancels it on the agent's Plan tab.
+  // The same records feed the task board later. The agent's next message is the
+  // task's turn: the window sends it right after starting, revising or approving.
+
+  /** A task as the window may see it: its record, bounded and checked field by field. */
+  const taskOf = (value) => {
+    const text = (item, max) => (typeof item === "string" ? item.slice(0, max) : "");
+    const list = (items, max, each) => (Array.isArray(items) ? items.slice(0, max).map(each) : []);
+    const time = (item) => (typeof item === "string" && item.length <= 40 ? item : null);
+    if (!value || typeof value !== "object" || !ID.test(value.taskId ?? "") || !AGENT_TASK_STAGES.includes(value.stage)) return null;
+    return {
+      taskId: value.taskId, origin: "chat",
+      projectId: ID.test(value.projectId ?? "") ? value.projectId : null,
+      quarterId: ID.test(value.quarterId ?? "") ? value.quarterId : null,
+      agentId: ID.test(value.agentId ?? "") ? value.agentId : null,
+      text: text(value.text, 8000), stage: value.stage,
+      waitingFor: ["person", "agent"].includes(value.waitingFor) ? value.waitingFor : null,
+      stopped: ["failed", "interrupted"].includes(value.stopped) ? value.stopped : null,
+      revisions: list(value.revisions, 20, (revision) => ({
+        revision: Number.isSafeInteger(revision?.revision) ? revision.revision : 0,
+        understanding: text(revision?.understanding, 4000),
+        questions: list(revision?.questions, 16, (question) => text(question, 1000)),
+        steps: list(revision?.steps, 40, (step) => text(step, 600)),
+        formatted: revision?.formatted === true, raw: revision?.raw === null ? null : text(revision?.raw, 16000),
+        atUtc: time(revision?.atUtc) })),
+      remarks: list(value.remarks, 20, (remark) => ({
+        afterRevision: Number.isSafeInteger(remark?.afterRevision) ? remark.afterRevision : 0,
+        text: text(remark?.text, 8000), answers: list(remark?.answers, 16, (answer) => text(answer, 2000)),
+        atUtc: time(remark?.atUtc) })),
+      approved: value.approved && Number.isSafeInteger(value.approved.revision)
+        ? { revision: value.approved.revision, answers: list(value.approved.answers, 16, (answer) => text(answer, 2000)),
+          atUtc: time(value.approved.atUtc) } : null,
+      steps: list(value.steps, 40, (step) => ({ text: text(step?.text, 600),
+        status: ["pending", "in-progress", "done"].includes(step?.status) ? step.status : "pending" })),
+      // The files the agent listed as a finished task's results, each with its artifact or why none.
+      ...(Array.isArray(value.results) ? { results: list(value.results, 32, (result) => ({
+        path: text(result?.path, 400), note: text(result?.note, 400),
+        artifactId: ID.test(result?.artifactId ?? "") ? result.artifactId : null,
+        problem: typeof result?.problem === "string" && /^[a-z_]{1,64}$/u.test(result.problem) ? result.problem : null })) } : {}),
+      createdAtUtc: time(value.createdAtUtc), updatedAtUtc: time(value.updatedAtUtc),
+    };
+  };
+
+  /** Runs one task action of the memory CLI; a write names its agent again (--confirm-agent). */
+  async function taskCli(action, input, agentId = null) {
+    const ready = await availability();
+    if (!ready.available) {
+      return { ok: false, error: { code: "cli_unavailable", reasonCode: ready.reasonCode } };
+    }
+    const result = await withInputFile(input, (inputPath) => runCli(
+      config.gatewayCli.nodeExecutable,
+      [cliScript, "memory", "--repo-root", config.controllerRoot, "--action", action, "--input-file", inputPath,
+        ...(agentId === null ? [] : ["--confirm-agent", agentId]), "--json"],
+      config.controllerRoot,
+    ));
+    if (result?.ok === false) return result;
+    return parseCliJson(result);
+  }
+  const answersOk = (answers) => answers === undefined || (Array.isArray(answers) && answers.length <= 16
+    && answers.every((answer) => typeof answer === "string" && answer.length <= 2000));
+  const taskResult = (parsed) => {
+    if (!parsed.ok) return parsed;
+    const task = taskOf(parsed.value?.task ?? parsed.value);
+    return task === null ? { ok: false, error: { code: "cli_response_invalid", reasonCode: "task" } }
+      : { ok: true, data: { task } };
+  };
+
+  /** Tasks of a project, newest first; by agent, stages and whom they wait for. Read-only. */
+  async function readTasks({ projectId, agentId = null, stages = null, waitingFor = null, limit = 50 } = {}) {
+    if (typeof projectId !== "string" || !ID.test(projectId)) return invalid("project_id_invalid", "projectId");
+    if (agentId !== null && (typeof agentId !== "string" || !ID.test(agentId))) return invalid("agent_id_invalid", "agentId");
+    if (stages !== null && (!Array.isArray(stages) || stages.some((stage) => !AGENT_TASK_STAGES.includes(stage)))) {
+      return invalid("stages_invalid", "stages");
+    }
+    if (waitingFor !== null && !["person", "agent"].includes(waitingFor)) return invalid("waiting_for_invalid", "waitingFor");
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 200) return invalid("limit_invalid", "limit");
+    const parsed = await taskCli("read-tasks", { projectId, ...(agentId === null ? {} : { agentId }),
+      ...(stages === null ? {} : { stages }), ...(waitingFor === null ? {} : { waitingFor }), limit });
+    if (!parsed.ok) return parsed;
+    const tasks = (Array.isArray(parsed.value?.tasks) ? parsed.value.tasks : []).map(taskOf).filter(Boolean);
+    return { ok: true, data: { projectId, tasks, truncated: parsed.value?.truncated === true } };
+  }
+
+  // --- the agents' own memory changes (the backend's memory-changes.mjs) -----------------
+
+  /** A memory change as the window may see it, bounded and checked field by field. */
+  const memoryChangeOf = (value) => {
+    const text = (item, max) => (typeof item === "string" ? item.slice(0, max) : null);
+    if (!value || typeof value !== "object" || !ID.test(value.changeId ?? "") || !ID.test(value.agentId ?? "")
+        || !["pending", "approved", "rejected", "stale", "written"].includes(value.state)) return null;
+    return {
+      changeId: value.changeId, projectId: ID.test(value.projectId ?? "") ? value.projectId : null,
+      quarterId: ID.test(value.quarterId ?? "") ? value.quarterId : null, agentId: value.agentId,
+      target: { kind: ["own", "quarter", "project", "agent"].includes(value.target?.kind) ? value.target.kind : "own",
+        agentId: ID.test(value.target?.agentId ?? "") ? value.target.agentId : null },
+      diff: (Array.isArray(value.diff) ? value.diff : []).slice(0, 32).map((line) => ({
+        title: text(line?.title, 512) ?? "", change: ["added", "changed", "removed"].includes(line?.change) ? line.change : "changed",
+        text: text(line?.text, 65_536), previous: text(line?.previous, 65_536) })),
+      reason: text(value.reason, 2000), state: value.state,
+      createdAtUtc: text(value.createdAtUtc, 40), decidedAtUtc: text(value.decidedAtUtc, 40),
+    };
+  };
+
+  /** Memory changes the agents asked for: of a project (by agent) or of every project; by states. Read-only. */
+  async function readMemoryChanges({ projectId = null, agentId = null, states = null, limit = 50 } = {}) {
+    if (projectId !== null && (typeof projectId !== "string" || !ID.test(projectId))) return invalid("project_id_invalid", "projectId");
+    if (agentId !== null && (typeof agentId !== "string" || !ID.test(agentId))) return invalid("agent_id_invalid", "agentId");
+    if (states !== null && (!Array.isArray(states)
+        || states.some((state) => !["pending", "approved", "rejected", "stale", "written"].includes(state)))) {
+      return invalid("states_invalid", "states");
+    }
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) return invalid("limit_invalid", "limit");
+    const parsed = await taskCli("read-memory-changes", { ...(projectId === null ? {} : { projectId }),
+      ...(agentId === null ? {} : { agentId }), ...(states === null ? {} : { states }), limit });
+    if (!parsed.ok) return parsed;
+    const changes = (Array.isArray(parsed.value?.changes) ? parsed.value.changes : []).map(memoryChangeOf).filter(Boolean);
+    return { ok: true, data: { changes } };
+  }
+
+  /** The person's decision on an agent's memory change, from its card in the chat: the card is the question. */
+  async function decideMemoryChange(action, { projectId, changeId } = {}) {
+    if (typeof projectId !== "string" || !ID.test(projectId)) return invalid("project_id_invalid", "projectId");
+    if (typeof changeId !== "string" || !ID.test(changeId)) return invalid("change_id_invalid", "changeId");
+    const ready = await availability();
+    if (!ready.available) return { ok: false, error: { code: "cli_unavailable", reasonCode: ready.reasonCode } };
+    const result = await withInputFile({ projectId, changeId }, (inputPath) => runCli(config.gatewayCli.nodeExecutable,
+      [cliScript, "memory", "--repo-root", config.controllerRoot, "--action", action, "--input-file", inputPath,
+        "--confirm-change", changeId, "--json"], config.controllerRoot));
+    if (result?.ok === false) return result;
+    const parsed = parseCliJson(result);
+    if (!parsed.ok) return parsed;
+    const change = memoryChangeOf(parsed.value);
+    return change === null ? { ok: false, error: { code: "cli_response_invalid", reasonCode: "memory_change" } }
+      : { ok: true, data: { change } };
+  }
+  const approveMemoryChange = (input) => decideMemoryChange("approve-memory-change", input);
+  const rejectMemoryChange = (input) => decideMemoryChange("reject-memory-change", input);
+
+  /** Whether an agent changes its own memory without asking: allowing it is confirmed first. */
+  async function setMemoryAutonomy({ agentId, allowed } = {}) {
+    if (typeof agentId !== "string" || !ID.test(agentId)) return invalid("agent_id_invalid", "agentId");
+    if (typeof allowed !== "boolean") return invalid("allowed_invalid", "allowed");
+    if (allowed) {
+      const confirmed = await confirm({
+        title: tx("Own memory without asking"),
+        message: tx("Let agent {agentId} change its own memory without asking?", { agentId }),
+        detail: tx("Its changes of its own memory are written at once; each one is in the History and can be undone there. ")
+          + tx("Changes of a quarter's or a project's memory still wait for you."),
+        confirmLabel: tx("Allow"),
+      });
+      if (!confirmed) return { ok: false, error: { code: "user_declined", reasonCode: "declined" } };
+    }
+    const parsed = await taskCli("set-memory-autonomy", { agentId, allowed }, agentId);
+    if (!parsed.ok) return parsed;
+    return { ok: true, data: { agentId, allowed: parsed.value?.allowed === true, changed: parsed.value?.changed === true } };
+  }
+
+  /** Every project's tasks that wait for the person (a plan to approve, a stopped turn). Read-only. */
+  async function readTasksWaitingForPerson() {
+    const parsed = await taskCli("read-tasks", { waitingFor: "person", limit: 200 });
+    if (!parsed.ok) return parsed;
+    const tasks = (Array.isArray(parsed.value?.tasks) ? parsed.value.tasks : []).map(taskOf)
+      .filter((task) => task !== null && task.waitingFor === "person");
+    return { ok: true, data: { tasks } };
+  }
+
+  /** A new task for an idle agent; its next message is the planning turn. */
+  async function startTask({ agentId, text } = {}) {
+    if (typeof agentId !== "string" || !ID.test(agentId)) return invalid("agent_id_invalid", "agentId");
+    if (typeof text !== "string" || !text.trim() || text.length > 8000) return invalid("text_invalid", "text");
+    return taskResult(await taskCli("start-task", { agentId, text }, agentId));
+  }
+
+  /** The person's remarks on the plan (and answers to its questions): the agent plans again. */
+  async function reviseTask({ agentId, taskId, remarks, answers } = {}) {
+    if (typeof agentId !== "string" || !ID.test(agentId)) return invalid("agent_id_invalid", "agentId");
+    if (typeof taskId !== "string" || !ID.test(taskId)) return invalid("task_id_invalid", "taskId");
+    if (typeof remarks !== "string" || !remarks.trim() || remarks.length > 8000) return invalid("remarks_invalid", "remarks");
+    if (!answersOk(answers)) return invalid("answers_invalid", "answers");
+    return taskResult(await taskCli("revise-task", { agentId, taskId, remarks, ...(answers ? { answers } : {}) }, agentId));
+  }
+
+  /** The person approves this revision of the plan (the latest only); the agent works on it next. */
+  async function approveTask({ agentId, taskId, revision, answers } = {}) {
+    if (typeof agentId !== "string" || !ID.test(agentId)) return invalid("agent_id_invalid", "agentId");
+    if (typeof taskId !== "string" || !ID.test(taskId)) return invalid("task_id_invalid", "taskId");
+    if (!Number.isSafeInteger(revision) || revision < 1) return invalid("revision_invalid", "revision");
+    if (!answersOk(answers)) return invalid("answers_invalid", "answers");
+    return taskResult(await taskCli("approve-task", { agentId, taskId, revision, ...(answers ? { answers } : {}) }, agentId));
+  }
+
+  /** Cancels an open task, after the person confirms: a task is cancelled, not undone. */
+  async function cancelTask({ agentId, taskId } = {}) {
+    if (typeof agentId !== "string" || !ID.test(agentId)) return invalid("agent_id_invalid", "agentId");
+    if (typeof taskId !== "string" || !ID.test(taskId)) return invalid("task_id_invalid", "taskId");
+    const confirmed = await confirm({
+      title: tx("Cancel the task"),
+      message: tx("Cancel task {taskId} of agent {agentId}?", { taskId, agentId }),
+      detail: tx("The agent does not go on with it. The plan stays in the task's history."),
+      confirmLabel: tx("Cancel the task"),
+    });
+    if (!confirmed) return { ok: false, error: { code: "user_declined", reasonCode: "declined" } };
+    return taskResult(await taskCli("cancel-task", { agentId, taskId }, agentId));
   }
 
   /** The archived projects and quarters, newest first. Read-only. */
@@ -1652,6 +1926,7 @@ export function createTrustedActions({ config, confirm, chooseDirectory, journal
     readAgentCommits,
     initProjectGit: journalled("init-project-git", initProjectGit, ({ projectId }) => ({ projectId })),
     previewMemoryDocument,
+    exportMemoryDocument,
     approveMemoryDocument: journalled("approve-memory-document", approveMemoryDocument,
       ({ agentId }) => ({ agentId })),
     readProjectFolder,
@@ -1659,6 +1934,18 @@ export function createTrustedActions({ config, confirm, chooseDirectory, journal
     undoAction: journalled("undo-action", undoAction, ({ projectId, entryId }) => ({ projectId, entryId })),
     readNames,
     renameObject: journalled("rename", renameObject, ({ projectId, kind, objectId }) => ({ projectId, kind, objectId })),
+    readTasks,
+    readTasksWaitingForPerson,
+    readMemoryChanges,
+    approveMemoryChange: journalled("approve-memory-change", approveMemoryChange,
+      ({ projectId, changeId }) => ({ projectId, changeId })),
+    rejectMemoryChange: journalled("reject-memory-change", rejectMemoryChange,
+      ({ projectId, changeId }) => ({ projectId, changeId })),
+    setMemoryAutonomy: journalled("set-memory-autonomy", setMemoryAutonomy, ({ agentId }) => ({ agentId })),
+    startTask: journalled("start-task", startTask, ({ agentId }) => ({ agentId })),
+    reviseTask: journalled("revise-task", reviseTask, ({ agentId, taskId }) => ({ agentId, taskId })),
+    approveTask: journalled("approve-task", approveTask, ({ agentId, taskId }) => ({ agentId, taskId })),
+    cancelTask: journalled("cancel-task", cancelTask, ({ agentId, taskId }) => ({ agentId, taskId })),
     listArchivedProjects,
     listAwayProjects,
     setProjectPolicy: journalled("set-project-policy", setProjectPolicy, ({ projectId }) => ({ projectId })),

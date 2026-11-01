@@ -380,20 +380,23 @@ test("trusted host sets an agent's role and write zone only with the person's co
 
   // The permission mode: set by the trusted host for this agent, read for its window, not in the public agent.
   const read = { "repo-root": root, action: "read-permission-modes" };
-  assert.deepEqual(await runProjectMemoryCommand(read), { defaultMode: null, agents: [{ agentId: "a", permissionMode: null }] });
+  assert.deepEqual(await runProjectMemoryCommand(read), { defaultMode: null, agents: [{ agentId: "a", permissionMode: null,
+    ownMemoryWithoutAsking: false }] });
   await writeFile(path.join(root, "mode.json"), JSON.stringify({ agentId: "a", permissionMode: "bypassPermissions" }));
   const mode = { "repo-root": root, action: "set-permission-mode", "input-file": "mode.json" };
   await assert.rejects(runProjectMemoryCommand(mode), /confirm-agent/);
   assert.deepEqual(await runProjectMemoryCommand({ ...mode, "confirm-agent": "a" }),
     { agentId: "a", permissionMode: "bypassPermissions", changed: true });
-  assert.deepEqual((await runProjectMemoryCommand(read)).agents, [{ agentId: "a", permissionMode: "bypassPermissions" }]);
+  assert.deepEqual((await runProjectMemoryCommand(read)).agents, [{ agentId: "a", permissionMode: "bypassPermissions",
+    ownMemoryWithoutAsking: false }]);
   assert.equal(Object.hasOwn(await service.readAgent({ agentId: "a" }), "permissionMode"), false);
   await writeFile(path.join(root, "mode.json"), JSON.stringify({ agentId: "a", permissionMode: "yolo" }));
   await assert.rejects(runProjectMemoryCommand({ ...mode, "confirm-agent": "a" }),
     { code: "memory_invalid_input", memoryPhase: "operation" });
   await writeFile(path.join(root, "mode.json"), JSON.stringify({ agentId: "a", permissionMode: null }));
   assert.equal((await runProjectMemoryCommand({ ...mode, "confirm-agent": "a" })).changed, true);
-  assert.deepEqual((await runProjectMemoryCommand(read)).agents, [{ agentId: "a", permissionMode: null }]);
+  assert.deepEqual((await runProjectMemoryCommand(read)).agents, [{ agentId: "a", permissionMode: null,
+    ownMemoryWithoutAsking: false }]);
 });
 
 test("trusted host previews a memory document, and approves it only with the person's confirmation", async (t) => {

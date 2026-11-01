@@ -26,7 +26,8 @@ export const JOURNAL_ACTIONS = Object.freeze([
   "agent.create", "agent.close", "agent.reopen", "agent.profile", "agent.settings", "agent.permission-mode",
   "scope.create", "memory.write", "memory.approve", "project.archive", "project.restore", "quarter.archive",
   "quarter.restore", "project.copy", "project.policy", "project.bind", "project.rebind", "project.git-init",
-  "project.file-save", "agent.desk-source", "object.rename",
+  "project.file-save", "agent.desk-source", "object.rename", "task.start", "task.revise", "task.approve", "task.cancel",
+  "agent.memory-autonomy",
 ]);
 export const UNDO_KINDS = Object.freeze([
   "close-agent", "reopen-agent", "set-profile", "set-settings", "set-permission-mode", "archive-project",
@@ -36,7 +37,7 @@ export const UNDO_KINDS = Object.freeze([
 /** Why an entry has no undo. */
 export const NO_UNDO_REASONS = Object.freeze([
   "undo_entry", "file_not_kept", "binding_not_undone", "git_not_undone", "desk_source_not_undone",
-  "approval_without_write", "first_revision",
+  "approval_without_write", "first_revision", "task_not_undone", "setting_not_undone",
 ]);
 
 const ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;

@@ -4,5 +4,6 @@
   "{count} changes": { "one": "{count} change", "other": "{count} changes" },
   "{count} projects": { "one": "{count} project", "other": "{count} projects" },
   "{count} quarters": { "one": "{count} quarter", "other": "{count} quarters" },
-  "{count} questions": { "one": "{count} question", "other": "{count} questions" }
+  "{count} questions": { "one": "{count} question", "other": "{count} questions" },
+  "{count} steps": { "one": "{count} step", "other": "{count} steps" }
 }

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -615,6 +615,23 @@ test("a lead's memory document goes into memory only as the person approved it",
   assert.equal(applied.write.revision, 2);
   const own = await f.service.store.readScope({ scopeId: (await f.service.readAgent({ agentId: "lead" })).agentScopeId });
   assert.equal(own.author, "project-owner");
+
+  // The person opens a memory in a text editor (the owner's choice of 01.11): it is written as a
+  // document of the project folder; loaded back unchanged, nothing changes; edited, the preview says what.
+  const exported = await f.service.exportMemoryDocument({ agentId: "lead", path: "docs/memory/lead.md", target: "agent",
+    replace: false, title: "\u041f\u0430\u043c\u044f\u0442\u044c \u0430\u0433\u0435\u043d\u0442\u0430 lead" });
+  assert.deepEqual([exported.state, exported.entries, exported.target.revision], ["written", 1, 2]);
+  assert.match(await readFile(exported.filePath, "utf8"), /^# \u041f\u0430\u043c\u044f\u0442\u044c \u0430\u0433\u0435\u043d\u0442\u0430 lead\n\n## Owners\n/u, "titled in the window's language");
+  assert.equal(path.resolve(exported.filePath), path.resolve(f.workspace, "docs", "memory", "lead.md"));
+  const unchanged = await f.service.previewMemoryDocument({ agentId: "lead", path: "docs/memory/lead.md", target: "agent" });
+  assert.deepEqual(unchanged.changes, [{ title: "Owners", change: "same" }]);
+  await writeFile(exported.filePath, "# Memory of agent lead\n\n## Owners\nSomeone new.\n\n## Tools\npnpm\n");
+  const edited = await f.service.previewMemoryDocument({ agentId: "lead", path: "docs/memory/lead.md", target: "agent" });
+  assert.deepEqual(edited.changes, [{ title: "Owners", change: "changed" }, { title: "Tools", change: "added" }]);
+  await assert.rejects(f.service.exportMemoryDocument({ agentId: "lead", path: "docs/memory/lead.md", target: "agent",
+    replace: false }), { code: "memory_document_exists" });
+  await assert.rejects(f.service.exportMemoryDocument({ agentId: "solver", path: "docs/memory/p.md", target: "project",
+    replace: false }), { code: "memory_document_target_denied" });
 });
 
 test("leads get an overview of what they oversee, and it goes again when it changes", async (t) => {
@@ -698,4 +715,44 @@ test("an agent is working while its message runs and idle from when the backend 
   assert.match(receipt.settledAtUtc, /Z$/u);
   assert.deepEqual((await f.service.readAgent({ agentId: "a" })).activity,
     { state: "idle", sinceUtc: receipt.settledAtUtc });
+});
+
+test("a task on Claude Code: a plan-mode turn whose plan waits for the person, then the approved work", async (t) => {
+  const plan = "## Understanding\nAdd a button.\n## Questions\n- Which colour?\n## Plan\n1. Read the toolbar\n2. Add the button";
+  const asked = [];
+  const planning = async function* ({ sessionId, ask }) {
+    yield { type: "system", subtype: "init", session_id: sessionId, model: FAKE_MODEL };
+    yield { type: "assistant", session_id: sessionId, message: { model: FAKE_MODEL,
+      content: [{ type: "tool_use", id: "toolu_p1", name: "ExitPlanMode", input: { plan } }] } };
+    asked.push(await ask("ExitPlanMode", { plan }, "toolu_p1"));
+    yield fakeResult(sessionId);
+  };
+  const working = async function* ({ sessionId }) {
+    yield { type: "system", subtype: "init", session_id: sessionId, model: FAKE_MODEL };
+    yield { type: "assistant", session_id: sessionId, message: { model: FAKE_MODEL,
+      content: [{ type: "tool_use", id: "toolu_t1", name: "TodoWrite", input: { todos: [
+        { content: "Read the toolbar", status: "completed", activeForm: "Reading" },
+        { content: "Add the button", status: "completed", activeForm: "Adding" }] } }] } };
+    yield fakeResult(sessionId);
+  };
+  const f = await fixture(t, { turns: [planning, working] });
+  await f.service.createAgent({ agentId: "a", projectId: "p", quarterId: "q", operationId: "create-a", profile });
+  const run = async (operationId, text) => {
+    const done = finished(f.host);
+    await f.service.send({ agentId: "a", operationId, text });
+    await done;
+    await settle(f.service, "a", operationId);
+  };
+  const task = await f.service.startTask({ agentId: "a", text: "Add a button" });
+  await run("send-1", "Add a button");
+  assert.equal(f.sdk.calls[0].options.permissionMode, "plan");
+  assert.equal(asked[0].behavior, "deny");
+  let current = await f.service.readTask({ projectId: "p", taskId: task.taskId });
+  assert.deepEqual([current.stage, current.revisions[0].questions, current.revisions[0].steps],
+    ["awaiting-approval", ["Which colour?"], ["Read the toolbar", "Add the button"]]);
+  await f.service.approveTask({ agentId: "a", taskId: task.taskId, revision: 1, answers: ["Blue"] });
+  await run("send-2", "Plan approved");
+  assert.equal(f.sdk.calls[1].options.permissionMode, "acceptEdits", "approval does not widen the agent's rights");
+  current = await f.service.readTask({ projectId: "p", taskId: task.taskId });
+  assert.deepEqual([current.stage, current.steps.map((step) => step.status)], ["done", ["done", "done"]]);
 });

@@ -29,12 +29,16 @@ function fail(code) { throw Object.assign(new Error(code), { code }); }
  * tools of the agent (desk-agent-task-tools.mjs), carried by every turn too.
  * `taskGate(agent)`: a PreToolUse hook holding the plan gate of the agent's
  * controller task (desk-task-gate.mjs), beside its write zone.
+ * `memory`: { read(agent, input), change(agent, input) } - the agent reads a memory and asks
+ * to change one (the service's readMemoryFor / proposeMemoryChange); with it, every turn
+ * carries the desk's tools read_memory and change_memory.
  * `commits`: commits each turn's work to the git of the project folder
  * (agent-turn-commits.mjs); `onCommit(record)` hears how each one went.
  */
 export async function createProjectMemoryClaude({ host, controllerRoot, sourceId, providerSourceId,
   instanceId, archive, assertVisible, resolveWorkspace, descriptor = null, onInteractionChanged,
-  documents = null, taskTools = null, taskGate = null, commits = null, onCommit = () => {}, webFetchHosts = null } = {}) {
+  documents = null, memory = null, taskTools = null, taskGate = null, commits = null, onCommit = () => {},
+  webFetchHosts = null } = {}) {
   if (!host || typeof resolveWorkspace !== "function" || typeof assertVisible !== "function") {
     fail("memory_provider_unavailable");
   }
@@ -123,8 +127,71 @@ export async function createProjectMemoryClaude({ host, controllerRoot, sourceId
       }
     },
   });
+  // The agent's own memory changes (memory-changes.mjs): a memory it may see is read; a change of
+  // one it may change waits for the person in the chat - or is written at once, for its own memory,
+  // when the person allowed that. The answer says which.
+  const memoryTools = memory !== null && host.supportsDeskTools === true;
+  const TARGETS = ["own", "quarter", "project", "agent"];
+  const memoryRefusals = {
+    memory_change_target_denied: "this memory is not yours to change",
+    memory_change_target_kept: "the agent's project is kept to some PCs: its memory does not come into the world lead's"
+      + " chat; its own project lead changes it",
+    memory_change_no_entry: "there is no entry with that title to delete",
+    memory_change_empty: "nothing would change: the entries are already like that",
+    memory_change_too_large: "an entry is too long",
+    memory_change_invalid_input: "the changes are not in the expected form",
+    memory_limit_exceeded: "the memory would be too large",
+  };
+  const refused = (error) => memoryRefusals[error?.code] ?? `the desk refused (${error?.code ?? "unknown"})`;
+  const readMemoryTool = (agent) => ({
+    name: "read_memory",
+    description: "Reads a memory: your own (target own), your quarter's (quarter), your project's (project), or -"
+      + " for a lead - the memory of an agent below you (target agent, with agentOf its ID): a quarter lead's"
+      + " quarter's agents, a project lead's project's, the world lead's any agent but of a project kept to some PCs."
+      + " Each entry is a title and a text.",
+    inputSchema: (z) => ({ target: z.enum(TARGETS), agentOf: z.string().optional() }),
+    async handler(args) {
+      try {
+        const read = await memory.read(agent, { target: args?.target, agentOf: args?.agentOf ?? null });
+        if (read.entries.length === 0) return `The ${read.kind} memory is empty (revision ${read.revision}).`;
+        return [`The ${read.kind} memory, revision ${read.revision}:`,
+          ...read.entries.map((entry) => `## ${entry.title}\n${entry.text}`)].join("\n\n");
+      } catch (error) {
+        return `Not read: ${refused(error)}.`;
+      }
+    },
+  });
+  const changeMemoryTool = (agent) => ({
+    name: "change_memory",
+    description: "Asks to change a memory you may change: your own (target own); a quarter lead its quarter's"
+      + " (quarter); a project lead its project's (project); the world lead the world's (project); and, when the"
+      + " person asks, a lead the memory of an agent below it (agent, with agentOf its ID). Name entries by title: action set adds"
+      + " an entry or replaces its text, action delete removes it. Say why in reason. The change waits for the"
+      + " person's approval in the chat (your own memory may be written at once if the person allowed it); the"
+      + " answer says which.",
+    inputSchema: (z) => ({
+      target: z.enum(TARGETS),
+      agentOf: z.string().optional(),
+      changes: z.array(z.object({ action: z.enum(["set", "delete"]), title: z.string(), text: z.string().optional() })),
+      reason: z.string().optional(),
+    }),
+    async handler(args) {
+      try {
+        const result = await memory.change(agent, { target: args?.target, agentOf: args?.agentOf ?? null,
+          changes: args?.changes, reason: args?.reason ?? null });
+        const lines = result.diff.map((line) => `${{ added: "+", changed: "~", removed: "-" }[line.change]} ${line.title}`);
+        return result.state === "written"
+          ? [`Written into your own memory, now revision ${result.revision} (change ${result.changeId}):`, ...lines].join("\n")
+          : [`Asked: change ${result.changeId} waits for the person's approval in the chat; nothing is written yet:`,
+            ...lines].join("\n");
+      } catch (error) {
+        return `Nothing changed: ${refused(error)}.`;
+      }
+    },
+  });
   const deskToolsFor = (agent) => [
     ...(memoryDocuments ? [memoryDocumentTool(agent)] : []),
+    ...(memoryTools ? [readMemoryTool(agent), changeMemoryTool(agent)] : []),
     ...(typeof taskTools === "function" && host.supportsDeskTools === true ? taskTools(agent) : []),
   ];
   return {
@@ -165,8 +232,10 @@ export async function createProjectMemoryClaude({ host, controllerRoot, sourceId
       if (!acquired.mutationAllowed) fail("memory_uncertain_outcome");
       // What is attached to the agent: the service knows the catalog (a quarter lead's quarter).
       const zone = writeZone !== undefined ? writeZone : effectiveWriteZone(agent);
-      // The agent's own permission mode (set by the person), else the provider's.
-      const permissionMode = agent.permissionMode ?? host.permissionMode ?? "acceptEdits";
+      // The agent's own permission mode (set by the person), else the provider's; a task's planning turn
+      // (agent-tasks.mjs) runs in Claude Code's plan mode, where nothing is changed.
+      const planning = operation.task?.phase === "plan";
+      const permissionMode = planning ? "plan" : agent.permissionMode ?? host.permissionMode ?? "acceptEdits";
       const hooks = [
         // Secrets first: every agent, every permission mode; a fetch from an unknown address asks the person
         // (agent-secret-paths.mjs).
@@ -181,6 +250,7 @@ export async function createProjectMemoryClaude({ host, controllerRoot, sourceId
         const result = await host.startTurn(threadId, [{ type: "text", text }], {
           model: agent.profile.model, effort: agent.profile.reasoningEffort, permissionMode,
           clientUserMessageId: operation.operationId,
+          ...(planning ? { planning: true } : {}),
           // The chat shows what the person typed; Claude Code gets the memory in front of it.
           ...(typeof displayText === "string" ? { displayText } : {}),
           deskTools: deskToolsFor(agent),

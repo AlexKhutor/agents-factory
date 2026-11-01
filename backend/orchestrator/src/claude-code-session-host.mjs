@@ -38,6 +38,8 @@ const TRACE_LIMITS = Object.freeze({ textBytes: 128 * 1024, inputBytes: 64 * 102
 
 const QUESTION_TOOL = "AskUserQuestion";
 const PLAN_TOOL = "TodoWrite";
+// Claude Code's "the plan is ready" in plan mode: a task's planning turn ends with it (agent-tasks.mjs).
+const EXIT_PLAN_TOOL = "ExitPlanMode";
 const TERMINAL = new Set(["completed", "failed", "interrupted"]);
 const ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
 const ACCOUNT_TTL_MS = 60_000;
@@ -500,6 +502,8 @@ export class ClaudeCodeSessionHost extends EventEmitter {
       turn: { id: turnId, status: "inProgress", startedAt, items: [structuredClone(userItem)] } });
     await this.#trace(run, { type: "turn_started", model, effort, clientId: userItem.clientId,
       displayText, text: clip(text, TRACE_LIMITS.textBytes) });
+    // A task's planning turn (agent-tasks.mjs): its plan goes to the person, not into work.
+    run.planning = options.planning === true;
     run.begin(session, text, { ...options, model, effort, permissionMode });
     return { turn: { id: turnId, status: "inProgress" } };
   }
@@ -1078,6 +1082,13 @@ export class ClaudeCodeSessionHost extends EventEmitter {
   async #ask(run, session, toolName, input, details = {}) {
     if (typeof details.toolUseID !== "string" || !ID.test(details.toolUseID)) {
       return { behavior: "deny", message: "The request has no usable identity; the action was not taken." };
+    }
+    // The plan of a task's planning turn is read from the trace when the turn ends and shown to the
+    // person on the agent's Plan tab; leaving plan mode is theirs to approve there, never in this turn.
+    if (toolName === EXIT_PLAN_TOOL) {
+      return { behavior: "deny", message: run.planning === true
+        ? "The plan is recorded and shown to the person for approval. Do not start the work: end your turn now with one short sentence."
+        : "There is no plan to present in this turn; carry on." };
     }
     const { method, params } = this.#request(run, session, toolName, input, details);
     const handler = this.#handlers.get(method);

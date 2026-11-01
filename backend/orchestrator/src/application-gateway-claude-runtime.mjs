@@ -141,6 +141,23 @@ export async function createClaudeProviderRuntime({ repoRoot, sourceId, instance
           }
           return written;
         },
+        // The agent reads a memory and asks to change one (memory-changes.mjs); a change written at
+        // once (its own memory, allowed by the person) goes into the action journal as the agent's.
+        memory: {
+          read: (agent, input) => memoryService.readMemoryFor({ agentId: agent.agentId, ...input }),
+          change: async (agent, input) => {
+            const result = await memoryService.proposeMemoryChange({ agentId: agent.agentId, ...input });
+            if (result.state === "written") {
+              const scope = await memoryService.store.readScope({ scopeId: result.scopeId }).catch(() => null);
+              if (scope !== null) {
+                await recordActionQuietly(memoryService.store, memoryWrite(scope,
+                  { previousRevision: result.previousRevision, revision: result.revision },
+                  { kind: "agent", id: agent.agentId }), { now, onDiagnostic });
+              }
+            }
+            return result;
+          },
+        },
         // Controller tasks reach desk agents registered as sources (claude-code-controller.md).
         taskTools: claude.taskTools ?? deskTools({ controllerRoot: repoRoot, service: memoryService, returns }),
         taskGate: claude.taskTools ? null : (agent) => deskTaskGateHook({ controllerRoot: repoRoot, agentId: agent.agentId }),

@@ -2,7 +2,7 @@
 import { createRequire as __bundleCreateRequire } from "node:module"; const require = __bundleCreateRequire(import.meta.url);
 
 // orchestrator/src/application-gateway-cli.mjs
-import { createHash as createHash34, randomUUID as randomUUID20 } from "node:crypto";
+import { createHash as createHash36, randomUUID as randomUUID20 } from "node:crypto";
 import { createReadStream } from "node:fs";
 import path54 from "node:path";
 
@@ -108,7 +108,7 @@ async function persistGatewayFailureDiagnostic(directory, record) {
   }
 }
 async function persistGatewayAgentReadDiagnostic(directory, instanceId, record) {
-  const id12 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
+  const id14 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
   const components = {
     "agent-conversation": {
       suffix: "agent-read",
@@ -150,8 +150,8 @@ async function persistGatewayAgentReadDiagnostic(directory, instanceId, record) 
     atUtc: record.atUtc,
     reasonCode: record.reasonCode,
     code: record.code,
-    requestId: typeof record.requestId === "string" && id12.test(record.requestId) ? record.requestId : null,
-    correlationId: typeof record.correlationId === "string" && id12.test(record.correlationId) ? record.correlationId : null
+    requestId: typeof record.requestId === "string" && id14.test(record.requestId) ? record.requestId : null,
+    correlationId: typeof record.correlationId === "string" && id14.test(record.correlationId) ? record.correlationId : null
   };
   await mkdir(directory, { recursive: true });
   try {
@@ -1296,9 +1296,9 @@ function enumeration(value, allowed, label2) {
   if (!allowed.has(value)) fail5("invalid_enum", `${label2} is not supported`, { value });
   return value;
 }
-function unique(items, key, label2) {
+function unique(items2, key, label2) {
   const seen = /* @__PURE__ */ new Set();
-  for (const item of items) {
+  for (const item of items2) {
     const identity2 = key(item);
     if (seen.has(identity2)) fail5("duplicate_identity", `${label2} contains duplicate '${identity2}'`);
     seen.add(identity2);
@@ -1329,16 +1329,16 @@ function privacyScan(value, path55 = "checkpoint", depth = 0) {
   }
 }
 function normalizeAuthorities(value, label2, minimum = 0) {
-  const items = array(value, label2, 8).map((authority3) => {
+  const items2 = array(value, label2, 8).map((authority3) => {
     validateAuthorityReference(authority3);
     return authority3;
   }).sort((left, right) => authorityCanonicalSha256(left).localeCompare(authorityCanonicalSha256(right)));
-  if (items.length < minimum) fail5("missing_authority", `${label2} requires ${minimum} authorities`);
-  unique(items, authorityCanonicalSha256, label2);
-  return items;
+  if (items2.length < minimum) fail5("missing_authority", `${label2} requires ${minimum} authorities`);
+  unique(items2, authorityCanonicalSha256, label2);
+  return items2;
 }
 function normalizeEvidence(value, label2) {
-  const items = array(value, label2, 32).map((ref, index) => {
+  const items2 = array(value, label2, 32).map((ref, index) => {
     validateExternalReference(ref);
     if (ref.kind !== "artifact" || ref.authority.artifactSha256 === void 0) {
       fail5("invalid_evidence", `${label2}[${index}] must be a hashed artifact reference`);
@@ -1349,8 +1349,8 @@ function normalizeEvidence(value, label2) {
     }
     return ref;
   }).sort((left, right) => authorityCanonicalSha256(left).localeCompare(authorityCanonicalSha256(right)));
-  unique(items, authorityCanonicalSha256, label2);
-  return items;
+  unique(items2, authorityCanonicalSha256, label2);
+  return items2;
 }
 function normalizeCausalIds(value, label2) {
   const ids = array(value, label2, 32).map((eventId) => {
@@ -1684,9 +1684,9 @@ function normalizeNextAction(value, label2) {
   return { ...value };
 }
 function normalizeList(value, label2, maximum, normalizeItem, identity2) {
-  const items = array(value, label2, maximum).map((item, index) => normalizeItem(item, `${label2}[${index}]`)).sort((left, right) => identity2(left).localeCompare(identity2(right)));
-  unique(items, identity2, label2);
-  return items;
+  const items2 = array(value, label2, maximum).map((item, index) => normalizeItem(item, `${label2}[${index}]`)).sort((left, right) => identity2(left).localeCompare(identity2(right)));
+  unique(items2, identity2, label2);
+  return items2;
 }
 function normalizeSourceReceipt(value, label2) {
   object3(value, label2);
@@ -1728,20 +1728,20 @@ function normalizeCheckpoint(value, includeId) {
   }
   identifier2(value.sourceId, "checkpoint.sourceId");
   identifier2(value.taskId, "checkpoint.taskId");
-  const executions = normalizeFact(value.executions, "checkpoint.executions", (items, label2) => normalizeList(items, label2, 64, normalizeExecutionValue, (item) => item.executionId));
-  const dependencies = normalizeFact(value.dependencies, "checkpoint.dependencies", (items, label2) => normalizeList(items, label2, 64, normalizeDependencyValue, (item) => item.dependencyId));
+  const executions = normalizeFact(value.executions, "checkpoint.executions", (items2, label2) => normalizeList(items2, label2, 64, normalizeExecutionValue, (item) => item.executionId));
+  const dependencies = normalizeFact(value.dependencies, "checkpoint.dependencies", (items2, label2) => normalizeList(items2, label2, 64, normalizeDependencyValue, (item) => item.dependencyId));
   const interventions = normalizeFact(
     value.interventions,
     "checkpoint.interventions",
-    (items, label2) => normalizeList(
-      items,
+    (items2, label2) => normalizeList(
+      items2,
       label2,
       64,
       normalizeInterventionValue,
       (item) => item.interventionId
     )
   );
-  const nextActions = normalizeFact(value.nextActions, "checkpoint.nextActions", (items, label2) => normalizeList(items, label2, 32, normalizeNextAction, (item) => item.actionId));
+  const nextActions = normalizeFact(value.nextActions, "checkpoint.nextActions", (items2, label2) => normalizeList(items2, label2, 32, normalizeNextAction, (item) => item.actionId));
   const sourceReceipts = normalizeList(
     value.sourceReceipts,
     "checkpoint.sourceReceipts",
@@ -1947,11 +1947,11 @@ function requireRelativePath(value, label2) {
   return value;
 }
 function requireTaskIdentity(value, label2) {
-  const text10 = String(value ?? "").trim();
-  if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/.test(text10)) {
+  const text11 = String(value ?? "").trim();
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/.test(text11)) {
     fail7("missing_query_parameter", `${label2} requires a bounded identifier`, { parameter: label2 });
   }
-  return text10;
+  return text11;
 }
 function validateBackendCapabilities(value) {
   if (!isObject2(value)) fail7("invalid_descriptor", "Backend descriptor must be an object");
@@ -2572,8 +2572,8 @@ function normalizedKey(value) {
 function privacyScan2(value, path55 = "projection", depth = 0) {
   if (depth > 16) fail8("forbidden_payload", "Projection exceeds 16 nested levels");
   if (typeof value === "string") {
-    const text10 = value.trim();
-    if (/^(?:data:(?:(?:image|audio|video)\/|application\/octet-stream)|blob:)/i.test(text10) || /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/i.test(text10) || /^(?:Bearer|Basic)\s+[A-Za-z0-9+/=_-]{16,}$/i.test(text10) || /^(?:sk|ghp|github_pat|xox[baprs])[-_][A-Za-z0-9_-]{16,}$/i.test(text10) || text10.length >= 256 && /^[A-Za-z0-9+/]+={0,2}$/.test(text10)) {
+    const text11 = value.trim();
+    if (/^(?:data:(?:(?:image|audio|video)\/|application\/octet-stream)|blob:)/i.test(text11) || /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/i.test(text11) || /^(?:Bearer|Basic)\s+[A-Za-z0-9+/=_-]{16,}$/i.test(text11) || /^(?:sk|ghp|github_pat|xox[baprs])[-_][A-Za-z0-9_-]{16,}$/i.test(text11) || text11.length >= 256 && /^[A-Za-z0-9+/]+={0,2}$/.test(text11)) {
       fail8("forbidden_payload", `Private or inline payload is forbidden at ${path55}`);
     }
     return;
@@ -2597,9 +2597,9 @@ function array2(value, label2, maximumLength) {
   }
   return value;
 }
-function unique2(items, key, label2) {
+function unique2(items2, key, label2) {
   const seen = /* @__PURE__ */ new Set();
-  for (const item of items) {
+  for (const item of items2) {
     const identity2 = key(item);
     if (seen.has(identity2)) fail8("duplicate_identity", `${label2} duplicates '${identity2}'`);
     seen.add(identity2);
@@ -3256,7 +3256,7 @@ function validateQueries(value) {
     fail9("invalid_descriptor", "Descriptor query catalog is incomplete");
   }
   const ids = value.map((entry) => entry?.id);
-  if (new Set(ids).size !== ids.length || WORK_PROJECTION_V2_QUERY_IDS.some((id12) => !ids.includes(id12))) {
+  if (new Set(ids).size !== ids.length || WORK_PROJECTION_V2_QUERY_IDS.some((id14) => !ids.includes(id14))) {
     fail9("invalid_descriptor", "Descriptor query catalog does not match v2");
   }
   for (const entry of value) {
@@ -3615,10 +3615,10 @@ async function archivedSets(store) {
 async function archivedProjectIds(store) {
   return (await archivedSets(store)).projects;
 }
-async function update(store, change2) {
+async function update(store, change4) {
   for (let attempt = 0; attempt < 8; attempt += 1) {
     const current = await readArchive(store);
-    const next = change2({ projects: current.projects, quarters: current.quarters });
+    const next = change4({ projects: current.projects, quarters: current.quarters });
     if (next === null) return current;
     if (Object.keys(next.projects).length + Object.keys(next.quarters).length > MAXIMUM_ARCHIVED) {
       fail11("memory_limit_exceeded");
@@ -4589,19 +4589,19 @@ function safeRelative(value) {
   return value;
 }
 function decodeText(bytes) {
-  let text10;
+  let text11;
   try {
-    text10 = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    text11 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
   } catch {
     fail16("access_denied", "resource is not valid UTF-8 text");
   }
-  if (/\u0000/u.test(text10) || /[\u0001-\u0008\u000b\u000c\u000e-\u001f]/u.test(text10)) {
+  if (/\u0000/u.test(text11) || /[\u0001-\u0008\u000b\u000c\u000e-\u001f]/u.test(text11)) {
     fail16("access_denied", "binary or control-character content is not readable");
   }
-  if (SECRET_PATTERNS.some((pattern) => pattern.test(text10))) {
+  if (SECRET_PATTERNS.some((pattern) => pattern.test(text11))) {
     fail16("access_denied", "secret or inline private content is not readable");
   }
-  return text10;
+  return text11;
 }
 function mediaType(relativePath) {
   const extension = path6.extname(relativePath).toLowerCase();
@@ -4660,13 +4660,13 @@ async function readStableFile(policy, relativePath) {
 async function readStableDirectory(policy, relativePath, publicOnly = false) {
   const resolved = await resolveRegisteredPath(policy, relativePath, "directory", publicOnly);
   const collect = async () => {
-    const items = await readdir(resolved.candidate, { withFileTypes: true });
-    if (items.length > APPLICATION_RESOURCE_READER_LIMITS.maxDirectoryEntries) {
+    const items2 = await readdir(resolved.candidate, { withFileTypes: true });
+    if (items2.length > APPLICATION_RESOURCE_READER_LIMITS.maxDirectoryEntries) {
       fail16("access_denied", "directory exceeds the bounded entry count");
     }
     const entries2 = [];
     let omissionCount = 0;
-    for (const item of items.sort((left, right) => left.name < right.name ? -1 : left.name > right.name ? 1 : 0)) {
+    for (const item of items2.sort((left, right) => left.name < right.name ? -1 : left.name > right.name ? 1 : 0)) {
       if (publicOnly) {
         try {
           assertPublicApplicationProjectPath(item.name);
@@ -4761,7 +4761,7 @@ var ApplicationResourceReader = class _ApplicationResourceReader {
       const policy = this.#artifactPolicy(request);
       const observed = await readStableFile(policy, request.resource.nativeId);
       verifyContentIdentity(request, observed.sha256);
-      const text10 = decodeText(observed.bytes);
+      const text11 = decodeText(observed.bytes);
       return createApplicationResourceReadResult(request, {
         sourceBinding: policy.sourceBinding,
         contentSha256: observed.sha256,
@@ -4771,7 +4771,7 @@ var ApplicationResourceReader = class _ApplicationResourceReader {
         page: { unit: "bytes", offset: 0, returned: observed.size, total: observed.size },
         truncated: false,
         readAtUtc: readAt(this.now),
-        payload: { kind: "text", text: text10 }
+        payload: { kind: "text", text: text11 }
       });
     });
   }
@@ -4798,7 +4798,7 @@ var ApplicationResourceReader = class _ApplicationResourceReader {
       }
       const observed = await readStableFile(policy, request.resource.nativeId);
       verifyContentIdentity(request, observed.sha256);
-      const text10 = decodeText(observed.bytes);
+      const text11 = decodeText(observed.bytes);
       if (request.view === "metadata") {
         if (Object.keys(page).length > 0) fail16("access_denied", "metadata reads cannot be paged");
         return createApplicationResourceReadResult(request, {
@@ -4977,9 +4977,9 @@ function validateClaims(value) {
   validateSourceBinding2(value.sourceBinding);
   exact6(value.cursor, ["kind", "value"], "continuation cursor");
   exact6(value.pageLimit, ["kind", "value"], "continuation page limit");
-  const text10 = value.cursor.kind === "byte-offset" && value.pageLimit.kind === "maximum-bytes";
+  const text11 = value.cursor.kind === "byte-offset" && value.pageLimit.kind === "maximum-bytes";
   const directory = value.cursor.kind === "entry-index" && value.pageLimit.kind === "maximum-entries";
-  if (!text10 && !directory || !Number.isSafeInteger(value.cursor.value) || value.cursor.value < 1 || !Number.isSafeInteger(value.pageLimit.value) || value.pageLimit.value < 1) {
+  if (!text11 && !directory || !Number.isSafeInteger(value.cursor.value) || value.cursor.value < 1 || !Number.isSafeInteger(value.pageLimit.value) || value.pageLimit.value < 1) {
     fail17("access_denied", "continuation cursor or page limit is invalid");
   }
   const issued = utc9(value.issuedAtUtc, "issuedAtUtc");
@@ -5419,11 +5419,11 @@ var ApplicationResourceService = class {
 };
 
 // orchestrator/src/application-agent-events.mjs
-import { randomBytes, createHmac as createHmac2, timingSafeEqual as timingSafeEqual2 } from "node:crypto";
+import { randomBytes as randomBytes3, createHmac as createHmac2, timingSafeEqual as timingSafeEqual2 } from "node:crypto";
 
 // orchestrator/src/conversation-archive.mjs
 import path19 from "node:path";
-import { createHash as createHash16 } from "node:crypto";
+import { createHash as createHash18 } from "node:crypto";
 import { lstat as lstat10, mkdir as mkdir9, realpath as realpath8 } from "node:fs/promises";
 import { fileURLToPath as fileURLToPath3 } from "node:url";
 
@@ -5534,21 +5534,21 @@ function pyFloatRepr(value) {
   return `${sign2}${significand}e${exponent < 0 ? "-" : "+"}${String(Math.abs(exponent)).padStart(2, "0")}`;
 }
 function numberJson(value) {
-  const text10 = JSON.stringify(value);
-  if (text10 === "null") return "null";
-  return /[.eE]/u.test(text10) ? pyFloatRepr(value) : text10;
+  const text11 = JSON.stringify(value);
+  if (text11 === "null") return "null";
+  return /[.eE]/u.test(text11) ? pyFloatRepr(value) : text11;
 }
 var ESCAPES = { '"': '\\"', "\\": "\\\\", "\b": "\\b", "\f": "\\f", "\n": "\\n", "\r": "\\r", "	": "\\t" };
 function stringJson(value) {
   if (value.isWellFormed()) return JSON.stringify(value);
-  let text10 = '"';
+  let text11 = '"';
   for (const character of value) {
     const code = character.charCodeAt(0);
-    if (ESCAPES[character]) text10 += ESCAPES[character];
-    else if (code < 32) text10 += `\\u${code.toString(16).padStart(4, "0")}`;
-    else text10 += character;
+    if (ESCAPES[character]) text11 += ESCAPES[character];
+    else if (code < 32) text11 += `\\u${code.toString(16).padStart(4, "0")}`;
+    else text11 += character;
   }
-  return `${text10}"`;
+  return `${text11}"`;
 }
 function pyKeyCompare(left, right) {
   const length = Math.min(left.length, right.length);
@@ -5582,11 +5582,11 @@ function pythonJson(value, { sortKeys = false } = {}) {
   return `{${keys.map((key) => `${stringJson(key)}:${pythonJson(input2[key], { sortKeys })}`).join(",")}}`;
 }
 function jsonTransport(value) {
-  const text10 = JSON.stringify(value);
-  if (text10 === void 0) {
+  const text11 = JSON.stringify(value);
+  if (text11 === void 0) {
     throw new PythonError("JSONDecodeError", "Expecting value: line 1 column 1 (char 0)");
   }
-  return JSON.parse(text10);
+  return JSON.parse(text11);
 }
 function sortedTransport(value) {
   if (Array.isArray(value)) return value.map((item) => item === void 0 ? null : sortedTransport(item));
@@ -5597,10 +5597,10 @@ function sortedTransport(value) {
   }
   return result2;
 }
-function utf8(text10) {
-  if (!text10.isWellFormed()) {
+function utf8(text11) {
+  if (!text11.isWellFormed()) {
     let position = 0;
-    for (const character of text10) {
+    for (const character of text11) {
       const code = character.codePointAt(0);
       if (code >= 55296 && code <= 57343) {
         throw new PythonError(
@@ -5611,26 +5611,26 @@ function utf8(text10) {
       position += 1;
     }
   }
-  return Buffer.from(text10, "utf8");
+  return Buffer.from(text11, "utf8");
 }
-function sha256Hex(text10) {
-  return createHash7("sha256").update(utf8(text10)).digest("hex");
+function sha256Hex(text11) {
+  return createHash7("sha256").update(utf8(text11)).digest("hex");
 }
 function stringRepr(value) {
   const quote = value.includes("'") && !value.includes('"') ? '"' : "'";
-  let text10 = quote;
+  let text11 = quote;
   for (const character of value) {
     const code = character.codePointAt(0);
-    if (character === quote || character === "\\") text10 += `\\${character}`;
-    else if (character === "\n") text10 += "\\n";
-    else if (character === "\r") text10 += "\\r";
-    else if (character === "	") text10 += "\\t";
-    else if (code === 32 || !/[\p{C}\p{Z}]/u.test(character)) text10 += character;
-    else if (code < 256) text10 += `\\x${code.toString(16).padStart(2, "0")}`;
-    else if (code < 65536) text10 += `\\u${code.toString(16).padStart(4, "0")}`;
-    else text10 += `\\U${code.toString(16).padStart(8, "0")}`;
+    if (character === quote || character === "\\") text11 += `\\${character}`;
+    else if (character === "\n") text11 += "\\n";
+    else if (character === "\r") text11 += "\\r";
+    else if (character === "	") text11 += "\\t";
+    else if (code === 32 || !/[\p{C}\p{Z}]/u.test(character)) text11 += character;
+    else if (code < 256) text11 += `\\x${code.toString(16).padStart(2, "0")}`;
+    else if (code < 65536) text11 += `\\u${code.toString(16).padStart(4, "0")}`;
+    else text11 += `\\U${code.toString(16).padStart(8, "0")}`;
   }
-  return `${text10}${quote}`;
+  return `${text11}${quote}`;
 }
 function pyRepr(value) {
   if (typeof value === "string") return stringRepr(value);
@@ -5738,15 +5738,15 @@ function pyAtLeast(value, low) {
   const number = pyInt(value);
   return number < low ? low : number;
 }
-function pyLength(text10) {
+function pyLength(text11) {
   let length = 0;
-  for (const _ of text10) length += 1;
+  for (const _ of text11) length += 1;
   return length;
 }
-function pySlice(text10, end) {
+function pySlice(text11, end) {
   let result2 = "";
   let count = 0;
-  for (const character of text10) {
+  for (const character of text11) {
     if (count >= end) break;
     result2 += character;
     count += 1;
@@ -5777,9 +5777,9 @@ function parseUtcMicroseconds(value) {
   if (typeof value !== "string") {
     throw new PythonError("AttributeError", `'${pyTypeName(value)}' object has no attribute 'replace'`);
   }
-  const text10 = value.replaceAll("Z", "+00:00");
-  const match = ISO_DATE_TIME.exec(text10);
-  const invalid6 = () => new PythonError("ValueError", `Invalid isoformat string: ${pyRepr(text10)}`);
+  const text11 = value.replaceAll("Z", "+00:00");
+  const match = ISO_DATE_TIME.exec(text11);
+  const invalid6 = () => new PythonError("ValueError", `Invalid isoformat string: ${pyRepr(text11)}`);
   if (!match) throw invalid6();
   const [
     ,
@@ -5991,17 +5991,17 @@ var valueError = (message) => new PythonError("ValueError", message);
 var inSet = (set, value) => typeof value === "string" && set.has(value);
 function boundedText(value, maximum = 2048) {
   if (value === null || value === void 0) return null;
-  const text10 = pyStr(value);
-  if (text10.length <= maximum || pyLength(text10) <= maximum) return text10;
-  return `${pySlice(text10, maximum - 15)}...<truncated>`;
+  const text11 = pyStr(value);
+  if (text11.length <= maximum || pyLength(text11) <= maximum) return text11;
+  return `${pySlice(text11, maximum - 15)}...<truncated>`;
 }
 var jsonText2 = (value) => pythonJson(value);
-function loads(text10) {
-  if (typeof text10 !== "string") {
-    throw new PythonError("TypeError", `the JSON object must be str, bytes or bytearray, not ${pyTypeName(text10)}`);
+function loads(text11) {
+  if (typeof text11 !== "string") {
+    throw new PythonError("TypeError", `the JSON object must be str, bytes or bytearray, not ${pyTypeName(text11)}`);
   }
   try {
-    return JSON.parse(text10);
+    return JSON.parse(text11);
   } catch (error) {
     throw new PythonError("JSONDecodeError", error.message);
   }
@@ -6011,18 +6011,18 @@ function jsonValue(value, fallback) {
   return loads(value);
 }
 function requireSha256(value, label2) {
-  const text10 = pyStr(pyOr(value, "")).toLowerCase();
-  if (!SHA256_PATTERN3.test(text10)) throw valueError(`Invalid ${label2}`);
-  return text10;
+  const text11 = pyStr(pyOr(value, "")).toLowerCase();
+  if (!SHA256_PATTERN3.test(text11)) throw valueError(`Invalid ${label2}`);
+  return text11;
 }
 function mergeReportCorrectionEvidence(current, incoming, state2) {
   if (!Array.isArray(current) || !Array.isArray(incoming)) throw valueError("Queue evidence must be an array");
   const currentText = new Set(current.map(jsonText2));
   const incomingText = new Set(incoming.map(jsonText2));
   if (incomingText.size !== incoming.length) throw valueError("Queue evidence cannot contain duplicate entries");
-  if ([...incomingText].every((text10) => currentText.has(text10))) return current;
+  if ([...incomingText].every((text11) => currentText.has(text11))) return current;
   const preserved = new Set(current.map(jsonText2));
-  if (![...preserved].every((text10) => incomingText.has(text10))) {
+  if (![...preserved].every((text11) => incomingText.has(text11))) {
     throw valueError("Existing immutable report evidence cannot be removed or replaced");
   }
   const additions = incoming.filter((entry) => !currentText.has(jsonText2(entry)));
@@ -6096,19 +6096,19 @@ function mergeAgentStatistics(current, incoming) {
   return agentStatistics(merged);
 }
 function requireId(value, label2) {
-  const text10 = pyStr(pyOr(value, ""));
-  if (!ID_PATTERN2.test(text10)) throw valueError(`Invalid ${label2}: ${pyRepr(text10)}`);
-  return text10;
+  const text11 = pyStr(pyOr(value, ""));
+  if (!ID_PATTERN2.test(text11)) throw valueError(`Invalid ${label2}: ${pyRepr(text11)}`);
+  return text11;
 }
 function requireItemId(value, label2 = "itemId") {
-  const text10 = pyStr(pyOr(value, ""));
-  if (!ITEM_ID_PATTERN.test(text10)) throw valueError(`Invalid ${label2}: ${pyRepr(text10)}`);
-  return text10;
+  const text11 = pyStr(pyOr(value, ""));
+  if (!ITEM_ID_PATTERN.test(text11)) throw valueError(`Invalid ${label2}: ${pyRepr(text11)}`);
+  return text11;
 }
 function requireReportId(value) {
-  const text10 = pyStr(pyOr(value, ""));
-  if (!REPORT_ID_PATTERN.test(text10)) throw valueError(`Invalid reportId: ${pyRepr(text10)}`);
-  return text10;
+  const text11 = pyStr(pyOr(value, ""));
+  if (!REPORT_ID_PATTERN.test(text11)) throw valueError(`Invalid reportId: ${pyRepr(text11)}`);
+  return text11;
 }
 function resolvedDatabasePath(databasePath) {
   let existing = path7.resolve(databasePath);
@@ -7359,7 +7359,7 @@ function commandAddEvent(connection, payload) {
 function commandSnapshot(connection, payload) {
   const eventLimit = pyClampInt(pyGet(payload, "eventLimit", 200), 0, 1e3);
   const control = connection.get("SELECT * FROM control_state WHERE singleton_id = 1") ?? undefinedRow();
-  const items = connection.all(`
+  const items2 = connection.all(`
         SELECT * FROM queue_items
         ORDER BY
           CASE WHEN state IN ('leased','review_running','decision_validating','integrating','cancelling','recovery_required')
@@ -7373,21 +7373,21 @@ function commandSnapshot(connection, payload) {
   const events = eventRows.reverse().map(eventFromRow);
   const sequence = connection.value("SELECT COALESCE(MAX(sequence), 0) AS sequence FROM events");
   const counts = {};
-  for (const item of items) counts[item.state] = (counts[item.state] ?? 0) + 1;
+  for (const item of items2) counts[item.state] = (counts[item.state] ?? 0) + 1;
   return {
     formatVersion: FORMAT_VERSION,
     sequence: pyInt(sequence),
     control: { mode: control.mode, reason: control.reason, updatedAtUtc: control.updated_at_utc },
     counts,
-    items,
+    items: items2,
     agents,
     workerTasks,
     workerAgents,
     events
   };
 }
-function expandUser(text10) {
-  return /^~(?:$|[\/])/u.test(text10) ? path7.join(homedir(), text10.slice(1)) : text10;
+function expandUser(text11) {
+  return /^~(?:$|[\/])/u.test(text11) ? path7.join(homedir(), text11.slice(1)) : text11;
 }
 function compactStamp(microseconds) {
   return new Date(Math.floor(microseconds / 1e3)).toISOString().slice(0, 19).replaceAll("-", "").replaceAll(":", "").concat("Z");
@@ -7524,8 +7524,8 @@ function invokeInNode(sqlite, databasePath, command, payload) {
     return runControlCommand(sqlite, databasePath, command, payload);
   } catch (error) {
     const message = String(error.pythonMessage ?? error.message);
-    const text10 = error.exitCode === 2 ? message : `{"ok": false, "error": ${JSON.stringify(message)}}`;
-    throw bridgeError(command, error.exitCode ?? 1, `${text10.replaceAll("\n", PYTHON_NEWLINE)}${PYTHON_NEWLINE}`, "");
+    const text11 = error.exitCode === 2 ? message : `{"ok": false, "error": ${JSON.stringify(message)}}`;
+    throw bridgeError(command, error.exitCode ?? 1, `${text11.replaceAll("\n", PYTHON_NEWLINE)}${PYTHON_NEWLINE}`, "");
   }
 }
 var SqliteControlStore = class {
@@ -7791,12 +7791,12 @@ var PersistentSqliteBridge = class {
       else request.reject(failure(request.command, typeof answer.error === "string" ? answer.error : this.unavailableCode));
     }
   }
-  #settle(id12) {
-    const request = this.#pending.get(id12);
+  #settle(id14) {
+    const request = this.#pending.get(id14);
     if (!request) return;
     clearTimeout(request.timer);
-    this.#pending.delete(id12);
-    this.#order = this.#order.filter((entry) => entry !== id12);
+    this.#pending.delete(id14);
+    this.#order = this.#order.filter((entry) => entry !== id14);
     this.#hold();
   }
   /** The process keeps Node alive only while a call waits for it. */
@@ -7812,9 +7812,9 @@ var PersistentSqliteBridge = class {
     }
   }
   #failAll(reason) {
-    for (const id12 of [...this.#order]) {
-      const request = this.#pending.get(id12);
-      this.#settle(id12);
+    for (const id14 of [...this.#order]) {
+      const request = this.#pending.get(id14);
+      this.#settle(id14);
       request?.reject(failure(request.command, this.unavailableCode, `${reason}${this.#stderr ? `: ${this.#stderr.trim().slice(-300)}` : ""}`));
     }
   }
@@ -7837,13 +7837,13 @@ var PersistentSqliteBridge = class {
         reject(failure(command, this.unavailableCode, error?.message ?? "spawn_failed"));
         return;
       }
-      const id12 = this.#nextId++;
+      const id14 = this.#nextId++;
       const timer = setTimeout(() => this.#kill(`timeout after ${this.timeoutMs} ms`), this.timeoutMs);
       timer.unref?.();
-      this.#pending.set(id12, { command, resolve, reject, timer });
-      this.#order.push(id12);
+      this.#pending.set(id14, { command, resolve, reject, timer });
+      this.#order.push(id14);
       this.#hold();
-      child.stdin.write(`${JSON.stringify({ id: id12, command, payload })}
+      child.stdin.write(`${JSON.stringify({ id: id14, command, payload })}
 `, "utf8");
     });
   }
@@ -7910,9 +7910,9 @@ function fail20(code) {
   throw new ArchiveFailure(code);
 }
 var encoded = (value) => pythonJson(value, { sortKeys: true });
-function loads2(text10) {
-  if (typeof text10 !== "string") throw new PythonError("TypeError", "the JSON object must be str, bytes or bytearray");
-  return JSON.parse(text10);
+function loads2(text11) {
+  if (typeof text11 !== "string") throw new PythonError("TypeError", "the JSON object must be str, bytes or bytearray");
+  return JSON.parse(text11);
 }
 function initialize(db, projectId) {
   const version2 = db.value("PRAGMA user_version");
@@ -8012,7 +8012,7 @@ function readPage(db, payload) {
   if (!Number.isInteger(limit)) {
     throw new PythonError("TypeError", "slice indices must be integers or None or have an __index__ method");
   }
-  const items = [];
+  const items2 = [];
   let size = 0;
   for (const row2 of rows.slice(0, limit < 0 ? Math.max(rows.length + limit, 0) : limit)) {
     const item = {
@@ -8023,11 +8023,11 @@ function readPage(db, payload) {
       record: loads2(row2.record)
     };
     const itemSize = utf8(encoded(item)).length;
-    if (items.length > 0 && size + itemSize > 524288) break;
-    items.push(item);
+    if (items2.length > 0 && size + itemSize > 524288) break;
+    items2.push(item);
     size += itemSize;
   }
-  return { revision: revision2, items, nextAfter: rows.length > items.length ? items.at(-1).firstSequence : null };
+  return { revision: revision2, items: items2, nextAfter: rows.length > items2.length ? items2.at(-1).firstSequence : null };
 }
 function importState(db, payload) {
   const identity2 = checkScope(db, payload);
@@ -8523,10 +8523,10 @@ var ProviderMutationLease = class {
       maxRecords: this.#maxRecords
     });
   }
-  async #transition(change2) {
+  async #transition(change4) {
     for (let attempt = 0; attempt < this.#maxCasAttempts; attempt += 1) {
       const current = await this.#read();
-      const transition = await change2(current === null ? null : clone(current));
+      const transition = await change4(current === null ? null : clone(current));
       if (transition.next === void 0) {
         if (transition.error) fail21(transition.error.code, transition.error.message);
         return transition.value;
@@ -9220,7 +9220,7 @@ async function createFileProviderMutationLease(options = {}) {
 }
 
 // orchestrator/src/project-memory-store.mjs
-import { createHash as createHash15 } from "node:crypto";
+import { createHash as createHash17 } from "node:crypto";
 import path18 from "node:path";
 import { lstat as lstat9, mkdir as mkdir8, realpath as realpath7 } from "node:fs/promises";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
@@ -9801,7 +9801,7 @@ var NodeProjectMemoryBridge = class {
 };
 
 // orchestrator/src/project-memory-split.mjs
-import { createHash as createHash14 } from "node:crypto";
+import { createHash as createHash16 } from "node:crypto";
 import path17 from "node:path";
 
 // orchestrator/src/action-journal.mjs
@@ -9828,7 +9828,12 @@ var JOURNAL_ACTIONS = Object.freeze([
   "project.git-init",
   "project.file-save",
   "agent.desk-source",
-  "object.rename"
+  "object.rename",
+  "task.start",
+  "task.revise",
+  "task.approve",
+  "task.cancel",
+  "agent.memory-autonomy"
 ]);
 var UNDO_KINDS = Object.freeze([
   "close-agent",
@@ -9852,7 +9857,9 @@ var NO_UNDO_REASONS = Object.freeze([
   "git_not_undone",
   "desk_source_not_undone",
   "approval_without_write",
-  "first_revision"
+  "first_revision",
+  "task_not_undone",
+  "setting_not_undone"
 ]);
 var ID13 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
 var ENTRY_ID = /^[a-f0-9-]{36}$/u;
@@ -9881,9 +9888,9 @@ function journalKeyOf(projectId) {
 }
 function summaryOf(value) {
   if (typeof value !== "string") fail24("journal_invalid_entry");
-  const text10 = value.replace(/[\u0000-\u001f\u007f]+/gu, " ").trim();
-  if (!text10) fail24("journal_invalid_entry");
-  return text10.length <= MAX_SUMMARY ? text10 : `${text10.slice(0, MAX_SUMMARY - 1)}…`;
+  const text11 = value.replace(/[\u0000-\u001f\u007f]+/gu, " ").trim();
+  if (!text11) fail24("journal_invalid_entry");
+  return text11.length <= MAX_SUMMARY ? text11 : `${text11.slice(0, MAX_SUMMARY - 1)}…`;
 }
 function actorOf(value) {
   if (!value || typeof value !== "object" || !["person", "agent"].includes(value.kind)) fail24("journal_invalid_entry");
@@ -9895,9 +9902,9 @@ function undoOf(value) {
   if (!value || typeof value !== "object" || Array.isArray(value) || !UNDO_KINDS.includes(value.kind)) {
     fail24("journal_invalid_entry");
   }
-  const text10 = JSON.stringify(value);
-  if (Buffer.byteLength(text10, "utf8") > 4096) fail24("journal_invalid_entry");
-  return JSON.parse(text10);
+  const text11 = JSON.stringify(value);
+  if (Buffer.byteLength(text11, "utf8") > 4096) fail24("journal_invalid_entry");
+  return JSON.parse(text11);
 }
 function newEntry(input2, { now, newId }) {
   if (!input2 || typeof input2 !== "object") fail24("journal_invalid_entry");
@@ -10087,17 +10094,671 @@ async function readAllNames(store, input2 = {}) {
   return { schemaVersion: 1, projects };
 }
 
+// orchestrator/src/agent-tasks.mjs
+import { createHash as createHash12 } from "node:crypto";
+
+// orchestrator/src/object-ids.mjs
+import { randomBytes } from "node:crypto";
+var ID15 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
+var STEM_LENGTH = 40;
+var SUFFIX_LENGTH = 4;
+var BASE36 = "0123456789abcdefghijklmnopqrstuvwxyz";
+var CYRILLIC = Object.freeze(Object.fromEntries([
+  [1072, "a"],
+  [1073, "b"],
+  [1074, "v"],
+  [1075, "g"],
+  [1076, "d"],
+  [1077, "e"],
+  [1105, "e"],
+  [1078, "zh"],
+  [1079, "z"],
+  [1080, "i"],
+  [1081, "y"],
+  [1082, "k"],
+  [1083, "l"],
+  [1084, "m"],
+  [1085, "n"],
+  [1086, "o"],
+  [1087, "p"],
+  [1088, "r"],
+  [1089, "s"],
+  [1090, "t"],
+  [1091, "u"],
+  [1092, "f"],
+  [1093, "kh"],
+  [1094, "ts"],
+  [1095, "ch"],
+  [1096, "sh"],
+  [1097, "shch"],
+  [1098, ""],
+  [1099, "y"],
+  [1100, ""],
+  [1101, "e"],
+  [1102, "yu"],
+  [1103, "ya"],
+  [1110, "i"],
+  [1111, "yi"],
+  [1108, "ye"],
+  [1169, "g"]
+].map(([code, latin]) => [String.fromCodePoint(code), latin])));
+function idStem(name) {
+  const latin = [...String(name ?? "").toLowerCase()].map((char) => CYRILLIC[char] ?? char).join("").normalize("NFKD").replace(/[\u0300-\u036f]/gu, "");
+  const stem = latin.replace(/[^a-z0-9]+/gu, "-").replace(/^-+|-+$/gu, "").slice(0, STEM_LENGTH).replace(/-+$/u, "");
+  return stem || "item";
+}
+function suffix(random) {
+  const bytes = random(SUFFIX_LENGTH);
+  return [...bytes].map((byte) => BASE36[byte % 36]).join("");
+}
+function newObjectId(name, { taken = [], random = randomBytes } = {}) {
+  const used = new Set(taken);
+  const stem = idStem(name);
+  for (let attempt = 0; attempt < 32; attempt += 1) {
+    const candidate = `${stem}-${suffix(random)}`;
+    if (!used.has(candidate) && ID15.test(candidate)) return candidate;
+  }
+  throw Object.assign(new Error("object_id_exhausted"), { code: "object_id_exhausted" });
+}
+
+// orchestrator/src/agent-tasks.mjs
+var TASKS_PREFIX = "agent-tasks-v1:";
+var TASK_STAGES = Object.freeze(["planning", "awaiting-approval", "in-progress", "done", "cancelled"]);
+var OPEN_STAGES = Object.freeze(["planning", "awaiting-approval", "in-progress"]);
+var TASK_PHASES = Object.freeze(["plan", "work"]);
+var TASK_ORIGINS = Object.freeze(["chat"]);
+var ID16 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
+var LIMITS = Object.freeze({
+  tasks: 200,
+  revisions: 20,
+  remarks: 20,
+  text: 8e3,
+  understanding: 4e3,
+  questions: 16,
+  question: 1e3,
+  steps: 40,
+  step: 600,
+  answers: 16,
+  answer: 2e3,
+  raw: 16e3,
+  results: 32,
+  resultPath: 400,
+  resultNote: 400,
+  documentBytes: 200 * 1024
+});
+var CAS_ATTEMPTS3 = 32;
+var CONTROL = /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/gu;
+function fail26(code) {
+  throw Object.assign(new Error(code), { code });
+}
+var sha2566 = (value) => createHash12("sha256").update(value).digest("hex");
+function id5(value) {
+  if (typeof value !== "string" || !ID16.test(value)) fail26("task_invalid_input");
+  return value;
+}
+function clip(value, max) {
+  const text11 = String(value ?? "").replace(/\r\n?/gu, "\n").replace(CONTROL, "").trim();
+  const chars = [...text11];
+  return chars.length > max ? `${chars.slice(0, max - 3).join("")}...` : text11;
+}
+function requiredText(value, max) {
+  if (typeof value !== "string" || !value.trim()) fail26("task_invalid_input");
+  const text11 = String(value).replace(/\r\n?/gu, "\n").replace(CONTROL, "").trim();
+  if ([...text11].length > max) fail26("task_text_too_long");
+  return text11;
+}
+function tasksKeyOf(projectId) {
+  return `${TASKS_PREFIX}${sha2566(id5(projectId)).slice(0, 32)}`;
+}
+function waitingForOf(task) {
+  if (!OPEN_STAGES.includes(task?.stage)) return null;
+  if (task.stage === "awaiting-approval" || task.stopped) return "person";
+  return "agent";
+}
+function tasksOf(value) {
+  return Array.isArray(value?.tasks) ? value.tasks.filter((task) => task && typeof task.taskId === "string" && ID16.test(task.taskId) && TASK_STAGES.includes(task.stage)) : [];
+}
+function trim(tasks) {
+  const closed = () => tasks.findIndex((task) => !OPEN_STAGES.includes(task.stage));
+  while (tasks.length > LIMITS.tasks && closed() !== -1) tasks.splice(closed(), 1);
+  while (Buffer.byteLength(JSON.stringify(tasks), "utf8") > LIMITS.documentBytes && closed() !== -1) {
+    tasks.splice(closed(), 1);
+  }
+}
+async function change2(store, projectId, update2) {
+  const key = tasksKeyOf(projectId);
+  for (let attempt = 0; attempt < CAS_ATTEMPTS3; attempt += 1) {
+    const record = await store.readDocument({ key });
+    const tasks = structuredClone(tasksOf(record?.value));
+    const result2 = update2(tasks);
+    trim(tasks);
+    const value = { schemaVersion: 1, projectId, tasks };
+    if (await store.compareAndSwapDocument({ key, expectedRevision: record?.revision ?? 0, value })) {
+      return result2;
+    }
+  }
+  return fail26("task_contention");
+}
+function find(tasks, taskId2) {
+  const task = tasks.find((item) => item.taskId === taskId2);
+  if (!task) fail26("task_not_found");
+  return task;
+}
+function publicTask(task) {
+  return { ...structuredClone(task), waitingFor: waitingForOf(task) };
+}
+async function readTasks(store, input2 = {}) {
+  const projectId = id5(input2.projectId);
+  const stages = input2.stages ?? null;
+  if (stages !== null && (!Array.isArray(stages) || stages.some((stage) => !TASK_STAGES.includes(stage)))) {
+    fail26("task_invalid_input");
+  }
+  if (input2.waitingFor !== void 0 && input2.waitingFor !== null && !["person", "agent"].includes(input2.waitingFor)) {
+    fail26("task_invalid_input");
+  }
+  const limit = input2.limit ?? 100;
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > LIMITS.tasks) fail26("task_invalid_input");
+  const record = await store.readDocument({ key: tasksKeyOf(projectId) });
+  const tasks = tasksOf(record?.value).filter((task) => (input2.agentId ?? null) === null || task.agentId === input2.agentId).filter((task) => (input2.quarterId ?? null) === null || task.quarterId === input2.quarterId).filter((task) => stages === null || stages.includes(task.stage)).filter((task) => (input2.waitingFor ?? null) === null || waitingForOf(task) === input2.waitingFor).sort((a, b) => String(b.updatedAtUtc).localeCompare(String(a.updatedAtUtc)));
+  return { schemaVersion: 1, projectId, tasks: tasks.slice(0, limit).map(publicTask), truncated: tasks.length > limit };
+}
+var WORLD_PROJECT_ID2 = "world";
+async function readAllTasks(store, input2 = {}) {
+  const { projectId, limit = 100, ...filters } = input2;
+  if (projectId !== void 0) fail26("task_invalid_input");
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > LIMITS.tasks) fail26("task_invalid_input");
+  const projectIds = [.../* @__PURE__ */ new Set([...(await store.listScopes({})).scopes.map((scope) => scope.projectId), WORLD_PROJECT_ID2])];
+  const tasks = [];
+  let truncated = false;
+  for (const id14 of projectIds) {
+    const read = await readTasks(store, { ...filters, projectId: id14, limit: LIMITS.tasks });
+    tasks.push(...read.tasks);
+    truncated ||= read.truncated;
+  }
+  tasks.sort((a, b) => String(b.updatedAtUtc).localeCompare(String(a.updatedAtUtc)));
+  return { schemaVersion: 1, projectId: null, tasks: tasks.slice(0, limit), truncated: truncated || tasks.length > limit };
+}
+async function readTask(store, { projectId, taskId: taskId2 }) {
+  const record = await store.readDocument({ key: tasksKeyOf(id5(projectId)) });
+  return publicTask(find(tasksOf(record?.value), id5(taskId2)));
+}
+async function createTask(store, { projectId, quarterId, agentId, text: text11, now = /* @__PURE__ */ new Date(), random } = {}) {
+  id5(projectId);
+  id5(quarterId);
+  id5(agentId);
+  const body2 = requiredText(text11, LIMITS.text);
+  const at = now.toISOString();
+  return change2(store, projectId, (tasks) => {
+    if (tasks.some((task2) => task2.agentId === agentId && OPEN_STAGES.includes(task2.stage))) fail26("task_agent_busy");
+    const taskId2 = newObjectId("task", { taken: tasks.map((task2) => task2.taskId), ...random ? { random } : {} });
+    const task = {
+      schemaVersion: 1,
+      taskId: taskId2,
+      origin: "chat",
+      projectId,
+      quarterId,
+      agentId,
+      text: body2,
+      stage: "planning",
+      stopped: null,
+      revisions: [],
+      remarks: [],
+      approved: null,
+      steps: [],
+      lastOperationId: null,
+      createdAtUtc: at,
+      updatedAtUtc: at
+    };
+    tasks.push(task);
+    return publicTask(task);
+  });
+}
+function answersOf(value) {
+  if (value === void 0 || value === null) return [];
+  if (!Array.isArray(value) || value.length > LIMITS.answers) fail26("task_invalid_input");
+  return value.map((answer) => typeof answer === "string" ? clip(answer, LIMITS.answer) : "");
+}
+async function recordPlan(store, { projectId, taskId: taskId2, planText: planText2, operationId = null, now = /* @__PURE__ */ new Date() }) {
+  const plan = parseTaskPlan(planText2);
+  return change2(store, projectId, (tasks) => {
+    const task = find(tasks, id5(taskId2));
+    if (operationId !== null && task.revisions.some((revision2) => revision2.operationId === operationId)) {
+      return publicTask(task);
+    }
+    if (task.stage !== "planning") fail26("task_stage_conflict");
+    const at = now.toISOString();
+    task.revisions.push({ revision: (task.revisions.at(-1)?.revision ?? 0) + 1, ...plan, operationId, atUtc: at });
+    if (task.revisions.length > LIMITS.revisions) task.revisions.splice(0, task.revisions.length - LIMITS.revisions);
+    Object.assign(task, { stage: "awaiting-approval", stopped: null, lastOperationId: operationId, updatedAtUtc: at });
+    return publicTask(task);
+  });
+}
+async function reviseTask(store, { projectId, taskId: taskId2, remarks, answers, now = /* @__PURE__ */ new Date() }) {
+  const text11 = requiredText(remarks, LIMITS.text);
+  const given = answersOf(answers);
+  return change2(store, projectId, (tasks) => {
+    const task = find(tasks, id5(taskId2));
+    if (task.stage !== "awaiting-approval" && !(task.stage === "planning" && task.stopped)) fail26("task_stage_conflict");
+    const at = now.toISOString();
+    task.remarks.push({ afterRevision: task.revisions.at(-1)?.revision ?? 0, text: text11, answers: given, atUtc: at });
+    if (task.remarks.length > LIMITS.remarks) task.remarks.splice(0, task.remarks.length - LIMITS.remarks);
+    Object.assign(task, { stage: "planning", stopped: null, updatedAtUtc: at });
+    return publicTask(task);
+  });
+}
+async function approveTask(store, { projectId, taskId: taskId2, revision: revision2, answers, now = /* @__PURE__ */ new Date() }) {
+  const given = answersOf(answers);
+  return change2(store, projectId, (tasks) => {
+    const task = find(tasks, id5(taskId2));
+    if (task.stage !== "awaiting-approval") fail26("task_stage_conflict");
+    const latest = task.revisions.at(-1);
+    if (!latest || latest.revision !== revision2) fail26("task_revision_conflict");
+    const at = now.toISOString();
+    Object.assign(task, {
+      stage: "in-progress",
+      stopped: null,
+      updatedAtUtc: at,
+      approved: { revision: revision2, answers: given, atUtc: at },
+      steps: latest.steps.map((step) => ({ text: step, status: "pending" }))
+    });
+    return publicTask(task);
+  });
+}
+async function cancelTask(store, { projectId, taskId: taskId2, now = /* @__PURE__ */ new Date() }) {
+  return change2(store, projectId, (tasks) => {
+    const task = find(tasks, id5(taskId2));
+    if (!OPEN_STAGES.includes(task.stage)) fail26("task_stage_conflict");
+    const previousStage = task.stage;
+    Object.assign(task, { stage: "cancelled", stopped: null, updatedAtUtc: now.toISOString() });
+    return { task: publicTask(task), previousStage };
+  });
+}
+async function stopTask(store, { projectId, taskId: taskId2, state: state2, operationId = null, now = /* @__PURE__ */ new Date() }) {
+  return change2(store, projectId, (tasks) => {
+    const task = find(tasks, id5(taskId2));
+    if (!OPEN_STAGES.includes(task.stage)) return publicTask(task);
+    Object.assign(task, {
+      stopped: state2 === "failed" ? "failed" : "interrupted",
+      lastOperationId: operationId,
+      updatedAtUtc: now.toISOString()
+    });
+    return publicTask(task);
+  });
+}
+var TODO_STATUSES = /* @__PURE__ */ new Map([["pending", "pending"], ["in_progress", "in-progress"], ["completed", "done"]]);
+async function settleWork(store, {
+  projectId,
+  taskId: taskId2,
+  state: state2,
+  todos = null,
+  results = null,
+  operationId = null,
+  now = /* @__PURE__ */ new Date()
+}) {
+  return change2(store, projectId, (tasks) => {
+    const task = find(tasks, id5(taskId2));
+    if (task.stage !== "in-progress") return publicTask(task);
+    if (Array.isArray(todos)) {
+      todos.slice(0, task.steps.length).forEach((todo, index) => {
+        const status = TODO_STATUSES.get(todo?.status);
+        if (status) task.steps[index].status = status;
+      });
+    }
+    if (state2 === "completed") {
+      if (!Array.isArray(todos)) for (const step of task.steps) step.status = "done";
+      Object.assign(task, { stage: "done", stopped: null });
+      if (Array.isArray(results)) task.results = structuredClone(results.slice(0, LIMITS.results));
+    } else {
+      task.stopped = state2 === "failed" ? "failed" : "interrupted";
+    }
+    Object.assign(task, { lastOperationId: operationId, updatedAtUtc: now.toISOString() });
+    return publicTask(task);
+  });
+}
+var RU = (codes) => String.fromCodePoint(...codes);
+var HEADINGS = Object.freeze([
+  ["understanding", ["understanding", "summary", RU([1087, 1086, 1085, 1080, 1084, 1072, 1085, 1080, 1077])]],
+  ["questions", ["questions", "open questions", "question", RU([1074, 1086, 1087, 1088, 1086, 1089, 1099])]],
+  ["plan", ["plan", "steps", RU([1087, 1083, 1072, 1085]), RU([1096, 1072, 1075, 1080])]],
+  ["results", [
+    "results",
+    "result",
+    RU([1088, 1077, 1079, 1091, 1083, 1100, 1090, 1072, 1090, 1099]),
+    RU([1088, 1077, 1079, 1091, 1083, 1100, 1090, 1072, 1090])
+  ]]
+]);
+var NONE = /* @__PURE__ */ new Set([
+  "none",
+  "no questions",
+  "n/a",
+  "-",
+  RU([1085, 1077, 1090]),
+  RU([1074, 1086, 1087, 1088, 1086, 1089, 1086, 1074, 32, 1085, 1077, 1090])
+]);
+function headingOf(line) {
+  const bare = line.trim().replace(/^#{1,6}\s*/u, "").replace(/^(\*\*|__)/u, "");
+  const end = bare.search(/:|\*\*|__/u);
+  const label2 = (end === -1 ? bare : bare.slice(0, end)).trim().toLowerCase();
+  if (!label2 || label2.length > 40) return null;
+  const rest = end === -1 ? "" : bare.slice(end).replace(/^(?:\*\*|__|:|\s)+/u, "").trim();
+  for (const [section, words] of HEADINGS) if (words.includes(label2)) return { section, rest };
+  return null;
+}
+var ITEM = /^\s{0,6}(?:[-*]|\d{1,3}[.)])\s+(.*)$/u;
+function items(lines) {
+  const found = [];
+  let gap = false;
+  for (const line of lines) {
+    const match = ITEM.exec(line);
+    if (match) {
+      found.push(match[1].trim());
+      gap = false;
+    } else if (!line.trim()) {
+      gap = true;
+    } else if (found.length > 0 && (!gap || /^\s/u.test(line))) {
+      found[found.length - 1] += ` ${line.trim()}`;
+    }
+  }
+  return found.map((item) => item.replace(/^\[[ xX]\]\s*/u, "").trim()).filter(Boolean);
+}
+function parseTaskPlan(answer) {
+  const text11 = String(answer ?? "").replace(/\r\n?/gu, "\n");
+  const sections = { understanding: [], questions: [], plan: [], results: [] };
+  let current = null;
+  for (const line of text11.split("\n")) {
+    const heading = headingOf(line);
+    if (heading !== null) {
+      current = heading.section;
+      if (heading.rest) sections[current].push(heading.rest);
+      continue;
+    }
+    if (current !== null) sections[current].push(line);
+  }
+  const steps = items(sections.plan).slice(0, LIMITS.steps).map((step) => clip(step, LIMITS.step));
+  const listed = items(sections.questions);
+  const rest = sections.questions.join("\n").trim();
+  const questions = (listed.length > 0 ? listed : rest ? [rest] : []).filter((question) => !NONE.has(question.toLowerCase().replace(/[.!]+$/u, "").trim())).slice(0, LIMITS.questions).map((question) => clip(question, LIMITS.question));
+  const formatted = steps.length > 0;
+  return {
+    understanding: clip(sections.understanding.join("\n"), LIMITS.understanding),
+    questions,
+    steps,
+    formatted,
+    raw: formatted ? null : clip(text11, LIMITS.raw)
+  };
+}
+function parseTaskResults(answer) {
+  const lines = [];
+  let inside3 = false;
+  let listed = false;
+  for (const line of String(answer ?? "").replace(/\r\n?/gu, "\n").split("\n")) {
+    const heading = headingOf(line);
+    if (heading !== null) {
+      inside3 = heading.section === "results";
+      listed ||= inside3;
+      if (inside3 && heading.rest) lines.push(heading.rest);
+      continue;
+    }
+    if (inside3) lines.push(line);
+  }
+  const plain = (value) => value.trim().replace(/^\[([^\]]*)\]\(([^)]+)\)$/u, "$2").replace(/^\*\*(.+)\*\*$/u, "$1").replace(/^([`"'])(.+)\1$/u, "$2").trim();
+  const found = items(lines).filter((item) => !NONE.has(item.toLowerCase().replace(/[.!]+$/u, "").trim())).slice(0, LIMITS.results).map((item) => {
+    const split = /\s+[\u2014\u2013]\s+|\s+-\s+|:\s+/u.exec(item);
+    const head = split === null ? item : item.slice(0, split.index);
+    const note = split === null ? "" : item.slice(split.index + split[0].length);
+    return { path: clip(plain(head), LIMITS.resultPath), note: clip(note, LIMITS.resultNote) };
+  }).filter((item) => item.path);
+  return { listed, items: found };
+}
+var FORM = [
+  "Answer in exactly this form, under these three English headings (the text under them may be in the person's language):",
+  "## Understanding",
+  "What the task is, in one to three sentences.",
+  "## Questions",
+  `What is unclear and needs the person's answer, one per line starting with "- "; "None" if nothing is unclear.`,
+  "## Plan",
+  // The Plan tab shows the steps' names as a short list and the whole plan on request (the owner's check of 01.11).
+  `The steps you will take, numbered "1.", "2.", ..., one line each: first the step's short name (two to six words), then " - " and what exactly you will do in it.`,
+  "Do not write the plan to a file: no plan file is needed, and the folder of your settings is closed to agents.",
+  "If you have a tool to present a plan for approval (ExitPlanMode), give it the same text; then end your turn."
+];
+function answerLines(questions, answers) {
+  const lines = [];
+  (questions ?? []).forEach((question, index) => {
+    const answer = answers?.[index] ?? "";
+    if (answer.trim()) lines.push(`${index + 1}. ${question}
+   Answer: ${answer.trim()}`);
+  });
+  return lines;
+}
+function planningPrompt(task) {
+  const remark = task.remarks?.at(-1) ?? null;
+  const previous = task.revisions?.at(-1) ?? null;
+  if (remark === null || previous === null || remark.afterRevision !== previous.revision) {
+    return [
+      `Task mode: plan first, change nothing (task ${task.taskId}).`,
+      "This message is a task from the person. Do not change any file and do not run anything that changes something; do not start the work yet. Read what you need, then plan.",
+      ...FORM,
+      "The person approves the plan, or asks for changes, before any work starts.",
+      "",
+      "The task:",
+      task.text
+    ].join("\n");
+  }
+  const answers = answerLines(previous.questions, remark.answers);
+  return [
+    `Task mode: the person asked to change the plan of task ${task.taskId} (revision ${previous.revision}). Still change nothing.`,
+    "Their remarks:",
+    remark.text,
+    ...answers.length > 0 ? ["Answers to your questions:", ...answers] : [],
+    `Give the whole plan again as revision ${previous.revision + 1}, not only the changes.`,
+    ...FORM
+  ].join("\n");
+}
+function workPrompt(task) {
+  const approved = task.approved;
+  const revision2 = task.revisions.find((item) => item.revision === approved?.revision) ?? task.revisions.at(-1);
+  const answers = answerLines(revision2?.questions, approved?.answers);
+  return [
+    `Task mode: the person approved revision ${revision2?.revision ?? 1} of the plan of task ${task.taskId}. Do the work now.`,
+    "Follow the plan step by step. Keep a todo list with one item per plan step, in the same order, and mark each step done when it is.",
+    ...answers.length > 0 ? ["Answers to your questions:", ...answers] : [],
+    "The approved plan:",
+    ...(revision2?.steps ?? []).map((step, index) => `${index + 1}. ${step}`),
+    `When you are done, say briefly what was done, step by step. Then list the task's results under the heading "## Results": each file you created or changed for the task, one per line, "- path - what it is", the path relative to the project folder; "None" if the task left no file. They become your artifacts.`,
+    "",
+    "The task:",
+    task.text
+  ].join("\n");
+}
+
+// orchestrator/src/memory-changes.mjs
+import { createHash as createHash13, randomBytes as randomBytes2 } from "node:crypto";
+var CHANGES_PREFIX = "memory-changes-v1:";
+var CHANGE_STATES = Object.freeze(["pending", "approved", "rejected", "stale", "written"]);
+var CHANGE_TARGETS = Object.freeze(["own", "quarter", "project", "agent"]);
+var ID17 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
+var LIMITS2 = Object.freeze({
+  kept: 100,
+  changes: 32,
+  title: 512,
+  text: 65536,
+  reason: 2e3,
+  documentBytes: 200 * 1024
+});
+var CAS_ATTEMPTS4 = 32;
+var BASE362 = "0123456789abcdefghijklmnopqrstuvwxyz";
+var CONTROL2 = /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/gu;
+function fail27(code) {
+  throw Object.assign(new Error(code), { code });
+}
+var sha2567 = (value) => createHash13("sha256").update(value).digest("hex");
+function id6(value) {
+  if (typeof value !== "string" || !ID17.test(value)) fail27("memory_change_invalid_input");
+  return value;
+}
+function text2(value, max, { empty = false } = {}) {
+  if (typeof value !== "string") fail27("memory_change_invalid_input");
+  const clean = value.replace(/\r\n?/gu, "\n").replace(CONTROL2, "").trim();
+  if (!empty && !clean) fail27("memory_change_invalid_input");
+  if (Buffer.byteLength(clean, "utf8") > max) fail27("memory_change_too_large");
+  return clean;
+}
+var suffix2 = (random) => [...random(4)].map((byte) => BASE362[byte % 36]).join("");
+function changesKeyOf(projectId) {
+  return `${CHANGES_PREFIX}${sha2567(id6(projectId)).slice(0, 32)}`;
+}
+function normalizeChanges(value) {
+  if (!Array.isArray(value) || value.length === 0 || value.length > LIMITS2.changes) fail27("memory_change_invalid_input");
+  return value.map((change4) => {
+    if (!change4 || typeof change4 !== "object") fail27("memory_change_invalid_input");
+    const title = text2(change4.title, LIMITS2.title);
+    if (change4.action === "set") return { action: "set", title, text: text2(change4.text, LIMITS2.text) };
+    if (change4.action === "delete") return { action: "delete", title };
+    return fail27("memory_change_invalid_input");
+  });
+}
+var sameTitle = (a, b) => a.trim().toLowerCase() === b.trim().toLowerCase();
+function applyChanges(entries2, changes, { random = randomBytes2 } = {}) {
+  const next = entries2.map((entry) => ({ id: entry.id, title: entry.title, text: entry.text }));
+  const diff = [];
+  const taken = new Set(next.map((entry) => entry.id));
+  for (const change4 of changes) {
+    const index = next.findIndex((entry) => sameTitle(entry.title, change4.title));
+    if (change4.action === "delete") {
+      if (index === -1) fail27("memory_change_no_entry");
+      diff.push({ title: next[index].title, change: "removed", text: null, previous: next[index].text });
+      next.splice(index, 1);
+    } else if (index === -1) {
+      let entryId;
+      do
+        entryId = `note-${suffix2(random)}`;
+      while (taken.has(entryId));
+      taken.add(entryId);
+      next.push({ id: entryId, title: change4.title, text: change4.text });
+      diff.push({ title: change4.title, change: "added", text: change4.text, previous: null });
+    } else if (next[index].text !== change4.text) {
+      diff.push({ title: next[index].title, change: "changed", text: change4.text, previous: next[index].text });
+      next[index] = { ...next[index], text: change4.text };
+    }
+  }
+  if (diff.length === 0) fail27("memory_change_empty");
+  return { entries: next, diff };
+}
+function changesOf(value) {
+  return Array.isArray(value?.changes) ? value.changes.filter((change4) => change4 && typeof change4.changeId === "string" && ID17.test(change4.changeId) && CHANGE_STATES.includes(change4.state)) : [];
+}
+function trim2(changes) {
+  const decided = () => changes.findIndex((change4) => change4.state !== "pending");
+  while (changes.length > LIMITS2.kept && decided() !== -1) changes.splice(decided(), 1);
+  while (Buffer.byteLength(JSON.stringify(changes), "utf8") > LIMITS2.documentBytes && decided() !== -1) {
+    changes.splice(decided(), 1);
+  }
+}
+async function change3(store, projectId, update2) {
+  const key = changesKeyOf(projectId);
+  for (let attempt = 0; attempt < CAS_ATTEMPTS4; attempt += 1) {
+    const record = await store.readDocument({ key });
+    const changes = structuredClone(changesOf(record?.value));
+    const result2 = update2(changes);
+    trim2(changes);
+    if (await store.compareAndSwapDocument({
+      key,
+      expectedRevision: record?.revision ?? 0,
+      value: { schemaVersion: 1, projectId, changes }
+    })) return result2;
+  }
+  return fail27("memory_change_contention");
+}
+async function recordChange(store, {
+  projectId,
+  quarterId,
+  agentId,
+  target: target2,
+  baseRevision,
+  changes,
+  diff,
+  reason = null,
+  state: state2 = "pending",
+  writtenRevision = null,
+  now = /* @__PURE__ */ new Date(),
+  random = randomBytes2
+}) {
+  id6(projectId);
+  id6(quarterId);
+  id6(agentId);
+  if (!CHANGE_TARGETS.includes(target2?.kind)) fail27("memory_change_invalid_input");
+  const at = now.toISOString();
+  return change3(store, projectId, (list2) => {
+    let changeId;
+    do
+      changeId = `mem-${suffix2(random)}`;
+    while (list2.some((item) => item.changeId === changeId));
+    const record = {
+      schemaVersion: 1,
+      changeId,
+      projectId,
+      quarterId,
+      agentId,
+      target: { kind: target2.kind, scopeId: id6(target2.scopeId), agentId: target2.agentId ?? null },
+      baseRevision,
+      changes,
+      diff,
+      reason: reason === null ? null : text2(reason, LIMITS2.reason, { empty: true }) || null,
+      state: state2,
+      createdAtUtc: at,
+      decidedAtUtc: state2 === "pending" ? null : at,
+      writtenRevision
+    };
+    list2.push(record);
+    return structuredClone(record);
+  });
+}
+async function readChanges(store, { projectId, agentId = null, states = null, limit = 50 } = {}) {
+  id6(projectId);
+  if (states !== null && (!Array.isArray(states) || states.some((state2) => !CHANGE_STATES.includes(state2)))) {
+    fail27("memory_change_invalid_input");
+  }
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > LIMITS2.kept) fail27("memory_change_invalid_input");
+  const record = await store.readDocument({ key: changesKeyOf(projectId) });
+  const changes = changesOf(record?.value).filter((item) => agentId === null || item.agentId === agentId).filter((item) => states === null || states.includes(item.state)).sort((a, b) => String(b.createdAtUtc).localeCompare(String(a.createdAtUtc)));
+  return { schemaVersion: 1, projectId, changes: changes.slice(0, limit), truncated: changes.length > limit };
+}
+async function readAllChanges(store, { states = null, limit = 50 } = {}) {
+  const projectIds = [.../* @__PURE__ */ new Set([...(await store.listScopes({})).scopes.map((scope) => scope.projectId), "world"])];
+  const changes = [];
+  for (const projectId of projectIds) changes.push(...(await readChanges(store, { projectId, states, limit: LIMITS2.kept })).changes);
+  changes.sort((a, b) => String(b.createdAtUtc).localeCompare(String(a.createdAtUtc)));
+  return { schemaVersion: 1, projectId: null, changes: changes.slice(0, limit), truncated: changes.length > limit };
+}
+async function readChange(store, { projectId, changeId }) {
+  const record = await store.readDocument({ key: changesKeyOf(projectId) });
+  const found = changesOf(record?.value).find((item) => item.changeId === id6(changeId));
+  if (!found) fail27("memory_change_not_found");
+  return structuredClone(found);
+}
+async function settleChange(store, { projectId, changeId, state: state2, writtenRevision = null, now = /* @__PURE__ */ new Date() }) {
+  if (!["approved", "rejected", "stale"].includes(state2)) fail27("memory_change_invalid_input");
+  return change3(store, projectId, (list2) => {
+    const found = list2.find((item) => item.changeId === id6(changeId));
+    if (!found) fail27("memory_change_not_found");
+    if (found.state !== "pending") fail27("memory_change_decided");
+    Object.assign(found, { state: state2, decidedAtUtc: now.toISOString(), writtenRevision });
+    return structuredClone(found);
+  });
+}
+
 // orchestrator/src/project-package-export.mjs
-import { createHash as createHash13 } from "node:crypto";
+import { createHash as createHash15 } from "node:crypto";
 import { lstat as lstat8, mkdir as mkdir7, readFile as readFile6, readdir as readdir5, realpath as realpath6, rename as rename6, rm as rm4, writeFile as writeFile5 } from "node:fs/promises";
 import path16 from "node:path";
 
 // orchestrator/src/project-store-layout.mjs
-import { createHash as createHash12, randomUUID as randomUUID5 } from "node:crypto";
+import { createHash as createHash14, randomUUID as randomUUID5 } from "node:crypto";
 import { lstat as lstat5, mkdir as mkdir4, readdir as readdir3, readFile as readFile3, realpath as realpath5, rename as rename3, rm as rm2, writeFile as writeFile2 } from "node:fs/promises";
 import path13 from "node:path";
 var STORE_LAYOUT_MARKER = "store-layout.v1.json";
-var WORLD_PROJECT_ID2 = "world";
+var WORLD_PROJECT_ID3 = "world";
 var STORE_LAYOUT_ENVIRONMENT = "AGENTS_FACTORY_STORE_LAYOUT";
 var PROJECT_FILE = "project.json";
 var PROJECT_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
@@ -10110,7 +10771,7 @@ var ProjectStoreLayoutError = class extends Error {
     this.code = code;
   }
 };
-function fail26(code, detail) {
+function fail28(code, detail) {
   throw new ProjectStoreLayoutError(code, detail);
 }
 async function kind(target2) {
@@ -10119,7 +10780,7 @@ async function kind(target2) {
     throw error;
   });
   if (info === null) return null;
-  if (info.isSymbolicLink()) fail26("store_layout_link_refused", target2);
+  if (info.isSymbolicLink()) fail28("store_layout_link_refused", target2);
   return info.isDirectory() ? "directory" : info.isFile() ? "file" : "other";
 }
 function projectsRoot(controllerRoot) {
@@ -10129,9 +10790,9 @@ function singleMemoryDatabase(controllerRoot) {
   return path13.join(controllerRoot, ".project-local", "orchestration", "project-memory", "project-memory.v1.sqlite");
 }
 function projectFolderName(projectId) {
-  if (typeof projectId !== "string" || !PROJECT_ID.test(projectId)) fail26("store_project_id_invalid");
+  if (typeof projectId !== "string" || !PROJECT_ID.test(projectId)) fail28("store_project_id_invalid");
   if (PLAIN_FOLDER.test(projectId) && !RESERVED.test(projectId) && !projectId.endsWith(".")) return projectId;
-  return `~${createHash12("sha256").update(projectId).digest("hex").slice(0, 32)}`;
+  return `~${createHash14("sha256").update(projectId).digest("hex").slice(0, 32)}`;
 }
 async function resolveStoreLayout(controllerRoot, { env = process.env } = {}) {
   const root = await realpath5(controllerRoot);
@@ -10139,10 +10800,10 @@ async function resolveStoreLayout(controllerRoot, { env = process.env } = {}) {
   const markerKind = await kind(marker);
   if (markerKind === "file") {
     const value = JSON.parse(await readFile3(marker, "utf8"));
-    if (value?.schemaVersion !== 1 || value?.layout !== "split") fail26("store_layout_unsupported", marker);
+    if (value?.schemaVersion !== 1 || value?.layout !== "split") fail28("store_layout_unsupported", marker);
     return { layout: "split", root };
   }
-  if (markerKind !== null) fail26("store_layout_unsupported", marker);
+  if (markerKind !== null) fail28("store_layout_unsupported", marker);
   if (String(env?.[STORE_LAYOUT_ENVIRONMENT] ?? "").trim().toLowerCase() === "split" && await kind(singleMemoryDatabase(root)) === null) {
     await writeStoreLayoutMarker(root);
     return { layout: "split", root };
@@ -10168,7 +10829,7 @@ async function projectStoreFolder(controllerRoot, projectId, { create = false } 
   const present = await kind(identity2);
   if (present === "file") {
     const value2 = JSON.parse(await readFile3(identity2, "utf8"));
-    if (value2?.projectId !== projectId) fail26("store_project_identity_conflict", folder);
+    if (value2?.projectId !== projectId) fail28("store_project_identity_conflict", folder);
     return folder;
   }
   if (!create) return null;
@@ -10176,12 +10837,12 @@ async function projectStoreFolder(controllerRoot, projectId, { create = false } 
   await writeOnce(identity2, `${JSON.stringify({ schemaVersion: 1, projectId }, null, 2)}
 `);
   const value = JSON.parse(await readFile3(identity2, "utf8"));
-  if (value?.projectId !== projectId) fail26("store_project_identity_conflict", folder);
+  if (value?.projectId !== projectId) fail28("store_project_identity_conflict", folder);
   return folder;
 }
-async function writeOnce(target2, text10) {
+async function writeOnce(target2, text11) {
   const temporary = `${target2}.${process.pid}.${randomUUID5()}.tmp`;
-  await writeFile2(temporary, text10, "utf8");
+  await writeFile2(temporary, text11, "utf8");
   try {
     await rename3(temporary, target2);
   } catch (error) {
@@ -10200,7 +10861,7 @@ async function mountedProjects(controllerRoot) {
     if (await kind(identity2) !== "file") continue;
     const value = JSON.parse(await readFile3(identity2, "utf8"));
     if (typeof value?.projectId !== "string" || projectFolderName(value.projectId) !== entry.name) {
-      fail26("store_project_identity_conflict", folder);
+      fail28("store_project_identity_conflict", folder);
     }
     found.push({ projectId: value.projectId, folder });
   }
@@ -10218,7 +10879,7 @@ import path14 from "node:path";
 var MACHINE_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$/u;
 var LOCAL_FILE = path14.join(".project-local", "machine.json");
 var OVERLAY_FOLDER = "machine";
-function fail27(code, detail) {
+function fail29(code, detail) {
   throw Object.assign(new Error(detail ? `${code}: ${detail}` : code), { code });
 }
 async function readJson(file) {
@@ -10252,13 +10913,13 @@ async function readThisMachine(controllerRoot) {
   return { machineId: local.machineId, ...machines[local.machineId] ?? { title: local.machineId, home: false } };
 }
 function projectPolicy(value) {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) fail27("policy_invalid");
+  if (value === null || typeof value !== "object" || Array.isArray(value)) fail29("policy_invalid");
   const keys = Object.keys(value).sort().join();
-  if (keys !== "allowedMachines,homeOnly") fail27("policy_invalid", keys);
-  if (typeof value.homeOnly !== "boolean") fail27("policy_invalid", "homeOnly");
+  if (keys !== "allowedMachines,homeOnly") fail29("policy_invalid", keys);
+  if (typeof value.homeOnly !== "boolean") fail29("policy_invalid", "homeOnly");
   const allowed = value.allowedMachines;
-  if (allowed !== null && (!Array.isArray(allowed) || allowed.length === 0 || allowed.length > 16 || allowed.some((id12) => typeof id12 !== "string" || !MACHINE_ID.test(id12)) || new Set(allowed).size !== allowed.length)) {
-    fail27("policy_invalid", "allowedMachines");
+  if (allowed !== null && (!Array.isArray(allowed) || allowed.length === 0 || allowed.length > 16 || allowed.some((id14) => typeof id14 !== "string" || !MACHINE_ID.test(id14)) || new Set(allowed).size !== allowed.length)) {
+    fail29("policy_invalid", "allowedMachines");
   }
   return { homeOnly: value.homeOnly, allowedMachines: allowed === null ? null : [...allowed].sort() };
 }
@@ -10267,8 +10928,8 @@ function projectPolicy(value) {
 var WORLD_FOLDER = ".world";
 var REGISTRY_FILE = "registry.json";
 var TASKS_FOLDER = "tasks";
-var ID15 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
-function fail28(code, detail) {
+var ID18 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
+function fail30(code, detail) {
   throw Object.assign(new Error(detail ? `${code}: ${detail}` : code), { code });
 }
 var compare = (a, b) => a < b ? -1 : a > b ? 1 : 0;
@@ -10292,24 +10953,24 @@ async function readWorldRegistry(controllerRoot) {
   const file = registryPath(controllerRoot);
   if (!await exists(file)) return { schemaVersion: 1, projects: {} };
   const value = JSON.parse(await readFile5(file, "utf8"));
-  if (value?.schemaVersion !== 1 || !value.projects || typeof value.projects !== "object") fail28("world_registry_invalid");
+  if (value?.schemaVersion !== 1 || !value.projects || typeof value.projects !== "object") fail30("world_registry_invalid");
   return value;
 }
 function location(value) {
-  if (value === null || typeof value !== "object" || value.machineId !== null && !MACHINE_ID.test(String(value.machineId)) || typeof value.atUtc !== "string" || !Number.isFinite(Date.parse(value.atUtc))) fail28("world_registry_invalid", "location");
+  if (value === null || typeof value !== "object" || value.machineId !== null && !MACHINE_ID.test(String(value.machineId)) || typeof value.atUtc !== "string" || !Number.isFinite(Date.parse(value.atUtc))) fail30("world_registry_invalid", "location");
   return { machineId: value.machineId, atUtc: value.atUtc };
 }
 function summary(value) {
-  const count = (item) => Number.isSafeInteger(item) && item >= 0 ? item : fail28("world_registry_invalid", "summary");
+  const count = (item) => Number.isSafeInteger(item) && item >= 0 ? item : fail30("world_registry_invalid", "summary");
   const at = value?.lastActivityUtc;
-  if (at !== null && (typeof at !== "string" || !Number.isFinite(Date.parse(at)))) fail28("world_registry_invalid", "summary");
+  if (at !== null && (typeof at !== "string" || !Number.isFinite(Date.parse(at)))) fail30("world_registry_invalid", "summary");
   return { agents: count(value.agents), quarters: count(value.quarters), tasksOpen: count(value.tasksOpen), lastActivityUtc: at };
 }
 async function recordWorldProjects(controllerRoot, entries2) {
   const registry = await readWorldRegistry(controllerRoot);
   for (const entry of entries2) {
-    if (typeof entry?.projectId !== "string" || !ID15.test(entry.projectId) || entry.projectId === WORLD_PROJECT_ID2) {
-      fail28("world_registry_invalid", String(entry?.projectId));
+    if (typeof entry?.projectId !== "string" || !ID18.test(entry.projectId) || entry.projectId === WORLD_PROJECT_ID3) {
+      fail30("world_registry_invalid", String(entry?.projectId));
     }
     const current = registry.projects[entry.projectId] ?? { title: entry.projectId, policy: { homeOnly: false, allowedMachines: null }, archived: false };
     registry.projects[entry.projectId] = {
@@ -10320,7 +10981,7 @@ async function recordWorldProjects(controllerRoot, entries2) {
       summary: entry.summary !== void 0 ? summary(entry.summary) : current.summary ?? null
     };
   }
-  const projects = Object.fromEntries(Object.keys(registry.projects).sort(compare).map((id12) => [id12, registry.projects[id12]]));
+  const projects = Object.fromEntries(Object.keys(registry.projects).sort(compare).map((id14) => [id14, registry.projects[id14]]));
   await writeJson(registryPath(controllerRoot), { schemaVersion: 1, projects });
   return projects;
 }
@@ -10382,18 +11043,18 @@ var ProjectPackageError = class extends Error {
     this.code = code;
   }
 };
-function fail29(code, detail) {
+function fail31(code, detail) {
   throw new ProjectPackageError(code, detail);
 }
-var sha2566 = (value) => createHash13("sha256").update(value).digest("hex");
+var sha2568 = (value) => createHash15("sha256").update(value).digest("hex");
 function artifactsKeyOf(agentId) {
-  return `agent-artifacts-${sha2566(JSON.stringify(agentId))}`;
+  return `agent-artifacts-${sha2568(JSON.stringify(agentId))}`;
 }
-function parsed(text10, what) {
+function parsed(text11, what) {
   try {
-    return JSON.parse(text10);
+    return JSON.parse(text11);
   } catch {
-    return fail29("export_source_invalid", what);
+    return fail31("export_source_invalid", what);
   }
 }
 async function exists2(target2) {
@@ -10457,7 +11118,7 @@ var MERGED = /* @__PURE__ */ new Set([CATALOG_KEY, ARCHIVE_KEY]);
 var SCOPE_COMMANDS = /* @__PURE__ */ new Set(["read-scope", "authorize-write", "write"]);
 var MEMORY_FILE = "memory.sqlite";
 var ARCHIVE_FILE = "archive.sqlite";
-var sha2567 = (value) => createHash14("sha256").update(value).digest("hex");
+var sha2569 = (value) => createHash16("sha256").update(value).digest("hex");
 var compare2 = (a, b) => a < b ? -1 : a > b ? 1 : 0;
 function canonical(value) {
   if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
@@ -10521,14 +11182,14 @@ var SplitProjectMemoryBridge = class {
     return this.#bridges.get(projectId);
   }
   async #world() {
-    return this.#bridge(WORLD_PROJECT_ID2, { create: true });
+    return this.#bridge(WORLD_PROJECT_ID3, { create: true });
   }
   /** Every mounted project's bridge, the world first, then by projectId. */
   async #all() {
     const world = await this.#world();
-    const result2 = [[WORLD_PROJECT_ID2, world]];
+    const result2 = [[WORLD_PROJECT_ID3, world]];
     for (const { projectId } of await mountedProjects(this.#root)) {
-      if (projectId !== WORLD_PROJECT_ID2) result2.push([projectId, await this.#bridge(projectId)]);
+      if (projectId !== WORLD_PROJECT_ID3) result2.push([projectId, await this.#bridge(projectId)]);
     }
     return result2;
   }
@@ -10581,23 +11242,28 @@ var SplitProjectMemoryBridge = class {
   async #documentOwner(key) {
     if (key.startsWith("workspace-")) {
       const hash13 = key.slice("workspace-".length);
-      for (const { projectId } of await mountedProjects(this.#root)) if (sha2567(projectId) === hash13) return projectId;
-      return WORLD_PROJECT_ID2;
+      for (const { projectId } of await mountedProjects(this.#root)) if (sha2569(projectId) === hash13) return projectId;
+      return WORLD_PROJECT_ID3;
     }
-    for (const [prefix, keyOf] of [[ACTION_JOURNAL_PREFIX, journalKeyOf], [NAMES_PREFIX, namesKeyOf]]) {
+    for (const [prefix, keyOf] of [
+      [ACTION_JOURNAL_PREFIX, journalKeyOf],
+      [NAMES_PREFIX, namesKeyOf],
+      [TASKS_PREFIX, tasksKeyOf],
+      [CHANGES_PREFIX, changesKeyOf]
+    ]) {
       if (!key.startsWith(prefix)) continue;
       for (const { projectId } of await mountedProjects(this.#root)) if (keyOf(projectId) === key) return projectId;
-      return WORLD_PROJECT_ID2;
+      return WORLD_PROJECT_ID3;
     }
     if (key.startsWith(APPROVALS_PREFIX) || key.startsWith("agent-artifacts-")) {
       for (const agent of await this.#catalogAgents()) {
         if (typeof agent?.agentId !== "string") continue;
-        if (key === `${APPROVALS_PREFIX}${sha2567(agent.agentId).slice(0, 32)}` || key === artifactsKeyOf(agent.agentId)) {
-          return await this.#bridge(agent.projectId) === null ? WORLD_PROJECT_ID2 : agent.projectId;
+        if (key === `${APPROVALS_PREFIX}${sha2569(agent.agentId).slice(0, 32)}` || key === artifactsKeyOf(agent.agentId)) {
+          return await this.#bridge(agent.projectId) === null ? WORLD_PROJECT_ID3 : agent.projectId;
         }
       }
     }
-    return WORLD_PROJECT_ID2;
+    return WORLD_PROJECT_ID3;
   }
   async #parts(key) {
     const parts = /* @__PURE__ */ new Map();
@@ -10633,7 +11299,7 @@ var SplitProjectMemoryBridge = class {
     };
     if (key === CATALOG_KEY) {
       const { agents, ...rest2 } = value;
-      for (const agent of Array.isArray(agents) ? agents : []) group(agent?.projectId ?? WORLD_PROJECT_ID2).push(agent);
+      for (const agent of Array.isArray(agents) ? agents : []) group(agent?.projectId ?? WORLD_PROJECT_ID3).push(agent);
       return { rest: rest2, groups, build: (agentsOf2) => ({ ...rest2, agents: agentsOf2 ?? [] }) };
     }
     const { projects, quarters, ...rest } = value;
@@ -10653,7 +11319,7 @@ var SplitProjectMemoryBridge = class {
       if (before === void 0 && !groups.has(projectId2)) continue;
       if (before === void 0 || canonical(before.value) !== canonical(next)) changed.push(projectId2);
     }
-    if (changed.length === 0) changed.push(WORLD_PROJECT_ID2);
+    if (changed.length === 0) changed.push(WORLD_PROJECT_ID3);
     if (changed.length > 1) throw failure2("compare-and-swap-document", "memory_cross_project_change");
     const [projectId] = changed;
     const bridge = await this.#bridge(projectId);
@@ -10708,7 +11374,7 @@ var SplitProjectMemoryBridge = class {
    * mounted projects (project-mount.mjs recordMountedProjects), so this never fails the change.
    */
   async #registerNewProject(projectId, title) {
-    if (projectId === WORLD_PROJECT_ID2) return;
+    if (projectId === WORLD_PROJECT_ID3) return;
     try {
       if (Object.hasOwn((await readWorldRegistry(this.#root)).projects, projectId)) return;
       const machine = await readThisMachine(this.#root);
@@ -10773,7 +11439,7 @@ var SplitProjectMemoryBridge = class {
           const set = await (await this.#bridge(projectId)).invoke(command, { ...payload, scopeIds });
           for (const scope of set.scopes) found.set(scope.scopeId, scope);
         }
-        return { schemaVersion: 1, scopes: (payload.scopeIds ?? []).filter((id12) => found.has(id12)).map((id12) => found.get(id12)) };
+        return { schemaVersion: 1, scopes: (payload.scopeIds ?? []).filter((id14) => found.has(id14)).map((id14) => found.get(id14)) };
       }
       case "read-document":
         if (MERGED.has(payload.key)) return this.#mergedRead(payload.key);
@@ -10781,14 +11447,14 @@ var SplitProjectMemoryBridge = class {
       case "compare-and-swap-document": {
         if (MERGED.has(payload.key)) return this.#mergedSwap(payload.key, payload.expectedRevision, payload.value);
         const bound3 = payload.value?.projectId;
-        if (payload.key.startsWith("workspace-") && typeof bound3 === "string" && payload.key === `workspace-${sha2567(bound3)}`) {
+        if (payload.key.startsWith("workspace-") && typeof bound3 === "string" && payload.key === `workspace-${sha2569(bound3)}`) {
           return (await this.#bridge(bound3, { create: true })).invoke(command, payload);
         }
         return (await this.#bridge(await this.#documentOwner(payload.key))).invoke(command, payload);
       }
       default: {
         if (!SCOPE_COMMANDS.has(command)) throw failure2(command, "memory_invalid_input");
-        const owner2 = await this.#projectOfScope(payload.scopeId) ?? WORLD_PROJECT_ID2;
+        const owner2 = await this.#projectOfScope(payload.scopeId) ?? WORLD_PROJECT_ID3;
         if (command === "write") await this.#operationTarget(command, payload.operationId, owner2);
         return (await this.#bridge(owner2)).invoke(command, payload);
       }
@@ -10824,10 +11490,10 @@ var SplitConversationArchiveBridge = class {
     this.sqliteBackend = "node";
   }
   async #projectOf(threadId2) {
-    if (typeof threadId2 !== "string") return WORLD_PROJECT_ID2;
+    if (typeof threadId2 !== "string") return WORLD_PROJECT_ID3;
     if (!this.#threads.has(threadId2)) {
       const projectId = await this.#memory.projectOfThread(threadId2);
-      if (projectId === null) return WORLD_PROJECT_ID2;
+      if (projectId === null) return WORLD_PROJECT_ID3;
       this.#threads.set(threadId2, projectId);
     }
     return this.#threads.get(threadId2);
@@ -10835,8 +11501,8 @@ var SplitConversationArchiveBridge = class {
   async #bridge(projectId, controllerId) {
     if (!this.#bridges.has(projectId)) {
       const opening = (async () => {
-        let folder = await projectStoreFolder(this.#root, projectId, { create: projectId === WORLD_PROJECT_ID2 });
-        if (folder === null) folder = await projectStoreFolder(this.#root, WORLD_PROJECT_ID2, { create: true });
+        let folder = await projectStoreFolder(this.#root, projectId, { create: projectId === WORLD_PROJECT_ID3 });
+        if (folder === null) folder = await projectStoreFolder(this.#root, WORLD_PROJECT_ID3, { create: true });
         const bridge = new NodeConversationArchiveBridge({ databasePath: path17.join(folder, ARCHIVE_FILE), sqlite: this.#sqlite });
         await bridge.invoke("init", { projectId: controllerId });
         return bridge;
@@ -10867,7 +11533,7 @@ var PROJECT_MEMORY_LIMITS = Object.freeze({
   listScopes: 512,
   documentBytes: 256 * 1024
 });
-var ID16 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/;
+var ID19 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/;
 var SHA2568 = /^[a-f0-9]{64}$/;
 var FORBIDDEN_CONTROL2 = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u;
 var SENSITIVE_TEXT = Object.freeze([
@@ -10901,16 +11567,16 @@ var ProjectMemoryStoreError = class extends Error {
     this.code = code;
   }
 };
-function fail30(code = "memory_invalid_input") {
+function fail32(code = "memory_invalid_input") {
   throw new ProjectMemoryStoreError(code);
 }
 function exact8(value, required2, optional = []) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) fail30();
+  if (!value || typeof value !== "object" || Array.isArray(value)) fail32();
   const allowed = /* @__PURE__ */ new Set([...required2, ...optional]);
-  if (required2.some((field) => !Object.hasOwn(value, field)) || Object.keys(value).some((field) => !allowed.has(field))) fail30();
+  if (required2.some((field) => !Object.hasOwn(value, field)) || Object.keys(value).some((field) => !allowed.has(field))) fail32();
 }
 function identifier6(value) {
-  if (typeof value !== "string" || !ID16.test(value)) fail30();
+  if (typeof value !== "string" || !ID19.test(value)) fail32();
   return value;
 }
 function hasUnpairedSurrogate(value) {
@@ -10927,8 +11593,8 @@ function hasUnpairedSurrogate(value) {
   return false;
 }
 function boundedText2(value, { allowEmpty = false, maximumBytes = 65536 } = {}) {
-  if (typeof value !== "string" || !allowEmpty && value.length === 0 || FORBIDDEN_CONTROL2.test(value) || hasUnpairedSurrogate(value) || SENSITIVE_TEXT.some((pattern) => pattern.test(value))) fail30();
-  if (Buffer.byteLength(value, "utf8") > maximumBytes) fail30("memory_limit_exceeded");
+  if (typeof value !== "string" || !allowEmpty && value.length === 0 || FORBIDDEN_CONTROL2.test(value) || hasUnpairedSurrogate(value) || SENSITIVE_TEXT.some((pattern) => pattern.test(value))) fail32();
+  if (Buffer.byteLength(value, "utf8") > maximumBytes) fail32("memory_limit_exceeded");
   return value;
 }
 function canonicalValue4(value) {
@@ -10942,18 +11608,18 @@ function canonicalJson2(value) {
   return JSON.stringify(canonicalValue4(value));
 }
 function hash2(value) {
-  return createHash15("sha256").update(canonicalJson2(value), "utf8").digest("hex");
+  return createHash17("sha256").update(canonicalJson2(value), "utf8").digest("hex");
 }
 function revision(value, { allowZero = false, incrementable = false } = {}) {
-  if (!Number.isSafeInteger(value) || value < (allowZero ? 0 : 1) || incrementable && value >= Number.MAX_SAFE_INTEGER) fail30();
+  if (!Number.isSafeInteger(value) || value < (allowZero ? 0 : 1) || incrementable && value >= Number.MAX_SAFE_INTEGER) fail32();
   return value;
 }
 function timestamp2(value) {
-  if (typeof value !== "string" || value.length > 32 || !value.endsWith("Z") || !Number.isFinite(Date.parse(value))) fail30("memory_unavailable");
+  if (typeof value !== "string" || value.length > 32 || !value.endsWith("Z") || !Number.isFinite(Date.parse(value))) fail32("memory_unavailable");
   return value;
 }
 function normalizeEntries(value) {
-  if (!Array.isArray(value) || value.length > PROJECT_MEMORY_LIMITS.entries) fail30();
+  if (!Array.isArray(value) || value.length > PROJECT_MEMORY_LIMITS.entries) fail32();
   const ids = /* @__PURE__ */ new Set();
   const entries2 = value.map((entry) => {
     exact8(entry, ["id", "title", "text"]);
@@ -10962,19 +11628,19 @@ function normalizeEntries(value) {
       title: boundedText2(entry.title, { maximumBytes: 512 }),
       text: boundedText2(entry.text, { allowEmpty: true })
     };
-    if (ids.has(normalized.id)) fail30();
+    if (ids.has(normalized.id)) fail32();
     ids.add(normalized.id);
     return normalized;
   });
   if (Buffer.byteLength(canonicalJson2(entries2), "utf8") > PROJECT_MEMORY_LIMITS.contentBytes) {
-    fail30("memory_limit_exceeded");
+    fail32("memory_limit_exceeded");
   }
   return entries2;
 }
 var PROJECT_MEMORY_SCOPE_KINDS = Object.freeze(["project", "quarter", "agent"]);
 function normalizeScope(value) {
   exact8(value, ["scopeId", "kind", "projectId", "quarterId", "title", "operationId"]);
-  if (!PROJECT_MEMORY_SCOPE_KINDS.includes(value.kind)) fail30();
+  if (!PROJECT_MEMORY_SCOPE_KINDS.includes(value.kind)) fail32();
   const scope = {
     scopeId: identifier6(value.scopeId),
     kind: value.kind,
@@ -10983,34 +11649,34 @@ function normalizeScope(value) {
     title: boundedText2(value.title, { maximumBytes: 512 }),
     operationId: identifier6(value.operationId)
   };
-  if (scope.kind === "project" !== (scope.quarterId === null)) fail30();
+  if (scope.kind === "project" !== (scope.quarterId === null)) fail32();
   return scope;
 }
 function validateJson(value, state2 = { depth: 0, nodes: 0 }) {
   state2.nodes += 1;
-  if (state2.depth > 24 || state2.nodes > 8192) fail30("memory_limit_exceeded");
+  if (state2.depth > 24 || state2.nodes > 8192) fail32("memory_limit_exceeded");
   if (value === null || typeof value === "boolean") return value;
   if (typeof value === "number") {
-    if (!Number.isFinite(value)) fail30();
+    if (!Number.isFinite(value)) fail32();
     return Object.is(value, -0) ? 0 : value;
   }
   if (typeof value === "string") return boundedText2(value, {
     allowEmpty: true,
     maximumBytes: PROJECT_MEMORY_LIMITS.documentBytes
   });
-  if (!value || typeof value !== "object") fail30();
+  if (!value || typeof value !== "object") fail32();
   const childState = { ...state2, depth: state2.depth + 1 };
   if (Array.isArray(value)) {
-    if (value.length > 2048) fail30("memory_limit_exceeded");
+    if (value.length > 2048) fail32("memory_limit_exceeded");
     const result3 = value.map((item) => validateJson(item, childState));
     state2.nodes = childState.nodes;
     return result3;
   }
   const keys = Object.keys(value);
-  if (Object.getPrototypeOf(value) !== Object.prototype || keys.length > 512) fail30();
+  if (Object.getPrototypeOf(value) !== Object.prototype || keys.length > 512) fail32();
   const result2 = {};
   for (const key of keys) {
-    if (!key || Buffer.byteLength(key, "utf8") > 256 || FORBIDDEN_CONTROL2.test(key)) fail30();
+    if (!key || Buffer.byteLength(key, "utf8") > 256 || FORBIDDEN_CONTROL2.test(key)) fail32();
     result2[key] = validateJson(value[key], childState);
   }
   state2.nodes = childState.nodes;
@@ -11019,7 +11685,7 @@ function validateJson(value, state2 = { depth: 0, nodes: 0 }) {
 function normalizeDocumentValue(value) {
   const normalized = validateJson(value);
   if (Buffer.byteLength(canonicalJson2(normalized), "utf8") > PROJECT_MEMORY_LIMITS.documentBytes) {
-    fail30("memory_limit_exceeded");
+    fail32("memory_limit_exceeded");
   }
   return normalized;
 }
@@ -11036,13 +11702,13 @@ function validateMetadata(value) {
     "author",
     "updatedAtUtc"
   ]);
-  if (value.schemaVersion !== 1 || !PROJECT_MEMORY_SCOPE_KINDS.includes(value.kind) || value.kind === "project" !== (value.quarterId === null)) fail30("memory_unavailable");
+  if (value.schemaVersion !== 1 || !PROJECT_MEMORY_SCOPE_KINDS.includes(value.kind) || value.kind === "project" !== (value.quarterId === null)) fail32("memory_unavailable");
   identifier6(value.scopeId);
   identifier6(value.projectId);
   if (value.quarterId !== null) identifier6(value.quarterId);
   boundedText2(value.title, { maximumBytes: 512 });
   revision(value.revision);
-  if (typeof value.sha256 !== "string" || !SHA2568.test(value.sha256)) fail30("memory_unavailable");
+  if (typeof value.sha256 !== "string" || !SHA2568.test(value.sha256)) fail32("memory_unavailable");
   identifier6(value.author);
   timestamp2(value.updatedAtUtc);
   return structuredClone(value);
@@ -11063,7 +11729,7 @@ function validateScopeDto(value) {
   ]);
   const metadata = validateMetadata(Object.fromEntries(Object.entries(value).filter(([key]) => key !== "entries")));
   const entries2 = normalizeEntries(value.entries);
-  if (hash2(entries2) !== metadata.sha256) fail30("memory_unavailable");
+  if (hash2(entries2) !== metadata.sha256) fail32("memory_unavailable");
   return { ...metadata, entries: entries2 };
 }
 function validateWriteReceipt(value) {
@@ -11078,12 +11744,12 @@ function validateWriteReceipt(value) {
     "author",
     "updatedAtUtc"
   ]);
-  if (value.schemaVersion !== 1) fail30("memory_unavailable");
+  if (value.schemaVersion !== 1) fail32("memory_unavailable");
   for (const field of ["operationId", "commandId", "scopeId", "author"]) identifier6(value[field]);
   revision(value.previousRevision);
   revision(value.revision);
   if (value.revision !== value.previousRevision + 1 || !SHA2568.test(value.sha256)) {
-    fail30("memory_unavailable");
+    fail32("memory_unavailable");
   }
   timestamp2(value.updatedAtUtc);
   return structuredClone(value);
@@ -11098,7 +11764,7 @@ function validateGrant(value) {
     "requestedBy",
     "authorizedAtUtc"
   ]);
-  if (value.schemaVersion !== 1 || !SHA2568.test(value.contentSha256)) fail30("memory_unavailable");
+  if (value.schemaVersion !== 1 || !SHA2568.test(value.contentSha256)) fail32("memory_unavailable");
   for (const field of ["commandId", "scopeId", "requestedBy"]) identifier6(value[field]);
   revision(value.expectedRevision);
   timestamp2(value.authorizedAtUtc);
@@ -11109,7 +11775,7 @@ function nowUtc(now) {
   try {
     value = now().toISOString();
   } catch {
-    fail30("memory_unavailable");
+    fail32("memory_unavailable");
   }
   return timestamp2(value);
 }
@@ -11117,12 +11783,12 @@ function bridgeValue(validate) {
   try {
     return validate();
   } catch {
-    fail30("memory_unavailable");
+    fail32("memory_unavailable");
   }
 }
 var ProjectMemoryStore = class {
   constructor({ store, now = () => /* @__PURE__ */ new Date() }) {
-    if (!store || typeof store.invoke !== "function" || typeof now !== "function") fail30();
+    if (!store || typeof store.invoke !== "function" || typeof now !== "function") fail32();
     this.store = store;
     this.now = now;
   }
@@ -11135,7 +11801,7 @@ var ProjectMemoryStore = class {
         code = JSON.parse(error.stderr.trim().split(/\r?\n/u).at(-1)).error;
       } catch {
       }
-      fail30(BRIDGE_ERRORS.has(code) ? code : "memory_unavailable");
+      fail32(BRIDGE_ERRORS.has(code) ? code : "memory_unavailable");
     }
   }
   async createScope(value) {
@@ -11159,11 +11825,11 @@ var ProjectMemoryStore = class {
     ]);
     const sourceProjectId = identifier6(value.sourceProjectId);
     const targetProjectId = identifier6(value.targetProjectId);
-    if (sourceProjectId === targetProjectId) fail30();
-    if (!value.quarterScopeIds || typeof value.quarterScopeIds !== "object" || Array.isArray(value.quarterScopeIds) || Object.keys(value.quarterScopeIds).length > PROJECT_MEMORY_LIMITS.listScopes - 1) fail30();
+    if (sourceProjectId === targetProjectId) fail32();
+    if (!value.quarterScopeIds || typeof value.quarterScopeIds !== "object" || Array.isArray(value.quarterScopeIds) || Object.keys(value.quarterScopeIds).length > PROJECT_MEMORY_LIMITS.listScopes - 1) fail32();
     const quarterScopeIds = Object.fromEntries(Object.entries(value.quarterScopeIds).map(([quarterId, scopeId]) => [identifier6(quarterId), identifier6(scopeId)]));
     const scopeIds = [identifier6(value.targetProjectScopeId), ...Object.values(quarterScopeIds)];
-    if (new Set(scopeIds).size !== scopeIds.length) fail30();
+    if (new Set(scopeIds).size !== scopeIds.length) fail32();
     const request = {
       sourceProjectId,
       targetProjectId,
@@ -11186,7 +11852,7 @@ var ProjectMemoryStore = class {
         "scopes",
         "copiedAtUtc"
       ]);
-      if (result2.schemaVersion !== 1 || result2.outcome !== "complete" || result2.sourceProjectId !== sourceProjectId || result2.targetProjectId !== targetProjectId || result2.operationId !== request.operationId || !Array.isArray(result2.scopes) || result2.scopes.length !== scopeIds.length) fail30("memory_unavailable");
+      if (result2.schemaVersion !== 1 || result2.outcome !== "complete" || result2.sourceProjectId !== sourceProjectId || result2.targetProjectId !== targetProjectId || result2.operationId !== request.operationId || !Array.isArray(result2.scopes) || result2.scopes.length !== scopeIds.length) fail32("memory_unavailable");
       for (const scope of result2.scopes) {
         exact8(scope, [
           "sourceScopeId",
@@ -11199,7 +11865,7 @@ var ProjectMemoryStore = class {
           "targetSha256"
         ]);
         identifier6(scope.sourceScopeId);
-        if (!scopeIds.includes(identifier6(scope.targetScopeId)) || !["project", "quarter"].includes(scope.kind) || scope.quarterId !== null && !Object.hasOwn(quarterScopeIds, identifier6(scope.quarterId)) || !Number.isInteger(scope.sourceRevision) || scope.sourceRevision < 1 || scope.targetRevision !== 1 || !SHA2568.test(scope.sourceSha256) || scope.sourceSha256 !== scope.targetSha256) fail30("memory_unavailable");
+        if (!scopeIds.includes(identifier6(scope.targetScopeId)) || !["project", "quarter"].includes(scope.kind) || scope.quarterId !== null && !Object.hasOwn(quarterScopeIds, identifier6(scope.quarterId)) || !Number.isInteger(scope.sourceRevision) || scope.sourceRevision < 1 || scope.targetRevision !== 1 || !SHA2568.test(scope.sourceSha256) || scope.sourceSha256 !== scope.targetSha256) fail32("memory_unavailable");
       }
       return result2;
     });
@@ -11228,7 +11894,7 @@ var ProjectMemoryStore = class {
     });
     try {
       exact8(result2, ["schemaVersion", "scopes", "truncated"]);
-      if (result2.schemaVersion !== 1 || !Array.isArray(result2.scopes) || result2.scopes.length > PROJECT_MEMORY_LIMITS.listScopes || typeof result2.truncated !== "boolean") fail30("memory_unavailable");
+      if (result2.schemaVersion !== 1 || !Array.isArray(result2.scopes) || result2.scopes.length > PROJECT_MEMORY_LIMITS.listScopes || typeof result2.truncated !== "boolean") fail32("memory_unavailable");
       return {
         schemaVersion: 1,
         scopes: result2.scopes.map(validateMetadata),
@@ -11236,7 +11902,7 @@ var ProjectMemoryStore = class {
       };
     } catch (error) {
       if (error instanceof ProjectMemoryStoreError && error.code === "memory_unavailable") throw error;
-      fail30("memory_unavailable");
+      fail32("memory_unavailable");
     }
   }
   async authorizeWrite(value) {
@@ -11283,15 +11949,15 @@ var ProjectMemoryStore = class {
   /** Current versions of the named scopes that exist, in one store call. */
   async readScopes(value) {
     exact8(value, ["scopeIds"]);
-    if (!Array.isArray(value.scopeIds) || value.scopeIds.length > 128) fail30();
+    if (!Array.isArray(value.scopeIds) || value.scopeIds.length > 128) fail32();
     const scopeIds = [...new Set(value.scopeIds.map(identifier6))];
     if (scopeIds.length === 0) return [];
     const result2 = await this.#invoke("read-scope-set", { scopeIds });
     return bridgeValue(() => {
       exact8(result2, ["schemaVersion", "scopes"]);
-      if (result2.schemaVersion !== 1 || !Array.isArray(result2.scopes)) fail30("memory_unavailable");
+      if (result2.schemaVersion !== 1 || !Array.isArray(result2.scopes)) fail32("memory_unavailable");
       const scopes = result2.scopes.map(validateScopeDto);
-      if (scopes.some((scope) => !scopeIds.includes(scope.scopeId))) fail30("memory_unavailable");
+      if (scopes.some((scope) => !scopeIds.includes(scope.scopeId))) fail32("memory_unavailable");
       return scopes;
     });
   }
@@ -11307,11 +11973,11 @@ var ProjectMemoryStore = class {
         project: validateScopeDto(result2.project),
         quarter: validateScopeDto(result2.quarter)
       };
-      if (pair.project.kind !== "project" || pair.quarter.kind !== "quarter" || pair.project.projectId !== value.projectId || pair.quarter.projectId !== value.projectId || pair.quarter.quarterId !== value.quarterId) fail30("memory_unavailable");
+      if (pair.project.kind !== "project" || pair.quarter.kind !== "quarter" || pair.project.projectId !== value.projectId || pair.quarter.projectId !== value.projectId || pair.quarter.quarterId !== value.quarterId) fail32("memory_unavailable");
       return pair;
     } catch (error) {
       if (error instanceof ProjectMemoryStoreError && error.code === "memory_unavailable") throw error;
-      fail30("memory_unavailable");
+      fail32("memory_unavailable");
     }
   }
   async readDocument(value) {
@@ -11323,7 +11989,7 @@ var ProjectMemoryStore = class {
       const normalized = normalizeDocumentValue(result2.value);
       return { revision: revision(result2.revision), value: normalized };
     } catch {
-      fail30("memory_unavailable");
+      fail32("memory_unavailable");
     }
   }
   async compareAndSwapDocument(value) {
@@ -11333,7 +11999,7 @@ var ProjectMemoryStore = class {
       expectedRevision: revision(value.expectedRevision, { allowZero: true, incrementable: true }),
       value: normalizeDocumentValue(value.value)
     });
-    if (typeof result2 !== "boolean") fail30("memory_unavailable");
+    if (typeof result2 !== "boolean") fail32("memory_unavailable");
     return result2;
   }
   transactionDocument(value) {
@@ -11341,38 +12007,38 @@ var ProjectMemoryStore = class {
   }
   async initialize() {
     const result2 = await this.#invoke("init");
-    if (result2?.schemaVersion !== 1 || result2?.ready !== true || Object.keys(result2).length !== 2) fail30("memory_unavailable");
+    if (result2?.schemaVersion !== 1 || result2?.ready !== true || Object.keys(result2).length !== 2) fail32("memory_unavailable");
   }
 };
 async function checkedBridgePath(value) {
-  if (typeof value !== "string" || !value) fail30();
+  if (typeof value !== "string" || !value) fail32();
   const resolved = path18.resolve(value);
   const info = await lstat9(resolved).catch(() => null);
-  if (info === null || !info.isFile() || info.isSymbolicLink()) fail30("memory_identity_conflict");
+  if (info === null || !info.isFile() || info.isSymbolicLink()) fail32("memory_identity_conflict");
   const canonical3 = await realpath7(resolved);
-  if (path18.relative(resolved, canonical3) !== "") fail30("memory_identity_conflict");
+  if (path18.relative(resolved, canonical3) !== "") fail32("memory_identity_conflict");
   return canonical3;
 }
 async function openSplitMemoryBridge(controllerRoot, sqliteBackend) {
-  if (typeof controllerRoot !== "string" || !controllerRoot) fail30();
+  if (typeof controllerRoot !== "string" || !controllerRoot) fail32();
   let layout;
   try {
     layout = await resolveStoreLayout(controllerRoot);
   } catch {
-    fail30("memory_identity_conflict");
+    fail32("memory_identity_conflict");
   }
   if (layout.layout !== "split") return null;
   const { backend, sqlite } = await resolveSqliteBackend({ backend: sqliteBackend });
-  if (backend !== "node") fail30("memory_sqlite_required");
+  if (backend !== "node") fail32("memory_sqlite_required");
   return new SplitProjectMemoryBridge({ controllerRoot: layout.root, sqlite });
 }
 async function checkedDatabaseDirectory(controllerRoot) {
-  if (typeof controllerRoot !== "string" || !controllerRoot) fail30();
+  if (typeof controllerRoot !== "string" || !controllerRoot) fail32();
   let root;
   try {
     root = await realpath7(controllerRoot);
   } catch {
-    fail30("memory_identity_conflict");
+    fail32("memory_identity_conflict");
   }
   let directory = root;
   for (const segment of [".project-local", "orchestration", "project-memory"]) {
@@ -11383,25 +12049,25 @@ async function checkedDatabaseDirectory(controllerRoot) {
     });
     if (existing === null) await mkdir8(candidate);
     else if (!existing.isDirectory() || existing.isSymbolicLink()) {
-      fail30("memory_identity_conflict");
+      fail32("memory_identity_conflict");
     }
     const canonical3 = await realpath7(candidate);
     const relative = path18.relative(root, canonical3);
     if (path18.isAbsolute(relative) || relative === ".." || relative.startsWith(`..${path18.sep}`)) {
-      fail30("memory_identity_conflict");
+      fail32("memory_identity_conflict");
     }
     directory = canonical3;
   }
   return directory;
 }
 async function rejectLinkedDatabase(databasePath) {
-  for (const suffix of ["", "-wal", "-shm"]) {
-    const info = await lstat9(`${databasePath}${suffix}`).catch((error) => {
+  for (const suffix3 of ["", "-wal", "-shm"]) {
+    const info = await lstat9(`${databasePath}${suffix3}`).catch((error) => {
       if (error.code !== "ENOENT") throw error;
       return null;
     });
     if (info !== null && (!info.isFile() || info.isSymbolicLink())) {
-      fail30("memory_identity_conflict");
+      fail32("memory_identity_conflict");
     }
   }
 }
@@ -11412,11 +12078,11 @@ async function createProjectMemoryStore({
   bridgePath = fileURLToPath2(new URL("project-memory-store.py", import.meta.url)),
   sqliteBackend
 }) {
-  if (typeof now !== "function") fail30();
+  if (typeof now !== "function") fail32();
   try {
     sqliteBackendOption(sqliteBackend);
   } catch {
-    fail30();
+    fail32();
   }
   const split = await openSplitMemoryBridge(controllerRoot, sqliteBackend);
   if (split !== null) {
@@ -11491,72 +12157,72 @@ var ConversationArchiveError = class extends Error {
     this.code = code;
   }
 };
-function fail31(code = "archive_invalid_input") {
+function fail33(code = "archive_invalid_input") {
   throw new ConversationArchiveError(code);
 }
 function exact9(value, fields) {
-  if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).length !== fields.length || fields.some((field) => !Object.hasOwn(value, field))) fail31();
+  if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).length !== fields.length || fields.some((field) => !Object.hasOwn(value, field))) fail33();
 }
-function id5(value) {
-  if (typeof value !== "string" || !value.trim() || value.length > 512 || /[\u0000-\u001f\u007f]/u.test(value)) fail31();
+function id7(value) {
+  if (typeof value !== "string" || !value.trim() || value.length > 512 || /[\u0000-\u001f\u007f]/u.test(value)) fail33();
   return value;
 }
 function utc11(value) {
-  if (typeof value !== "string" || value.length > 32 || !value.endsWith("Z") || !Number.isFinite(Date.parse(value))) fail31();
+  if (typeof value !== "string" || value.length > 32 || !value.endsWith("Z") || !Number.isFinite(Date.parse(value))) fail33();
   return value;
 }
 function fieldHash(value, fields) {
-  return createHash16("sha256").update(JSON.stringify(Object.fromEntries(
+  return createHash18("sha256").update(JSON.stringify(Object.fromEntries(
     fields.map((field) => [field, value[field]])
   )), "utf8").digest("hex");
 }
 function conversationArchiveIdentity(binding) {
   exact9(binding, BINDING_FIELDS);
-  BINDING_FIELDS.forEach((field) => id5(binding[field]));
+  BINDING_FIELDS.forEach((field) => id7(binding[field]));
   return `conversation:${fieldHash(binding, BINDING_FIELDS)}`;
 }
 function validateConversationArchiveRecord(value) {
   exact9(value, RECORD_FIELDS);
-  id5(value.recordId);
-  if (!KINDS.has(value.kind) || !STATES2.has(value.state) || ![null, "user", "assistant", "tool", "system"].includes(value.role)) fail31();
+  id7(value.recordId);
+  if (!KINDS.has(value.kind) || !STATES2.has(value.state) || ![null, "user", "assistant", "tool", "system"].includes(value.role)) fail33();
   for (const field of ["providerTurnId", "providerItemId", "requestId"]) {
-    if (value[field] !== null) id5(value[field]);
+    if (value[field] !== null) id7(value[field]);
   }
   if (value.occurredAtUtc !== null) utc11(value.occurredAtUtc);
-  if (!Array.isArray(value.omissions) || value.omissions.length > OMISSIONS.size || value.omissions.some((reason) => !OMISSIONS.has(reason)) || new Set(value.omissions).size !== value.omissions.length) fail31();
-  if (value.text !== null && (typeof value.text !== "string" || Buffer.byteLength(value.text, "utf8") > CONVERSATION_ARCHIVE_LIMITS.textBytes || /data:(?:image|audio|video)\//iu.test(value.text) || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u.test(value.text))) fail31();
-  if (value.kind === "message" && !["user", "assistant", "system"].includes(value.role)) fail31();
-  if (value.kind === "message" && value.text === null && value.omissions.length === 0) fail31();
-  if (value.kind === "submission" && (value.role !== "user" || !value.text || value.requestId === null || value.state !== "requested")) fail31();
-  if (value.kind === "activity" && value.role !== "tool") fail31();
-  if (value.kind === "omission" && (value.text !== null || value.omissions.length === 0)) fail31();
+  if (!Array.isArray(value.omissions) || value.omissions.length > OMISSIONS.size || value.omissions.some((reason) => !OMISSIONS.has(reason)) || new Set(value.omissions).size !== value.omissions.length) fail33();
+  if (value.text !== null && (typeof value.text !== "string" || Buffer.byteLength(value.text, "utf8") > CONVERSATION_ARCHIVE_LIMITS.textBytes || /data:(?:image|audio|video)\//iu.test(value.text) || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u.test(value.text))) fail33();
+  if (value.kind === "message" && !["user", "assistant", "system"].includes(value.role)) fail33();
+  if (value.kind === "message" && value.text === null && value.omissions.length === 0) fail33();
+  if (value.kind === "submission" && (value.role !== "user" || !value.text || value.requestId === null || value.state !== "requested")) fail33();
+  if (value.kind === "activity" && value.role !== "tool") fail33();
+  if (value.kind === "omission" && (value.text !== null || value.omissions.length === 0)) fail33();
   return structuredClone(value);
 }
 function decodeCursor(cursor, conversationId) {
   if (cursor === null) return null;
-  if (typeof cursor !== "string" || cursor.length > 1024) fail31("archive_invalid_cursor");
+  if (typeof cursor !== "string" || cursor.length > 1024) fail33("archive_invalid_cursor");
   let value;
   try {
     value = JSON.parse(cursor);
   } catch {
-    fail31("archive_invalid_cursor");
+    fail33("archive_invalid_cursor");
   }
   try {
     exact9(value, ["schemaVersion", "conversationId", "revision", "after", "sha256"]);
   } catch {
-    fail31("archive_invalid_cursor");
+    fail33("archive_invalid_cursor");
   }
-  const { sha256: sha25617, ...body2 } = value;
-  if (value.schemaVersion !== 1 || value.conversationId !== conversationId || !Number.isSafeInteger(value.revision) || value.revision < 0 || !Number.isSafeInteger(value.after) || value.after < 0 || value.after > value.revision || sha25617 !== applicationCanonicalSha256(body2)) fail31("archive_invalid_cursor");
+  const { sha256: sha25619, ...body2 } = value;
+  if (value.schemaVersion !== 1 || value.conversationId !== conversationId || !Number.isSafeInteger(value.revision) || value.revision < 0 || !Number.isSafeInteger(value.after) || value.after < 0 || value.after > value.revision || sha25619 !== applicationCanonicalSha256(body2)) fail33("archive_invalid_cursor");
   return value;
 }
 function providerCursor(value) {
-  if (value !== null && (typeof value !== "string" || !value.length || value.length > 512)) fail31();
+  if (value !== null && (typeof value !== "string" || !value.length || value.length > 512)) fail33();
 }
 var ConversationArchive = class {
   constructor({ store, projectId, now = () => /* @__PURE__ */ new Date() }) {
     this.store = store;
-    this.projectId = id5(projectId);
+    this.projectId = id7(projectId);
     this.now = now;
   }
   async invoke(command, payload) {
@@ -11568,12 +12234,12 @@ var ConversationArchive = class {
         code = JSON.parse(error.stderr.trim().split(/\r?\n/).at(-1)).error;
       } catch {
       }
-      fail31(["archive_identity_conflict", "archive_unsupported_schema", "archive_invalid_cursor"].includes(code) ? code : "archive_unavailable");
+      fail33(["archive_identity_conflict", "archive_unsupported_schema", "archive_invalid_cursor"].includes(code) ? code : "archive_unavailable");
     }
   }
   binding(value) {
     const conversationId = conversationArchiveIdentity(value);
-    if (value.projectId !== this.projectId) fail31("archive_identity_conflict");
+    if (value.projectId !== this.projectId) fail33("archive_identity_conflict");
     return { conversationId, binding: structuredClone(value) };
   }
   /** Ends the archive's bridge process after the calls already sent; with node:sqlite, only later calls fail. */
@@ -11595,26 +12261,26 @@ var ConversationArchive = class {
     try {
       exact9(value, ["revision", "cursor", "exhausted"]);
       providerCursor(value.cursor);
-      if (!Number.isSafeInteger(value.revision) || value.revision < 0 || typeof value.exhausted !== "boolean" || value.revision === 0 && (value.cursor !== null || value.exhausted) || value.revision > 0 && value.exhausted !== (value.cursor === null)) fail31();
+      if (!Number.isSafeInteger(value.revision) || value.revision < 0 || typeof value.exhausted !== "boolean" || value.revision === 0 && (value.cursor !== null || value.exhausted) || value.revision > 0 && value.exhausted !== (value.cursor === null)) fail33();
     } catch {
-      fail31("archive_unavailable");
+      fail33("archive_unavailable");
     }
     return value;
   }
   async checkpointImport(binding, { expectedRevision, nextCursor }) {
     providerCursor(nextCursor);
-    if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0 || expectedRevision >= Number.MAX_SAFE_INTEGER) fail31();
+    if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0 || expectedRevision >= Number.MAX_SAFE_INTEGER) fail33();
     const swapped = await this.invoke("checkpoint-import", {
       ...this.binding(binding),
       expectedRevision,
       nextCursor
     });
-    if (typeof swapped !== "boolean") fail31("archive_unavailable");
+    if (typeof swapped !== "boolean") fail33("archive_unavailable");
     return swapped;
   }
   async read(binding, { cursor = null, limit = 50 } = {}) {
     const scope = this.binding(binding);
-    if (!Number.isInteger(limit) || limit < 1 || limit > CONVERSATION_ARCHIVE_LIMITS.pageItems) fail31();
+    if (!Number.isInteger(limit) || limit < 1 || limit > CONVERSATION_ARCHIVE_LIMITS.pageItems) fail33();
     const position = decodeCursor(cursor, scope.conversationId);
     const page = await this.invoke("read", {
       ...scope,
@@ -11624,19 +12290,19 @@ var ConversationArchive = class {
     });
     try {
       exact9(page, ["revision", "items", "nextAfter"]);
-      if (!Number.isSafeInteger(page.revision) || page.revision < 0 || position !== null && page.revision !== position.revision || !Array.isArray(page.items) || page.items.length > limit) fail31();
+      if (!Number.isSafeInteger(page.revision) || page.revision < 0 || position !== null && page.revision !== position.revision || !Array.isArray(page.items) || page.items.length > limit) fail33();
       let previous = position?.after ?? 0;
       for (const item of page.items) {
         exact9(item, ["firstSequence", "sequence", "contentSha256", "observedAtUtc", "record"]);
-        if (!Number.isSafeInteger(item.sequence) || !Number.isSafeInteger(item.firstSequence) || item.firstSequence <= previous || item.sequence < item.firstSequence || item.sequence > page.revision) fail31();
+        if (!Number.isSafeInteger(item.sequence) || !Number.isSafeInteger(item.firstSequence) || item.firstSequence <= previous || item.sequence < item.firstSequence || item.sequence > page.revision) fail33();
         utc11(item.observedAtUtc);
         validateConversationArchiveRecord(item.record);
-        if (item.contentSha256 !== fieldHash(item.record, RECORD_FIELDS)) fail31();
+        if (item.contentSha256 !== fieldHash(item.record, RECORD_FIELDS)) fail33();
         previous = item.firstSequence;
       }
-      if (page.nextAfter !== null && (page.items.length === 0 || page.nextAfter !== previous)) fail31();
+      if (page.nextAfter !== null && (page.items.length === 0 || page.nextAfter !== previous)) fail33();
     } catch {
-      fail31("archive_unavailable");
+      fail33("archive_unavailable");
     }
     const body2 = page.nextAfter === null ? null : {
       schemaVersion: 1,
@@ -11663,19 +12329,19 @@ async function createConversationArchive({
   bridgePath,
   sqliteBackend
 }) {
-  id5(projectId);
+  id7(projectId);
   try {
     sqliteBackendOption(sqliteBackend);
   } catch {
-    fail31();
+    fail33();
   }
   const root = await realpath8(controllerRoot);
-  if (await resolveProviderMutationProjectId(root) !== projectId) fail31("archive_identity_conflict");
+  if (await resolveProviderMutationProjectId(root) !== projectId) fail33("archive_identity_conflict");
   let split;
   try {
     split = await openSplitMemoryBridge(root, sqliteBackend);
   } catch {
-    fail31("archive_unavailable");
+    fail33("archive_unavailable");
   }
   if (split !== null) {
     const { sqlite: sqlite2 } = await resolveSqliteBackend({ backend: "node" });
@@ -11693,15 +12359,15 @@ async function createConversationArchive({
   const canonical3 = await realpath8(directory);
   const relative = path19.relative(root, canonical3);
   if (path19.isAbsolute(relative) || relative === ".." || relative.startsWith(`..${path19.sep}`)) {
-    fail31("archive_identity_conflict");
+    fail33("archive_identity_conflict");
   }
   const databasePath = path19.join(canonical3, "archive.v1.sqlite");
-  for (const suffix of ["", "-wal", "-shm"]) {
-    const info = await lstat10(`${databasePath}${suffix}`).catch((error) => {
+  for (const suffix3 of ["", "-wal", "-shm"]) {
+    const info = await lstat10(`${databasePath}${suffix3}`).catch((error) => {
       if (error.code !== "ENOENT") throw error;
       return null;
     });
-    if (info !== null && (!info.isFile() || info.isSymbolicLink())) fail31("archive_identity_conflict");
+    if (info !== null && (!info.isFile() || info.isSymbolicLink())) fail33("archive_identity_conflict");
   }
   const { backend, sqlite } = await resolveSqliteBackend({ backend: sqliteBackend });
   const script = bridgePath ?? fileURLToPath3(new URL("conversation-archive-store.py", import.meta.url));
@@ -11725,11 +12391,11 @@ async function createConversationArchive({
 // orchestrator/src/application-agent-events.mjs
 var APPLICATION_AGENT_EVENTS_VERSION = "v0.1.0";
 var APPLICATION_AGENT_EVENTS_OPERATION = "query.agent-events.read";
-var ID17 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
+var ID20 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
 function validId(value) {
-  return typeof value === "string" && ID17.test(value);
+  return typeof value === "string" && ID20.test(value);
 }
-function fail32(code) {
+function fail34(code) {
   throw new ApplicationContractError(code, "Agent event read refused");
 }
 function createApplicationAgentEventBridge({
@@ -11742,7 +12408,7 @@ function createApplicationAgentEventBridge({
 } = {}) {
   if (!service || !client) return { handlers: {}, close() {
   } };
-  const key = randomBytes(32), listeners = [], retained = [];
+  const key = randomBytes3(32), listeners = [], retained = [];
   let sequence = 0, unavailable4 = false;
   const sign2 = (body2) => createHmac2("sha256", key).update(body2).digest();
   const cursor = (agentId, conversationId, after) => {
@@ -11794,12 +12460,12 @@ function createApplicationAgentEventBridge({
   });
   const read = async ({ input: input2 }) => {
     try {
-      if (!input2 || Object.getPrototypeOf(input2) !== Object.prototype || !validId(input2.agentId) || Object.keys(input2).some((key2) => !["agentId", "cursor", "limit"].includes(key2))) fail32("conflict");
+      if (!input2 || Object.getPrototypeOf(input2) !== Object.prototype || !validId(input2.agentId) || Object.keys(input2).some((key2) => !["agentId", "cursor", "limit"].includes(key2))) fail34("conflict");
       const limit = input2.limit === void 0 ? 32 : input2.limit;
-      if (!Number.isInteger(limit) || limit < 1 || limit > 64) fail32("conflict");
-      if (unavailable4) fail32("source_unavailable");
+      if (!Number.isInteger(limit) || limit < 1 || limit > 64) fail34("conflict");
+      if (unavailable4) fail34("source_unavailable");
       const agent = await service.readAgent({ agentId: input2.agentId }), binding = agent.binding;
-      if (unavailable4 || agent.agentId !== input2.agentId || !binding || binding.providerId !== providerId2 || binding.projectId !== service.archive.projectId || binding.sourceId !== providerSourceId) fail32("source_unavailable");
+      if (unavailable4 || agent.agentId !== input2.agentId || !binding || binding.providerId !== providerId2 || binding.projectId !== service.archive.projectId || binding.sourceId !== providerSourceId) fail34("source_unavailable");
       const conversationId = conversationArchiveIdentity(binding), head = sequence;
       let mode = "resumed", reasonCode2 = null, after = head;
       if (input2.cursor == null) {
@@ -11857,10 +12523,10 @@ function combineApplicationAgentEventBridges({ service, bridges }) {
   const read = async (request) => {
     try {
       const agentId = request?.input?.agentId;
-      if (!validId(agentId)) fail32("conflict");
+      if (!validId(agentId)) fail34("conflict");
       const agent = await service.readAgent({ agentId });
       const entry = table.find((item) => item.providerId === agent.binding?.providerId);
-      if (!entry) fail32("source_unavailable");
+      if (!entry) fail34("source_unavailable");
       return await entry.bridge.read(request);
     } catch (error) {
       throw normalizeApplicationProjectMemoryError(error);
@@ -11881,26 +12547,26 @@ var APPLICATION_AGENT_ARTIFACT_OPERATIONS = Object.freeze({
   list: "query.agent-artifacts.list",
   read: "query.agent-artifacts.read"
 });
-var ID18 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
+var ID21 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
 var SHA = /^[a-f0-9]{64}$/u;
-function fail33(code) {
+function fail35(code) {
   throw new ApplicationContractError(code, "Agent artifact operation refused");
 }
 function exact10(input2, required2, optional = []) {
-  if (!input2 || Object.getPrototypeOf(input2) !== Object.prototype || required2.some((key) => !Object.hasOwn(input2, key)) || Object.keys(input2).some((key) => ![...required2, ...optional].includes(key))) fail33("conflict");
+  if (!input2 || Object.getPrototypeOf(input2) !== Object.prototype || required2.some((key) => !Object.hasOwn(input2, key)) || Object.keys(input2).some((key) => ![...required2, ...optional].includes(key))) fail35("conflict");
   for (const key of ["agentId", "artifactId"].filter((key2) => Object.hasOwn(input2, key2))) {
-    if (typeof input2[key] !== "string" || !ID18.test(input2[key])) fail33("conflict");
+    if (typeof input2[key] !== "string" || !ID21.test(input2[key])) fail35("conflict");
   }
 }
 function createAgentArtifactService({ service, projectRead, now = () => /* @__PURE__ */ new Date() }) {
   const catalog = async (agentId) => {
     const agent = await service.readAgent({ agentId }), key = `agent-artifacts-${applicationCanonicalSha256(agentId)}`;
     const doc = await service.store.readDocument({ key }) ?? { revision: 0, value: { agentId, projectId: agent.projectId, records: [] } };
-    if (doc.value.agentId !== agentId || doc.value.projectId !== agent.projectId || !Array.isArray(doc.value.records) || doc.value.records.length > 128) fail33("source_unavailable");
+    if (doc.value.agentId !== agentId || doc.value.projectId !== agent.projectId || !Array.isArray(doc.value.records) || doc.value.records.length > 128) fail35("source_unavailable");
     for (const record of doc.value.records) {
       exact10(record, ["artifactId", "path", "sha256", "sizeBytes", "registeredAtUtc"]);
       assertPublicApplicationProjectPath(record.path);
-      if (!SHA.test(record.sha256 ?? "") || !Number.isSafeInteger(record.sizeBytes) || record.sizeBytes < 0) fail33("source_unavailable");
+      if (!SHA.test(record.sha256 ?? "") || !Number.isSafeInteger(record.sizeBytes) || record.sizeBytes < 0) fail35("source_unavailable");
     }
     return { agent, key, doc };
   };
@@ -11909,17 +12575,17 @@ function createAgentArtifactService({ service, projectRead, now = () => /* @__PU
     async register(input2) {
       exact10(input2, ["agentId", "artifactId", "path", "sha256"]);
       assertPublicApplicationProjectPath(input2.path);
-      if (!SHA.test(input2.sha256 ?? "")) fail33("conflict");
+      if (!SHA.test(input2.sha256 ?? "")) fail35("conflict");
       for (let attempt = 0; attempt < 8; attempt++) {
         const { agent, key, doc } = await catalog(input2.agentId);
         const existing = doc.value.records.find((item) => item.artifactId === input2.artifactId);
         if (existing) {
-          if (existing.path !== input2.path || existing.sha256 !== input2.sha256) fail33("conflict");
+          if (existing.path !== input2.path || existing.sha256 !== input2.sha256) fail35("conflict");
           return structuredClone(existing);
         }
-        if (doc.value.records.length >= 128) fail33("conflict");
+        if (doc.value.records.length >= 128) fail35("conflict");
         const page = await projectRead({ input: { projectId: agent.projectId, path: input2.path } });
-        if (page.contentSha256 !== input2.sha256) fail33("stale_revision");
+        if (page.contentSha256 !== input2.sha256) fail35("stale_revision");
         const record = {
           artifactId: input2.artifactId,
           path: input2.path,
@@ -11930,7 +12596,7 @@ function createAgentArtifactService({ service, projectRead, now = () => /* @__PU
         doc.value.records.push(record);
         if (await service.store.compareAndSwapDocument({ key, expectedRevision: doc.revision, value: doc.value })) return record;
       }
-      fail33("writer_busy");
+      fail35("writer_busy");
     },
     async list(input2) {
       exact10(input2, ["agentId"]);
@@ -11949,7 +12615,7 @@ function createAgentArtifactService({ service, projectRead, now = () => /* @__PU
       exact10(input2, ["agentId", "artifactId"], ["cursor", "maximumBytes"]);
       const { agent, doc } = await catalog(input2.agentId);
       const record = doc.value.records.find((item) => item.artifactId === input2.artifactId);
-      if (!record) fail33("source_unavailable");
+      if (!record) fail35("source_unavailable");
       const page = await projectRead({ resourceBindingId: applicationCanonicalSha256({
         agentId: input2.agentId,
         artifactId: input2.artifactId,
@@ -11960,7 +12626,7 @@ function createAgentArtifactService({ service, projectRead, now = () => /* @__PU
         ...input2.cursor === void 0 ? {} : { cursor: input2.cursor },
         ...input2.maximumBytes === void 0 ? {} : { maximumBytes: input2.maximumBytes }
       } });
-      if (page.contentSha256 !== record.sha256) fail33("stale_revision");
+      if (page.contentSha256 !== record.sha256) fail35("stale_revision");
       return {
         schemaVersion: 1,
         contractVersion: APPLICATION_AGENT_ARTIFACT_VERSION,
@@ -11987,35 +12653,35 @@ function createApplicationAgentArtifactHandlers(artifacts) {
 }
 
 // orchestrator/src/application-project-workspace.mjs
-import { randomBytes as randomBytes2, createHmac as createHmac3, timingSafeEqual as timingSafeEqual3 } from "node:crypto";
+import { randomBytes as randomBytes4, createHmac as createHmac3, timingSafeEqual as timingSafeEqual3 } from "node:crypto";
 
 // orchestrator/src/project-workspace-binding.mjs
 import path20 from "node:path";
 import { stat, realpath as realpath9 } from "node:fs/promises";
-import { createHash as createHash17 } from "node:crypto";
-function fail34(code) {
+import { createHash as createHash19 } from "node:crypto";
+function fail36(code) {
   throw Object.assign(new Error(code), { code });
 }
 function workspaceDocumentKey(projectId) {
   if (typeof projectId !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/.test(projectId)) {
-    fail34("memory_invalid_input");
+    fail36("memory_invalid_input");
   }
-  return `workspace-${createHash17("sha256").update(projectId).digest("hex")}`;
+  return `workspace-${createHash19("sha256").update(projectId).digest("hex")}`;
 }
 async function workspaceIdentity(workspacePath) {
-  if (typeof workspacePath !== "string" || !path20.isAbsolute(workspacePath)) fail34("memory_invalid_input");
+  if (typeof workspacePath !== "string" || !path20.isAbsolute(workspacePath)) fail36("memory_invalid_input");
   const root = await realpath9(workspacePath);
-  if (!(await stat(root)).isDirectory()) fail34("memory_invalid_input");
+  if (!(await stat(root)).isDirectory()) fail36("memory_invalid_input");
   const identity2 = process.platform === "win32" ? root.toLowerCase() : root;
-  return { workspacePath: root, workspaceKey: createHash17("sha256").update(identity2).digest("hex") };
+  return { workspacePath: root, workspaceKey: createHash19("sha256").update(identity2).digest("hex") };
 }
 async function bindProjectWorkspace(store, input2) {
-  if (!input2 || Object.keys(input2).sort().join() !== "projectId,workspacePath") fail34("memory_invalid_input");
+  if (!input2 || Object.keys(input2).sort().join() !== "projectId,workspacePath") fail36("memory_invalid_input");
   const documentKey = workspaceDocumentKey(input2.projectId);
   const value = { projectId: input2.projectId, ...await workspaceIdentity(input2.workspacePath) };
   const existing = await store.readDocument({ key: documentKey });
   if (existing) {
-    if (existing.value.workspaceKey !== value.workspaceKey) fail34("memory_workspace_conflict");
+    if (existing.value.workspaceKey !== value.workspaceKey) fail36("memory_workspace_conflict");
   } else if (!await store.compareAndSwapDocument({ key: documentKey, expectedRevision: 0, value })) {
     return bindProjectWorkspace(store, input2);
   }
@@ -12023,7 +12689,7 @@ async function bindProjectWorkspace(store, input2) {
 }
 var AGENTS_KEY3 = "memory-agents-v1";
 async function rebindProjectWorkspace(store, input2) {
-  if (!input2 || Object.keys(input2).sort().join() !== "projectId,workspacePath") fail34("memory_invalid_input");
+  if (!input2 || Object.keys(input2).sort().join() !== "projectId,workspacePath") fail36("memory_invalid_input");
   const documentKey = workspaceDocumentKey(input2.projectId);
   const value = { projectId: input2.projectId, ...await workspaceIdentity(input2.workspacePath) };
   const existing = await store.readDocument({ key: documentKey });
@@ -12033,14 +12699,14 @@ async function rebindProjectWorkspace(store, input2) {
   }
   const agents = ((await store.readDocument({ key: AGENTS_KEY3 }))?.value?.agents ?? []).filter((agent) => agent.projectId === input2.projectId);
   const worked = (agent) => Array.isArray(agent.operations) && agent.operations.length > 0;
-  if (agents.some((agent) => agent.state !== "archived" || worked(agent))) fail34("memory_workspace_in_use");
+  if (agents.some((agent) => agent.state !== "archived" || worked(agent))) fail36("memory_workspace_in_use");
   if (!await store.compareAndSwapDocument({ key: documentKey, expectedRevision: existing.revision, value })) {
-    fail34("memory_contention");
+    fail36("memory_contention");
   }
   return { projectId: input2.projectId, workspaceKey: value.workspaceKey, configured: true, changed: true };
 }
 async function readProjectWorkspace(store, input2) {
-  if (!input2 || Object.keys(input2).join() !== "projectId") fail34("memory_invalid_input");
+  if (!input2 || Object.keys(input2).join() !== "projectId") fail36("memory_invalid_input");
   const record = await store.readDocument({ key: workspaceDocumentKey(input2.projectId) });
   if (!record) return { projectId: input2.projectId, configured: false };
   let available = true;
@@ -12053,10 +12719,10 @@ async function readProjectWorkspace(store, input2) {
 }
 async function resolveProjectWorkspace(store, projectId) {
   const record = await store.readDocument({ key: workspaceDocumentKey(projectId) });
-  if (!record) fail34("memory_workspace_required");
+  if (!record) fail36("memory_workspace_required");
   const current = await workspaceIdentity(record.value.workspacePath);
   if (current.workspaceKey !== record.value.workspaceKey || record.value.projectId !== projectId) {
-    fail34("memory_workspace_conflict");
+    fail36("memory_workspace_conflict");
   }
   return current;
 }
@@ -12067,14 +12733,14 @@ var APPLICATION_PROJECT_WORKSPACE_OPERATIONS = Object.freeze({
   list: "query.project-workspace.list",
   read: "query.project-workspace.read"
 });
-var ID19 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
+var ID22 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
 var BINDING_REASONS = Object.freeze({
   memory_workspace_required: "workspace_not_bound",
   memory_workspace_conflict: "workspace_binding_conflict",
   ENOENT: "workspace_path_missing",
   ENOTDIR: "workspace_path_missing"
 });
-function fail35(code, details = {}) {
+function fail37(code, details = {}) {
   throw new ApplicationContractError(code, "Project workspace read refused", details);
 }
 function createApplicationProjectWorkspaceHandlers({
@@ -12086,7 +12752,7 @@ function createApplicationProjectWorkspaceHandlers({
   }
 } = {}) {
   if (!store) return {};
-  const secret = randomBytes2(32);
+  const secret = randomBytes4(32);
   const mac = (body2) => createHmac3("sha256", secret).update(body2).digest();
   const encode2 = (claims) => {
     const body2 = Buffer.from(JSON.stringify(claims)).toString("base64url");
@@ -12094,13 +12760,13 @@ function createApplicationProjectWorkspaceHandlers({
   };
   const decode2 = (cursor) => {
     try {
-      if (typeof cursor !== "string" || cursor.length > 2048) fail35("stale_revision");
+      if (typeof cursor !== "string" || cursor.length > 2048) fail37("stale_revision");
       const [body2, signature, extra] = cursor.split(".");
       const supplied = Buffer.from(signature, "base64url"), expected = mac(body2);
-      if (extra !== void 0 || supplied.length !== expected.length || !timingSafeEqual3(supplied, expected)) fail35("stale_revision");
+      if (extra !== void 0 || supplied.length !== expected.length || !timingSafeEqual3(supplied, expected)) fail37("stale_revision");
       return JSON.parse(Buffer.from(body2, "base64url").toString("utf8"));
     } catch {
-      fail35("stale_revision");
+      fail37("stale_revision");
     }
   };
   const handlers = {};
@@ -12109,13 +12775,13 @@ function createApplicationProjectWorkspaceHandlers({
       let phase = "input";
       try {
         const input2 = request?.input, list2 = kind2 === "list";
-        if (!input2 || Object.getPrototypeOf(input2) !== Object.prototype || Object.keys(input2).some((key) => !["projectId", "path", "cursor", list2 ? "limit" : "maximumBytes"].includes(key)) || typeof input2.projectId !== "string" || !ID19.test(input2.projectId)) fail35("conflict");
+        if (!input2 || Object.getPrototypeOf(input2) !== Object.prototype || Object.keys(input2).some((key) => !["projectId", "path", "cursor", list2 ? "limit" : "maximumBytes"].includes(key)) || typeof input2.projectId !== "string" || !ID22.test(input2.projectId)) fail37("conflict");
         const relativePath = input2.path === void 0 && list2 ? "" : input2.path;
-        if (typeof relativePath === "string" && relativePath.length > 256) fail35("conflict");
+        if (typeof relativePath === "string" && relativePath.length > 256) fail37("conflict");
         if (!(list2 && relativePath === "")) assertPublicApplicationProjectPath(relativePath);
         const suppliedLimit = input2[list2 ? "limit" : "maximumBytes"];
         const limit = suppliedLimit === void 0 ? list2 ? 128 : 65536 : suppliedLimit;
-        if (!Number.isInteger(limit) || limit < 1 || limit > (list2 ? 256 : 65536)) fail35("conflict");
+        if (!Number.isInteger(limit) || limit < 1 || limit > (list2 ? 256 : 65536)) fail37("conflict");
         validateApplicationPayloadPrivacy(input2, { zone: "request-input", operationId });
         phase = "workspace-binding";
         const workspace3 = await resolveProjectWorkspace(store, input2.projectId);
@@ -12130,7 +12796,7 @@ function createApplicationProjectWorkspaceHandlers({
         });
         phase = "continuation";
         const previous = input2.cursor == null ? null : decode2(input2.cursor);
-        if (previous && (previous.identity !== identity2 || previous.expiresAt < now().getTime())) fail35("stale_revision");
+        if (previous && (previous.identity !== identity2 || previous.expiresAt < now().getTime())) fail37("stale_revision");
         const offset = previous?.offset ?? 0;
         phase = "resource-read";
         let result2, contentSha256, nextOffset, total;
@@ -12138,7 +12804,7 @@ function createApplicationProjectWorkspaceHandlers({
           const directory = await readPublicApplicationProjectDirectory(workspace3.workspacePath, relativePath);
           contentSha256 = directory.contentSha256;
           total = directory.entries.length;
-          if (offset > total) fail35("stale_revision");
+          if (offset > total) fail37("stale_revision");
           const entries2 = directory.entries.slice(offset, offset + limit);
           nextOffset = offset + entries2.length;
           result2 = { entries: entries2, omissionCount: directory.omissionCount, totalEntries: total };
@@ -12183,9 +12849,9 @@ function createApplicationProjectWorkspaceHandlers({
           nextOffset = offset + page.range.returnedBytes;
           result2 = { text: page.payload.text, range: page.range };
         }
-        if (previous && previous.contentSha256 !== contentSha256) fail35("stale_revision");
+        if (previous && previous.contentSha256 !== contentSha256) fail37("stale_revision");
         phase = "binding-recheck";
-        if ((await resolveProjectWorkspace(store, input2.projectId)).workspaceKey !== workspace3.workspaceKey) fail35("stale_revision");
+        if ((await resolveProjectWorkspace(store, input2.projectId)).workspaceKey !== workspace3.workspaceKey) fail37("stale_revision");
         const truncated = nextOffset < total;
         const output2 = {
           schemaVersion: 1,
@@ -12220,12 +12886,12 @@ function createApplicationProjectWorkspaceHandlers({
             atUtc: now().toISOString(),
             code,
             reasonCode: reasonCode2,
-            requestId: typeof request?.requestId === "string" && ID19.test(request.requestId) ? request.requestId : null,
-            correlationId: typeof request?.correlationId === "string" && ID19.test(request.correlationId) ? request.correlationId : null
+            requestId: typeof request?.requestId === "string" && ID22.test(request.requestId) ? request.requestId : null,
+            correlationId: typeof request?.correlationId === "string" && ID22.test(request.correlationId) ? request.correlationId : null
           });
         } catch {
         }
-        fail35(code, code === "source_unavailable" ? { reasonCode: reasonCode2 } : {});
+        fail37(code, code === "source_unavailable" ? { reasonCode: reasonCode2 } : {});
       }
     };
   }
@@ -12233,27 +12899,29 @@ function createApplicationProjectWorkspaceHandlers({
 }
 
 // orchestrator/src/application-project-workspace-save.mjs
-import { createHash as createHash18, randomUUID as randomUUID7 } from "node:crypto";
+import { createHash as createHash20, randomUUID as randomUUID7 } from "node:crypto";
 import { lstat as lstat11, open as open4, readFile as readFile7, realpath as realpath10, rename as rename7, rm as rm5 } from "node:fs/promises";
 import path21 from "node:path";
 var APPLICATION_PROJECT_WORKSPACE_SAVE_VERSION = "v0.1.0";
 var APPLICATION_PROJECT_WORKSPACE_SAVE_OPERATION = "mutation.project-workspace.save";
-var ID20 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
+var ID23 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
 var SHA2569 = /^[a-f0-9]{64}$/u;
 var MAX_FILE_BYTES = 1048576;
-var CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/u;
-function fail36(code) {
+var CONTROL3 = /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/u;
+function fail38(code) {
   throw new ApplicationContractError(code, "Project file save refused");
 }
 function digest4(bytes) {
-  return createHash18("sha256").update(bytes).digest("hex");
+  return createHash20("sha256").update(bytes).digest("hex");
 }
 function inputValue(value) {
-  if (!value || Object.getPrototypeOf(value) !== Object.prototype || Object.keys(value).sort().join() !== "expectedSha256,operationId,path,projectId,text" || !ID20.test(value.projectId ?? "") || !ID20.test(value.operationId ?? "") || !SHA2569.test(value.expectedSha256 ?? "")) fail36("conflict");
+  if (!value || Object.getPrototypeOf(value) !== Object.prototype || Object.keys(value).sort().join() !== "expectedSha256,operationId,path,projectId,text" || !ID23.test(value.projectId ?? "") || !ID23.test(value.operationId ?? "") || !SHA2569.test(value.expectedSha256 ?? "")) fail38("conflict");
   assertPublicApplicationProjectPath(value.path);
-  if (value.path.length > 256 || typeof value.text !== "string" || Buffer.byteLength(value.text, "utf8") > MAX_FILE_BYTES || CONTROL.test(value.text)) fail36("access_denied");
+  if (value.path.length > 256 || typeof value.text !== "string" || Buffer.byteLength(value.text, "utf8") > MAX_FILE_BYTES || CONTROL3.test(value.text)) fail38("access_denied");
   const bytes = Buffer.from(value.text, "utf8");
-  if (new TextDecoder("utf-8", { fatal: true }).decode(bytes) !== value.text) fail36("access_denied");
+  if (new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes) !== value.text) {
+    fail38("access_denied");
+  }
   validateApplicationPayloadPrivacy(value, {
     zone: "request-input",
     operationId: APPLICATION_PROJECT_WORKSPACE_SAVE_OPERATION
@@ -12269,21 +12937,21 @@ async function fileIdentity(root, relativePath) {
   let candidate = canonicalRoot;
   for (const segment of relativePath.split("/")) {
     candidate = path21.join(candidate, segment);
-    if ((await lstat11(candidate)).isSymbolicLink()) fail36("access_denied");
+    if ((await lstat11(candidate)).isSymbolicLink()) fail38("access_denied");
   }
   const canonical3 = await realpath10(candidate);
   if (!inside2(canonicalRoot, canonical3) || !(await lstat11(candidate)).isFile()) {
-    fail36("access_denied");
+    fail38("access_denied");
   }
   return { candidate, canonical: canonical3 };
 }
 async function currentBytes(root, relativePath) {
   const target2 = await fileIdentity(root, relativePath);
   const before = await lstat11(target2.candidate);
-  if (before.size > MAX_FILE_BYTES) fail36("access_denied");
+  if (before.size > MAX_FILE_BYTES) fail38("access_denied");
   const bytes = await readFile7(target2.candidate);
   const after = await lstat11(target2.candidate);
-  if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size || before.mtimeMs !== after.mtimeMs || await realpath10(target2.candidate) !== target2.canonical) fail36("stale_revision");
+  if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size || before.mtimeMs !== after.mtimeMs || await realpath10(target2.candidate) !== target2.canonical) fail38("stale_revision");
   return { target: target2.candidate, bytes, mode: before.mode };
 }
 function safeError(error) {
@@ -12307,7 +12975,7 @@ function createApplicationProjectWorkspaceSaveHandler({
       const bytes = inputValue(input2);
       const workspace3 = await resolveProjectWorkspace(store, input2.projectId);
       key = `${workspace3.workspaceKey}:${input2.path.toLowerCase()}`;
-      if (writers.has(key)) fail36("writer_busy");
+      if (writers.has(key)) fail38("writer_busy");
       writers.add(key);
       claimed = true;
       const read = await readProject({
@@ -12315,9 +12983,9 @@ function createApplicationProjectWorkspaceSaveHandler({
         requestId: request?.requestId,
         correlationId: request?.correlationId
       });
-      if (read.contentSha256 !== input2.expectedSha256) fail36("stale_revision");
+      if (read.contentSha256 !== input2.expectedSha256) fail38("stale_revision");
       const prior = await currentBytes(workspace3.workspacePath, input2.path);
-      if (digest4(prior.bytes) !== input2.expectedSha256) fail36("stale_revision");
+      if (digest4(prior.bytes) !== input2.expectedSha256) fail38("stale_revision");
       temporary = path21.join(path21.dirname(prior.target), `.r2-save-${randomUUID7()}.tmp`);
       const handle = await open4(temporary, "wx", prior.mode & 511);
       try {
@@ -12328,12 +12996,12 @@ function createApplicationProjectWorkspaceSaveHandler({
       }
       const beforeReplace = await currentBytes(workspace3.workspacePath, input2.path);
       if (beforeReplace.target !== prior.target || digest4(beforeReplace.bytes) !== input2.expectedSha256 || (await resolveProjectWorkspace(store, input2.projectId)).workspaceKey !== workspace3.workspaceKey) {
-        fail36("stale_revision");
+        fail38("stale_revision");
       }
       await rename7(temporary, prior.target);
       temporary = null;
       if (digest4((await currentBytes(workspace3.workspacePath, input2.path)).bytes) !== digest4(bytes)) {
-        fail36("uncertain_outcome");
+        fail38("uncertain_outcome");
       }
       const receipt = {
         schemaVersion: 1,
@@ -12364,12 +13032,12 @@ function createApplicationProjectWorkspaceSaveHandler({
 // orchestrator/src/application-project-copy.mjs
 var APPLICATION_PROJECT_COPY_VERSION = "v0.1.0";
 var APPLICATION_PROJECT_COPY_OPERATION = "mutation.memory.project.copy";
-var ID21 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
+var ID24 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
 function conflict() {
   throw new ApplicationContractError("conflict", "Project copy input is invalid");
 }
-function id6(value) {
-  if (typeof value !== "string" || !ID21.test(value)) conflict();
+function id8(value) {
+  if (typeof value !== "string" || !ID24.test(value)) conflict();
   return value;
 }
 function exact11(value, keys) {
@@ -12383,19 +13051,19 @@ function normalize(value) {
     "quarterScopeIds",
     "operationId"
   ]);
-  const sourceProjectId = id6(value.sourceProjectId);
-  const targetProjectId = id6(value.targetProjectId);
+  const sourceProjectId = id8(value.sourceProjectId);
+  const targetProjectId = id8(value.targetProjectId);
   if (sourceProjectId === targetProjectId) conflict();
   if (!value.quarterScopeIds || typeof value.quarterScopeIds !== "object" || Array.isArray(value.quarterScopeIds) || Object.keys(value.quarterScopeIds).length > 511) conflict();
-  const quarterScopeIds = Object.fromEntries(Object.entries(value.quarterScopeIds).map(([quarterId, scopeId]) => [id6(quarterId), id6(scopeId)]));
-  const targetProjectScopeId = id6(value.targetProjectScopeId);
+  const quarterScopeIds = Object.fromEntries(Object.entries(value.quarterScopeIds).map(([quarterId, scopeId]) => [id8(quarterId), id8(scopeId)]));
+  const targetProjectScopeId = id8(value.targetProjectScopeId);
   if ((/* @__PURE__ */ new Set([targetProjectScopeId, ...Object.values(quarterScopeIds)])).size !== Object.keys(quarterScopeIds).length + 1) conflict();
   return {
     sourceProjectId,
     targetProjectId,
     targetProjectScopeId,
     quarterScopeIds,
-    operationId: id6(value.operationId)
+    operationId: id8(value.operationId)
   };
 }
 function createApplicationProjectCopyHandler({ store } = {}) {
@@ -12419,10 +13087,10 @@ function createApplicationProjectCopyHandler({ store } = {}) {
 }
 
 // orchestrator/src/application-agent-conversation.mjs
-import { randomBytes as randomBytes3, createCipheriv, createDecipheriv } from "node:crypto";
+import { randomBytes as randomBytes5, createCipheriv, createDecipheriv } from "node:crypto";
 
 // orchestrator/src/adapter-contracts.mjs
-import { createHash as createHash19 } from "node:crypto";
+import { createHash as createHash21 } from "node:crypto";
 
 // orchestrator/src/semantic-source-contract.mjs
 var SEMANTIC_SOURCE_DATA_CONTRACT_VERSION = "v0.1.0";
@@ -12449,28 +13117,28 @@ var SemanticSourceContractError = class extends Error {
     this.details = details;
   }
 };
-function fail37(code, message, details = {}) {
+function fail39(code, message, details = {}) {
   throw new SemanticSourceContractError(code, message, details);
 }
 function object7(value, label2) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    fail37("invalid_type", `${label2} must be an object`);
+    fail39("invalid_type", `${label2} must be an object`);
   }
   return value;
 }
 function exact12(value, allowed, label2) {
   const unknown = Object.keys(value).filter((key) => !allowed.includes(key));
-  if (unknown.length > 0) fail37("unknown_field", `${label2} has unsupported fields`, { unknown });
+  if (unknown.length > 0) fail39("unknown_field", `${label2} has unsupported fields`, { unknown });
 }
 function string5(value, label2, maximum = 160) {
   if (typeof value !== "string" || value.length === 0 || value.length > maximum) {
-    fail37("invalid_string", `${label2} must be a non-empty bounded string`);
+    fail39("invalid_string", `${label2} must be a non-empty bounded string`);
   }
   return value;
 }
 function utc12(value, label2) {
   if (typeof value !== "string" || value.length > 64 || !value.endsWith("Z") || !Number.isFinite(Date.parse(value))) {
-    fail37("invalid_timestamp", `${label2} must be a bounded UTC timestamp ending in Z`);
+    fail39("invalid_timestamp", `${label2} must be a bounded UTC timestamp ending in Z`);
   }
   return value;
 }
@@ -12479,7 +13147,7 @@ function nullableUtc3(value, label2) {
 }
 function array3(value, label2, maximum, minimum = 0) {
   if (!Array.isArray(value) || value.length < minimum || value.length > maximum) {
-    fail37("invalid_array", `${label2} must contain ${minimum} to ${maximum} items`);
+    fail39("invalid_array", `${label2} must contain ${minimum} to ${maximum} items`);
   }
   return value;
 }
@@ -12497,11 +13165,11 @@ function refKey(value) {
     authority3.artifactSha256 ?? null
   ]);
 }
-function unique3(items, key, label2) {
+function unique3(items2, key, label2) {
   const seen = /* @__PURE__ */ new Set();
-  for (const item of items) {
+  for (const item of items2) {
     const identity2 = key(item);
-    if (seen.has(identity2)) fail37("duplicate_identity", `${label2} contains duplicate identity`);
+    if (seen.has(identity2)) fail39("duplicate_identity", `${label2} contains duplicate identity`);
     seen.add(identity2);
   }
 }
@@ -12509,15 +13177,15 @@ function validateCompleteness(value) {
   object7(value, "semanticData.completeness");
   exact12(value, ["status", "reasonCode", "nextCursor"], "semanticData.completeness");
   if (!["complete", "partial"].includes(value.status)) {
-    fail37("invalid_completeness", "semanticData.completeness.status is unsupported");
+    fail39("invalid_completeness", "semanticData.completeness.status is unsupported");
   }
   if (value.status === "complete") {
     if (value.reasonCode !== null || value.nextCursor !== null) {
-      fail37("invalid_completeness", "Complete semantic data cannot claim an omission or cursor");
+      fail39("invalid_completeness", "Complete semantic data cannot claim an omission or cursor");
     }
   } else {
     if (!REASON_PATTERN.test(value.reasonCode ?? "")) {
-      fail37("invalid_completeness", "Partial semantic data requires a bounded reasonCode");
+      fail39("invalid_completeness", "Partial semantic data requires a bounded reasonCode");
     }
     if (value.nextCursor !== null) {
       string5(value.nextCursor, "semanticData.completeness.nextCursor", 512);
@@ -12530,16 +13198,16 @@ function validateSemanticRecord(record, index, resultObservedAtUtc) {
   exact12(record, ["ref", "name", "observedAtUtc", "sourceUpdatedAtUtc", "linkRefs"], label2);
   validateExternalReference(record.ref);
   if (!RECORD_KINDS.has(record.ref.kind) || record.ref.authority.authorityType !== "external-semantic-source") {
-    fail37("authority_mismatch", `${label2}.ref must be owned by an external semantic source`);
+    fail39("authority_mismatch", `${label2}.ref must be owned by an external semantic source`);
   }
   if (record.name !== void 0) string5(record.name, `${label2}.name`, 256);
   utc12(record.observedAtUtc, `${label2}.observedAtUtc`);
   nullableUtc3(record.sourceUpdatedAtUtc, `${label2}.sourceUpdatedAtUtc`);
   if (resultObservedAtUtc && Date.parse(record.observedAtUtc) > Date.parse(resultObservedAtUtc) + 5e3) {
-    fail37("invalid_timestamp", `${label2}.observedAtUtc cannot follow result observation`);
+    fail39("invalid_timestamp", `${label2}.observedAtUtc cannot follow result observation`);
   }
   if (record.sourceUpdatedAtUtc !== null && Date.parse(record.sourceUpdatedAtUtc) > Date.parse(record.observedAtUtc) + 5e3) {
-    fail37("invalid_timestamp", `${label2}.sourceUpdatedAtUtc cannot follow record observation`);
+    fail39("invalid_timestamp", `${label2}.sourceUpdatedAtUtc cannot follow record observation`);
   }
   array3(record.linkRefs, `${label2}.linkRefs`, 32);
   record.linkRefs.forEach(validateExternalReference);
@@ -12549,7 +13217,7 @@ function validateSemanticSourceData(value, { resultObservedAtUtc = null } = {}) 
   object7(value, "semanticData");
   exact12(value, ["schemaVersion", "contractVersion", "completeness", "records"], "semanticData");
   if (value.schemaVersion !== 1 || value.contractVersion !== SEMANTIC_SOURCE_DATA_CONTRACT_VERSION) {
-    fail37("unsupported_contract", "Semantic source data contract is unsupported");
+    fail39("unsupported_contract", "Semantic source data contract is unsupported");
   }
   if (resultObservedAtUtc !== null) utc12(resultObservedAtUtc, "resultObservedAtUtc");
   validateCompleteness(value.completeness);
@@ -12720,52 +13388,52 @@ var AdapterContractError = class extends Error {
     this.details = details;
   }
 };
-function fail38(code, message, details = {}) {
+function fail40(code, message, details = {}) {
   throw new AdapterContractError(code, message, details);
 }
 function object8(value, label2) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    fail38("invalid_type", `${label2} must be an object`);
+    fail40("invalid_type", `${label2} must be an object`);
   }
   return value;
 }
 function exact13(value, allowed, label2) {
   const unknown = Object.keys(value).filter((key) => !allowed.includes(key));
-  if (unknown.length > 0) fail38("unknown_field", `${label2} has unsupported fields`, { unknown });
+  if (unknown.length > 0) fail40("unknown_field", `${label2} has unsupported fields`, { unknown });
 }
 function string6(value, label2, maximum = 160) {
   if (typeof value !== "string" || value.length === 0 || value.length > maximum) {
-    fail38("invalid_string", `${label2} must be a non-empty bounded string`);
+    fail40("invalid_string", `${label2} must be a non-empty bounded string`);
   }
   return value;
 }
 function identifier7(value, label2) {
   string6(value, label2);
-  if (!ID_PATTERN3.test(value)) fail38("invalid_identifier", `${label2} is invalid`);
+  if (!ID_PATTERN3.test(value)) fail40("invalid_identifier", `${label2} is invalid`);
   return value;
 }
 function version(value, label2) {
   if (typeof value !== "string" || !VERSION_PATTERN.test(value)) {
-    fail38("invalid_version", `${label2} must be a semantic vN.N.N version`);
+    fail40("invalid_version", `${label2} must be a semantic vN.N.N version`);
   }
   return value;
 }
 function utc13(value, label2) {
   string6(value, label2, 64);
   if (!value.endsWith("Z") || !Number.isFinite(Date.parse(value))) {
-    fail38("invalid_timestamp", `${label2} must be a UTC timestamp ending in Z`);
+    fail40("invalid_timestamp", `${label2} must be a UTC timestamp ending in Z`);
   }
   return value;
 }
 function nonnegativeInteger2(value, label2, maximum = Number.MAX_SAFE_INTEGER) {
   if (!Number.isInteger(value) || value < 0 || value > maximum) {
-    fail38("invalid_integer", `${label2} must be a bounded non-negative integer`);
+    fail40("invalid_integer", `${label2} must be a bounded non-negative integer`);
   }
   return value;
 }
 function positiveInteger2(value, label2, maximum = Number.MAX_SAFE_INTEGER) {
   nonnegativeInteger2(value, label2, maximum);
-  if (value === 0) fail38("invalid_integer", `${label2} must be positive`);
+  if (value === 0) fail40("invalid_integer", `${label2} must be positive`);
   return value;
 }
 function canonicalJson3(value) {
@@ -12777,73 +13445,73 @@ function canonicalJson3(value) {
   }
   return JSON.stringify(value);
 }
-function sha2568(value) {
-  return createHash19("sha256").update(canonicalJson3(value), "utf8").digest("hex");
+function sha25610(value) {
+  return createHash21("sha256").update(canonicalJson3(value), "utf8").digest("hex");
 }
 function jsonValue2(value, label2, maximumBytes = 65536, ancestors = /* @__PURE__ */ new WeakSet(), depth = 0) {
-  if (depth > 24) fail38("invalid_json", `${label2} exceeds 24 nested levels`);
+  if (depth > 24) fail40("invalid_json", `${label2} exceeds 24 nested levels`);
   if (value === null || ["string", "boolean"].includes(typeof value)) {
     if (typeof value === "string" && /^data:(?:image|audio|video)\//i.test(value)) {
-      fail38("forbidden_payload", `${label2} contains inline media`);
+      fail40("forbidden_payload", `${label2} contains inline media`);
     }
   } else if (typeof value === "number") {
-    if (!Number.isFinite(value)) fail38("invalid_json", `${label2} contains a non-finite number`);
+    if (!Number.isFinite(value)) fail40("invalid_json", `${label2} contains a non-finite number`);
   } else if (Array.isArray(value)) {
-    if (ancestors.has(value)) fail38("invalid_json", `${label2} contains a cycle`);
+    if (ancestors.has(value)) fail40("invalid_json", `${label2} contains a cycle`);
     ancestors.add(value);
     value.forEach((item, index) => jsonValue2(item, `${label2}[${index}]`, maximumBytes, ancestors, depth + 1));
     ancestors.delete(value);
   } else if (value && typeof value === "object") {
-    if (ancestors.has(value)) fail38("invalid_json", `${label2} contains a cycle`);
+    if (ancestors.has(value)) fail40("invalid_json", `${label2} contains a cycle`);
     ancestors.add(value);
     for (const [key, item] of Object.entries(value)) {
       const normalizedKey2 = key.toLowerCase().replace(/[^a-z0-9]/g, "");
       if (FORBIDDEN_KEYS2.has(normalizedKey2)) {
-        fail38("forbidden_payload", `${label2}.${key} is provider-private`);
+        fail40("forbidden_payload", `${label2}.${key} is provider-private`);
       }
-      if (item === void 0) fail38("invalid_json", `${label2}.${key} cannot be undefined`);
+      if (item === void 0) fail40("invalid_json", `${label2}.${key} cannot be undefined`);
       jsonValue2(item, `${label2}.${key}`, maximumBytes, ancestors, depth + 1);
     }
     ancestors.delete(value);
   } else {
-    fail38("invalid_json", `${label2} must be JSON-compatible`);
+    fail40("invalid_json", `${label2} must be JSON-compatible`);
   }
   if (depth === 0 && Buffer.byteLength(JSON.stringify(value), "utf8") > maximumBytes) {
-    fail38("payload_too_large", `${label2} exceeds ${maximumBytes} UTF-8 bytes`);
+    fail40("payload_too_large", `${label2} exceeds ${maximumBytes} UTF-8 bytes`);
   }
   return value;
 }
 function uniqueStrings(value, allowed, label2, maximum = 32) {
   if (!Array.isArray(value) || value.length > maximum) {
-    fail38("invalid_list", `${label2} must contain at most ${maximum} items`);
+    fail40("invalid_list", `${label2} must contain at most ${maximum} items`);
   }
   const result2 = value.map((item, index) => string6(item, `${label2}[${index}]`, 96));
   if (allowed && result2.some((item) => !allowed.has(item))) {
-    fail38("unsupported_value", `${label2} contains an unsupported value`);
+    fail40("unsupported_value", `${label2} contains an unsupported value`);
   }
-  if (new Set(result2).size !== result2.length) fail38("duplicate_value", `${label2} contains duplicates`);
+  if (new Set(result2).size !== result2.length) fail40("duplicate_value", `${label2} contains duplicates`);
   return result2;
 }
 function validateExtension(value, label2, allowData) {
   object8(value, label2);
   exact13(value, allowData ? ["extensionId", "contractVersion", "data"] : ["extensionId", "contractVersion"], label2);
   if (!EXTENSION_PATTERN.test(value.extensionId ?? "")) {
-    fail38("invalid_extension", `${label2}.extensionId must be namespaced`);
+    fail40("invalid_extension", `${label2}.extensionId must be namespaced`);
   }
   version(value.contractVersion, `${label2}.contractVersion`);
   if (allowData) {
-    if (!("data" in value)) fail38("missing_field", `${label2}.data is required`);
+    if (!("data" in value)) fail40("missing_field", `${label2}.data is required`);
     jsonValue2(value.data, `${label2}.data`, 16384);
   }
   return value;
 }
 function validateExtensions(value, label2, allowData) {
   if (!Array.isArray(value) || value.length > 16) {
-    fail38("invalid_extensions", `${label2} must contain at most 16 items`);
+    fail40("invalid_extensions", `${label2} must contain at most 16 items`);
   }
   value.forEach((item, index) => validateExtension(item, `${label2}[${index}]`, allowData));
   const ids = value.map((item) => item.extensionId);
-  if (new Set(ids).size !== ids.length) fail38("duplicate_extension", `${label2} contains duplicate IDs`);
+  if (new Set(ids).size !== ids.length) fail40("duplicate_extension", `${label2} contains duplicate IDs`);
   return value;
 }
 function validateAdapterIdentity(value) {
@@ -12851,7 +13519,7 @@ function validateAdapterIdentity(value) {
   exact13(value, ["adapterId", "adapterFamily", "adapterVersion", "sourceId", "runtimeInstanceId"], "identity");
   identifier7(value.adapterId, "identity.adapterId");
   if (!ADAPTER_FAMILIES.includes(value.adapterFamily)) {
-    fail38("unsupported_family", "identity.adapterFamily is unsupported");
+    fail40("unsupported_family", "identity.adapterFamily is unsupported");
   }
   version(value.adapterVersion, "identity.adapterVersion");
   identifier7(value.sourceId, "identity.sourceId");
@@ -12868,9 +13536,9 @@ function operationsForFamily(family) {
 }
 function validateLimits(value, label2) {
   object8(value, label2);
-  if (Object.keys(value).length > 32) fail38("invalid_limits", `${label2} has too many limits`);
+  if (Object.keys(value).length > 32) fail40("invalid_limits", `${label2} has too many limits`);
   for (const [key, item] of Object.entries(value)) {
-    if (!LIMIT_PATTERN.test(key)) fail38("invalid_limits", `${label2}.${key} has an invalid name`);
+    if (!LIMIT_PATTERN.test(key)) fail40("invalid_limits", `${label2}.${key} has an invalid name`);
     nonnegativeInteger2(item, `${label2}.${key}`);
   }
   return value;
@@ -12890,35 +13558,35 @@ function validateCapability(value, family, index) {
     "extensions"
   ], label2);
   if (!operationsForFamily(family).includes(value.operation)) {
-    fail38("unsupported_operation", `${label2}.operation is not in the ${family} family`);
+    fail40("unsupported_operation", `${label2}.operation is not in the ${family} family`);
   }
   if (!CAPABILITY_SUPPORT_LEVELS.includes(value.support)) {
-    fail38("unsupported_capability", `${label2}.support is invalid`);
+    fail40("unsupported_capability", `${label2}.support is invalid`);
   }
   const versions = uniqueStrings(value.contractVersions, null, `${label2}.contractVersions`, 8);
   versions.forEach((item) => version(item, `${label2}.contractVersions`));
   if (!versions.includes(ADAPTER_CONTRACT_VERSION)) {
-    fail38("unsupported_contract", `${label2} does not advertise the current contract`);
+    fail40("unsupported_contract", `${label2} does not advertise the current contract`);
   }
   const guarantees = uniqueStrings(value.guarantees, GUARANTEES, `${label2}.guarantees`);
-  if (!VISIBILITY.has(value.visibility)) fail38("unsupported_value", `${label2}.visibility is invalid`);
-  if (!INTERRUPT.has(value.interruptBehavior)) fail38("unsupported_value", `${label2}.interruptBehavior is invalid`);
+  if (!VISIBILITY.has(value.visibility)) fail40("unsupported_value", `${label2}.visibility is invalid`);
+  if (!INTERRUPT.has(value.interruptBehavior)) fail40("unsupported_value", `${label2}.interruptBehavior is invalid`);
   const recovery = uniqueStrings(value.recovery, RECOVERY, `${label2}.recovery`, 8);
   if (recovery.includes("none") && recovery.length !== 1) {
-    fail38("invalid_recovery", `${label2}.recovery cannot combine none with another mode`);
+    fail40("invalid_recovery", `${label2}.recovery cannot combine none with another mode`);
   }
   validateLimits(value.limits, `${label2}.limits`);
   if (guarantees.includes("cursor-replay") && !recovery.includes("cursor-replay")) {
-    fail38("invalid_capability", `${label2} promises cursor replay without cursor recovery`);
+    fail40("invalid_capability", `${label2} promises cursor replay without cursor recovery`);
   }
   if (guarantees.some((item) => item.startsWith("provider-observed-")) && value.visibility !== "provider-observed") {
-    fail38("invalid_capability", `${label2} promises provider observation without provider visibility`);
+    fail40("invalid_capability", `${label2} promises provider observation without provider visibility`);
   }
   if (guarantees.some((item) => [
     "accepted-started-separate",
     "accepted-terminal-separate"
   ].includes(item)) && !guarantees.includes("command-acceptance")) {
-    fail38("invalid_capability", `${label2} separates acceptance without command acceptance`);
+    fail40("invalid_capability", `${label2} separates acceptance without command acceptance`);
   }
   const controlOperation = [
     "interruptExecution",
@@ -12926,19 +13594,19 @@ function validateCapability(value, family, index) {
     "cancelExecution"
   ].includes(value.operation);
   if (family === "semantic-work-source" && value.interruptBehavior !== "not-applicable") {
-    fail38("invalid_capability", `${label2} semantic reads cannot advertise interrupt behavior`);
+    fail40("invalid_capability", `${label2} semantic reads cannot advertise interrupt behavior`);
   }
   if (controlOperation && value.support !== "unavailable" && !["cooperative", "immediate", "provider-defined"].includes(value.interruptBehavior)) {
-    fail38("invalid_capability", `${label2} available control operation needs explicit interrupt behavior`);
+    fail40("invalid_capability", `${label2} available control operation needs explicit interrupt behavior`);
   }
   const bindingGuarantees = guarantees.filter(
     (item) => ["exact-task-binding", "exact-profile-binding"].includes(item)
   );
   if (bindingGuarantees.length > 0 && value.operation !== "startExecution") {
-    fail38("invalid_capability", `${label2} binding guarantees belong only to startExecution`);
+    fail40("invalid_capability", `${label2} binding guarantees belong only to startExecution`);
   }
   if (guarantees.includes("exact-profile-binding") && !guarantees.includes("exact-task-binding")) {
-    fail38("invalid_capability", `${label2} exact profile binding also requires exact task binding`);
+    fail40("invalid_capability", `${label2} exact profile binding also requires exact task binding`);
   }
   validateExtensions(value.extensions, `${label2}.extensions`, false);
   return value;
@@ -12956,33 +13624,33 @@ function validateAdapterDescriptor(value) {
     "extensions"
   ], "descriptor");
   if (value.schemaVersion !== 1 || value.contractVersion !== ADAPTER_CONTRACT_VERSION) {
-    fail38("unsupported_contract", "Adapter descriptor contract is unsupported");
+    fail40("unsupported_contract", "Adapter descriptor contract is unsupported");
   }
   validateAdapterIdentity(value.identity);
   validateAuthorityReference(value.authority);
   const authorityType = value.identity.adapterFamily === "execution-provider" ? "provider" : "external-semantic-source";
   if (value.authority.authorityType !== authorityType || value.authority.sourceId !== value.identity.sourceId || value.authority.externalId !== value.identity.runtimeInstanceId) {
-    fail38("authority_mismatch", "Descriptor authority does not identify its exact adapter runtime");
+    fail40("authority_mismatch", "Descriptor authority does not identify its exact adapter runtime");
   }
   if (value.authority.contractVersion !== value.identity.adapterVersion) {
-    fail38("authority_mismatch", "Descriptor authority and adapter versions differ");
+    fail40("authority_mismatch", "Descriptor authority and adapter versions differ");
   }
   if (!Array.isArray(value.capabilities) || value.capabilities.length === 0 || value.capabilities.length > operationsForFamily(value.identity.adapterFamily).length) {
-    fail38("invalid_capabilities", "Descriptor capabilities must be a non-empty bounded array");
+    fail40("invalid_capabilities", "Descriptor capabilities must be a non-empty bounded array");
   }
   value.capabilities.forEach((item, index) => validateCapability(item, value.identity.adapterFamily, index));
   const operations = value.capabilities.map((item) => item.operation);
   if (new Set(operations).size !== operations.length) {
-    fail38("duplicate_capability", "Descriptor has duplicate operation capabilities");
+    fail40("duplicate_capability", "Descriptor has duplicate operation capabilities");
   }
   const discovery = value.capabilities.find((item) => item.operation === "discoverCapabilities");
   if (!discovery || discovery.support === "unavailable") {
-    fail38("missing_capability", "Capability discovery must be available");
+    fail40("missing_capability", "Capability discovery must be available");
   }
   utc13(value.capabilitiesObservedAtUtc, "descriptor.capabilitiesObservedAtUtc");
   nonnegativeInteger2(value.capabilitiesValidForSeconds, "descriptor.capabilitiesValidForSeconds", 86400);
   if (value.capabilitiesValidForSeconds === 0) {
-    fail38("invalid_freshness", "Capability validity must be positive");
+    fail40("invalid_freshness", "Capability validity must be positive");
   }
   validateExtensions(value.extensions, "descriptor.extensions", false);
   return value;
@@ -13000,11 +13668,11 @@ function validateRequirement(value, family, index) {
     "minimumLimits"
   ], label2);
   if (!operationsForFamily(family).includes(value.operation)) {
-    fail38("unsupported_operation", `${label2}.operation is not in the ${family} family`);
+    fail40("unsupported_operation", `${label2}.operation is not in the ${family} family`);
   }
   const support = uniqueStrings(value.acceptableSupport, new Set(CAPABILITY_SUPPORT_LEVELS), `${label2}.acceptableSupport`, 5);
   if (support.length === 0 || support.includes("unavailable")) {
-    fail38("invalid_requirement", `${label2}.acceptableSupport must require an available mode`);
+    fail40("invalid_requirement", `${label2}.acceptableSupport must require an available mode`);
   }
   uniqueStrings(value.requiredGuarantees, GUARANTEES, `${label2}.requiredGuarantees`);
   const visibility = uniqueStrings(
@@ -13013,17 +13681,17 @@ function validateRequirement(value, family, index) {
     `${label2}.acceptableVisibility`,
     4
   );
-  if (visibility.length === 0) fail38("invalid_requirement", `${label2} must allow visibility`);
+  if (visibility.length === 0) fail40("invalid_requirement", `${label2} must allow visibility`);
   const interrupt = uniqueStrings(
     value.acceptableInterruptBehavior,
     INTERRUPT,
     `${label2}.acceptableInterruptBehavior`,
     5
   );
-  if (interrupt.length === 0) fail38("invalid_requirement", `${label2} must allow interrupt behavior`);
+  if (interrupt.length === 0) fail40("invalid_requirement", `${label2} must allow interrupt behavior`);
   const recovery = uniqueStrings(value.requiredRecovery, RECOVERY, `${label2}.requiredRecovery`, 5);
   if (recovery.includes("none") && recovery.length !== 1) {
-    fail38("invalid_requirement", `${label2}.requiredRecovery cannot combine none with another mode`);
+    fail40("invalid_requirement", `${label2}.requiredRecovery cannot combine none with another mode`);
   }
   validateLimits(value.minimumLimits, `${label2}.minimumLimits`);
   return value;
@@ -13031,12 +13699,12 @@ function validateRequirement(value, family, index) {
 function matchAdapterCapabilities(descriptor, requirements) {
   validateAdapterDescriptor(descriptor);
   if (!Array.isArray(requirements) || requirements.length > 16) {
-    fail38("invalid_requirements", "requirements must contain at most 16 items");
+    fail40("invalid_requirements", "requirements must contain at most 16 items");
   }
   requirements.forEach((item, index) => validateRequirement(item, descriptor.identity.adapterFamily, index));
   const operations = requirements.map((item) => item.operation);
   if (new Set(operations).size !== operations.length) {
-    fail38("duplicate_requirement", "requirements contain duplicate operations");
+    fail40("duplicate_requirement", "requirements contain duplicate operations");
   }
   const matches = [];
   const failures = [];
@@ -13091,7 +13759,7 @@ function validateTaskBinding(value) {
   identifier7(value.sourceId, "request.taskBinding.sourceId");
   identifier7(value.taskId, "request.taskBinding.taskId");
   if (typeof value.taskSha256 !== "string" || !/^[a-f0-9]{64}$/.test(value.taskSha256)) {
-    fail38("invalid_hash", "request.taskBinding.taskSha256 must be lowercase SHA-256");
+    fail40("invalid_hash", "request.taskBinding.taskSha256 must be lowercase SHA-256");
   }
 }
 function validateProfile(value) {
@@ -13100,7 +13768,7 @@ function validateProfile(value) {
   string6(value.model, "request.profile.model", 128);
   string6(value.reasoningEffort, "request.profile.reasoningEffort", 32);
   if (value.fallbackPolicy !== "deny") {
-    fail38("unsafe_fallback", "request.profile.fallbackPolicy must be deny");
+    fail40("unsafe_fallback", "request.profile.fallbackPolicy must be deny");
   }
 }
 function subjectKinds(family, operation3) {
@@ -13125,17 +13793,17 @@ function subjectKinds(family, operation3) {
 }
 function validateSubjectRefs(value, family, operation3) {
   if (!Array.isArray(value) || value.length > 8) {
-    fail38("invalid_references", "request.subjectRefs must contain at most 8 items");
+    fail40("invalid_references", "request.subjectRefs must contain at most 8 items");
   }
   for (const ref of value) {
     validateExternalReference(ref);
     const authorityType = family === "execution-provider" ? "provider" : "external-semantic-source";
     const allowedKinds = subjectKinds(family, operation3);
     if (ref.authority.authorityType !== authorityType) {
-      fail38("authority_mismatch", "request.subjectRefs cross the adapter family authority");
+      fail40("authority_mismatch", "request.subjectRefs cross the adapter family authority");
     }
     if (!allowedKinds.has(ref.kind)) {
-      fail38("authority_mismatch", "request.subjectRefs use a kind outside the adapter family");
+      fail40("authority_mismatch", "request.subjectRefs use a kind outside the adapter family");
     }
   }
 }
@@ -13154,12 +13822,12 @@ function validateAdapterOperationRequest(value, family) {
     "requiredCapabilities",
     "parameters"
   ], "request");
-  if (!ADAPTER_FAMILIES.includes(family)) fail38("unsupported_family", "Request family is unsupported");
+  if (!ADAPTER_FAMILIES.includes(family)) fail40("unsupported_family", "Request family is unsupported");
   if (value.schemaVersion !== 1 || value.contractVersion !== ADAPTER_CONTRACT_VERSION) {
-    fail38("unsupported_contract", "Adapter request contract is unsupported");
+    fail40("unsupported_contract", "Adapter request contract is unsupported");
   }
   if (!operationsForFamily(family).includes(value.operation)) {
-    fail38("unsupported_operation", `request.operation is not in the ${family} family`);
+    fail40("unsupported_operation", `request.operation is not in the ${family} family`);
   }
   identifier7(value.operationId, "request.operationId");
   identifier7(value.correlationId, "request.correlationId");
@@ -13167,36 +13835,36 @@ function validateAdapterOperationRequest(value, family) {
   if (value.taskBinding !== null) validateTaskBinding(value.taskBinding);
   if (value.profile !== null) validateProfile(value.profile);
   if (value.operation === "startExecution" && value.taskBinding === null) {
-    fail38("missing_binding", "startExecution requires an exact task binding");
+    fail40("missing_binding", "startExecution requires an exact task binding");
   }
   if (family === "semantic-work-source" && (value.taskBinding !== null || value.profile !== null)) {
-    fail38("authority_mismatch", "Semantic reads cannot carry execution bindings");
+    fail40("authority_mismatch", "Semantic reads cannot carry execution bindings");
   }
   validateSubjectRefs(value.subjectRefs, family, value.operation);
   if (["observeLifecycle", "interruptExecution", "resumeExecution", "cancelExecution"].includes(value.operation) && value.subjectRefs.length !== 1) {
-    fail38("missing_subject", `${value.operation} requires exactly one native provider reference`);
+    fail40("missing_subject", `${value.operation} requires exactly one native provider reference`);
   }
   if (["readThread", "forkThread"].includes(value.operation) && value.subjectRefs.length !== 1) {
-    fail38("missing_subject", `${value.operation} requires exactly one provider thread reference`);
+    fail40("missing_subject", `${value.operation} requires exactly one provider thread reference`);
   }
   if (value.operation === "startExecution" && value.subjectRefs.length > 1) {
-    fail38("invalid_references", "startExecution accepts at most one exact provider thread subject");
+    fail40("invalid_references", "startExecution accepts at most one exact provider thread subject");
   }
   if (!Array.isArray(value.requiredCapabilities) || value.requiredCapabilities.length === 0 || value.requiredCapabilities.length > 16) {
-    fail38("invalid_requirements", "request.requiredCapabilities must be non-empty and bounded");
+    fail40("invalid_requirements", "request.requiredCapabilities must be non-empty and bounded");
   }
   value.requiredCapabilities.forEach((item, index) => validateRequirement(item, family, index));
   const operationRequirement = value.requiredCapabilities.find(
     (item) => item.operation === value.operation
   );
   if (!operationRequirement) {
-    fail38("operation_capability_not_required", "Request policy must require its invoked operation");
+    fail40("operation_capability_not_required", "Request policy must require its invoked operation");
   }
   if (value.operation === "startExecution" && !operationRequirement.requiredGuarantees.includes("exact-task-binding")) {
-    fail38("missing_guarantee", "startExecution must require exact-task-binding");
+    fail40("missing_guarantee", "startExecution must require exact-task-binding");
   }
   if (value.operation === "startExecution" && value.profile !== null && !operationRequirement.requiredGuarantees.includes("exact-profile-binding")) {
-    fail38("missing_guarantee", "A supplied execution profile must require exact-profile-binding");
+    fail40("missing_guarantee", "A supplied execution profile must require exact-profile-binding");
   }
   object8(value.parameters, "request.parameters");
   jsonValue2(value.parameters, "request.parameters", 16384);
@@ -13207,20 +13875,20 @@ function validateAdapterRequestAuthority(request, identity2) {
   validateAdapterIdentity(identity2);
   for (const ref of request.subjectRefs) {
     if (ref.authority.sourceId !== identity2.sourceId || ref.authority.contractVersion !== identity2.adapterVersion) {
-      fail38("authority_mismatch", "Request subject is not owned by the selected adapter source/version");
+      fail40("authority_mismatch", "Request subject is not owned by the selected adapter source/version");
     }
   }
   return request;
 }
 function adapterOperationRequestHash(request, family) {
   validateAdapterOperationRequest(request, family);
-  return sha2568(request);
+  return sha25610(request);
 }
 function validateResultOperation(value, family) {
   object8(value, "result.operation");
   exact13(value, ["name", "operationId", "correlationId"], "result.operation");
   if (!operationsForFamily(family).includes(value.name)) {
-    fail38("unsupported_operation", "result.operation.name is outside the adapter family");
+    fail40("unsupported_operation", "result.operation.name is outside the adapter family");
   }
   identifier7(value.operationId, "result.operation.operationId");
   identifier7(value.correlationId, "result.operation.correlationId");
@@ -13229,19 +13897,19 @@ function validateFreshness(value) {
   object8(value, "result.freshness");
   exact13(value, ["status", "ageSeconds", "staleAfterSeconds"], "result.freshness");
   if (!["fresh", "stale", "unknown"].includes(value.status)) {
-    fail38("invalid_freshness", "result.freshness.status is invalid");
+    fail40("invalid_freshness", "result.freshness.status is invalid");
   }
   if (value.ageSeconds !== null) nonnegativeInteger2(value.ageSeconds, "result.freshness.ageSeconds", 604800);
   nonnegativeInteger2(value.staleAfterSeconds, "result.freshness.staleAfterSeconds", 604800);
-  if (value.staleAfterSeconds === 0) fail38("invalid_freshness", "staleAfterSeconds must be positive");
+  if (value.staleAfterSeconds === 0) fail40("invalid_freshness", "staleAfterSeconds must be positive");
   if (value.status === "unknown" && value.ageSeconds !== null) {
-    fail38("invalid_freshness", "Unknown freshness cannot claim an age");
+    fail40("invalid_freshness", "Unknown freshness cannot claim an age");
   }
   if (value.status === "fresh" && (value.ageSeconds === null || value.ageSeconds >= value.staleAfterSeconds)) {
-    fail38("invalid_freshness", "Fresh result age must be below its stale threshold");
+    fail40("invalid_freshness", "Fresh result age must be below its stale threshold");
   }
   if (value.status === "stale" && (value.ageSeconds === null || value.ageSeconds < value.staleAfterSeconds)) {
-    fail38("invalid_freshness", "Stale result age must meet its stale threshold");
+    fail40("invalid_freshness", "Stale result age must meet its stale threshold");
   }
 }
 function validateLifecycle(value) {
@@ -13255,17 +13923,17 @@ function validateLifecycle(value) {
     "providerOccurredAtUtc"
   ], "result.lifecycle");
   if (!["none", "started", "completed", "failed", "cancelled", "interrupted"].includes(value.state)) {
-    fail38("invalid_lifecycle", "result.lifecycle.state is invalid");
+    fail40("invalid_lifecycle", "result.lifecycle.state is invalid");
   }
   if (!["none", "provider-observed"].includes(value.evidence)) {
-    fail38("invalid_lifecycle", "result.lifecycle.evidence is invalid");
+    fail40("invalid_lifecycle", "result.lifecycle.evidence is invalid");
   }
   if (value.state === "none" !== (value.evidence === "none")) {
-    fail38("invalid_lifecycle", "Lifecycle state requires provider-observed evidence");
+    fail40("invalid_lifecycle", "Lifecycle state requires provider-observed evidence");
   }
   if (value.state === "none") {
     for (const key of ["eventId", "sequence", "cursor", "providerOccurredAtUtc"]) {
-      if (value[key] !== null) fail38("invalid_lifecycle", `None lifecycle requires null ${key}`);
+      if (value[key] !== null) fail40("invalid_lifecycle", `None lifecycle requires null ${key}`);
     }
   } else {
     identifier7(value.eventId, "result.lifecycle.eventId");
@@ -13280,27 +13948,27 @@ function validateRetry(value) {
   object8(value, "result.retry");
   exact13(value, ["allowed", "reasonCode"], "result.retry");
   if (typeof value.allowed !== "boolean" || !REASON_PATTERN2.test(value.reasonCode ?? "")) {
-    fail38("invalid_retry", "result.retry must contain an explicit decision and reason");
+    fail40("invalid_retry", "result.retry must contain an explicit decision and reason");
   }
 }
 function validateResultError(value, outcome, retryAllowed) {
   object8(value, "result.error");
   exact13(value, ["code", "phase", "providerCategory"], "result.error");
-  if (!ADAPTER_ERROR_CODES.includes(value.code)) fail38("unsupported_error", "result.error.code is invalid");
+  if (!ADAPTER_ERROR_CODES.includes(value.code)) fail40("unsupported_error", "result.error.code is invalid");
   const [expectedOutcome, phases, retryValues] = ERROR_POLICY[value.code];
   if (outcome !== expectedOutcome || !phases.includes(value.phase) || !retryValues.includes(retryAllowed)) {
-    fail38("inconsistent_error", "Result outcome, error phase, and retry policy disagree");
+    fail40("inconsistent_error", "Result outcome, error phase, and retry policy disagree");
   }
   if (value.providerCategory !== null) {
     string6(value.providerCategory, "result.error.providerCategory", 96);
     if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$/.test(value.providerCategory)) {
-      fail38("invalid_error_category", "result.error.providerCategory must be a bounded category, not provider text");
+      fail40("invalid_error_category", "result.error.providerCategory must be a bounded category, not provider text");
     }
   }
 }
 function validateEvidenceRefs(value) {
   if (!Array.isArray(value) || value.length > 128) {
-    fail38("invalid_references", "result.evidenceRefs must contain at most 128 items");
+    fail40("invalid_references", "result.evidenceRefs must contain at most 128 items");
   }
   value.forEach(validateExternalReference);
 }
@@ -13317,14 +13985,14 @@ function validateOwnedReference(value, identity2, kinds, label2) {
   validateExternalReference(value);
   const authorityType = identity2.adapterFamily === "execution-provider" ? "provider" : "external-semantic-source";
   if (!kinds.has(value.kind) || value.authority.authorityType !== authorityType || value.authority.sourceId !== identity2.sourceId || value.authority.contractVersion !== identity2.adapterVersion) {
-    fail38("authority_mismatch", `${label2} is not owned by the exact adapter source/version`);
+    fail40("authority_mismatch", `${label2} is not owned by the exact adapter source/version`);
   }
   return value;
 }
 function requireEvidence(value, ref, label2) {
   const identity2 = externalReferenceIdentity(ref);
   if (!value.evidenceRefs.some((item) => externalReferenceIdentity(item) === identity2)) {
-    fail38("missing_evidence", `${label2} must also appear in result.evidenceRefs`);
+    fail40("missing_evidence", `${label2} must also appear in result.evidenceRefs`);
   }
 }
 function validateExecutionData(value, result2) {
@@ -13337,7 +14005,7 @@ function validateExecutionData(value, result2) {
     "result.data.executionRef"
   );
   if (result2.authority.externalId !== ref.authority.externalId) {
-    fail38("authority_mismatch", "Result authority does not identify result.data.executionRef");
+    fail40("authority_mismatch", "Result authority does not identify result.data.executionRef");
   }
   requireEvidence(result2, ref, "result.data.executionRef");
 }
@@ -13345,7 +14013,7 @@ function validateCommandData(value, result2) {
   object8(value, "result.data");
   const keys = Object.keys(value);
   if (keys.length !== 1 || !["executionRef", "commandSubjectRef"].includes(keys[0])) {
-    fail38("invalid_result_data", `${result2.operation.name} data must select one native execution or command subject`);
+    fail40("invalid_result_data", `${result2.operation.name} data must select one native execution or command subject`);
   }
   if (value.executionRef) return validateExecutionData(value, result2);
   const ref = validateOwnedReference(
@@ -13355,7 +14023,7 @@ function validateCommandData(value, result2) {
     "result.data.commandSubjectRef"
   );
   if (result2.authority.externalId !== ref.authority.externalId) {
-    fail38("authority_mismatch", "Command result authority does not identify its command subject");
+    fail40("authority_mismatch", "Command result authority does not identify its command subject");
   }
   requireEvidence(result2, ref, "result.data.commandSubjectRef");
 }
@@ -13369,7 +14037,7 @@ function validateThreadData(value, result2) {
     "result.data.threadRef"
   );
   if (result2.authority.externalId !== ref.authority.externalId) {
-    fail38("authority_mismatch", "Thread result authority does not identify result.data.threadRef");
+    fail40("authority_mismatch", "Thread result authority does not identify result.data.threadRef");
   }
   requireEvidence(result2, ref, "result.data.threadRef");
 }
@@ -13392,13 +14060,13 @@ function validateThreadListData(value, result2) {
   object8(value, "result.data");
   exact13(value, ["records"], "result.data");
   if (!Array.isArray(value.records) || value.records.length > 128) {
-    fail38("invalid_records", "listThreads data must contain at most 128 records");
+    fail40("invalid_records", "listThreads data must contain at most 128 records");
   }
   const seen = /* @__PURE__ */ new Set();
   value.records.forEach((record, index) => {
     const ref = validateThreadRecord(record, result2, `result.data.records[${index}]`);
     const identity2 = externalReferenceIdentity(ref);
-    if (seen.has(identity2)) fail38("invalid_thread_record", "listThreads cannot repeat a thread");
+    if (seen.has(identity2)) fail40("invalid_thread_record", "listThreads cannot repeat a thread");
     seen.add(identity2);
   });
 }
@@ -13407,14 +14075,14 @@ function validateThreadReadData(value, result2) {
   exact13(value, ["record"], "result.data");
   const ref = validateThreadRecord(value.record, result2, "result.data.record");
   if (result2.authority.externalId !== ref.authority.externalId) {
-    fail38("authority_mismatch", "readThread authority does not identify its thread record");
+    fail40("authority_mismatch", "readThread authority does not identify its thread record");
   }
 }
 function validateModelData(value, result2) {
   object8(value, "result.data");
   exact13(value, ["records"], "result.data");
   if (!Array.isArray(value.records) || value.records.length > 128) {
-    fail38("invalid_records", "listModels data must contain at most 128 records");
+    fail40("invalid_records", "listModels data must contain at most 128 records");
   }
   const seenRecords = /* @__PURE__ */ new Set();
   for (const [index, record] of value.records.entries()) {
@@ -13433,11 +14101,11 @@ function validateModelData(value, result2) {
       string6(record.defaultReasoningEffort, `${label2}.defaultReasoningEffort`, 96);
     }
     if (record.defaultReasoningEffort !== null && !record.supportedReasoningEfforts.includes(record.defaultReasoningEffort)) {
-      fail38("invalid_model_record", `${label2}.defaultReasoningEffort must be supported`);
+      fail40("invalid_model_record", `${label2}.defaultReasoningEffort must be supported`);
     }
     const recordIdentity = canonicalJson3(record);
     if (seenRecords.has(recordIdentity)) {
-      fail38("invalid_model_record", "listModels data cannot repeat an identical model record");
+      fail40("invalid_model_record", "listModels data cannot repeat an identical model record");
     }
     seenRecords.add(recordIdentity);
     requireEvidence(result2, ref, `${label2}.ref`);
@@ -13451,7 +14119,7 @@ function validateSemanticData(value, result2) {
       validateSemanticSourceData(value, { resultObservedAtUtc: result2.observedAtUtc });
     } catch (error) {
       if (error instanceof SemanticSourceContractError) {
-        fail38(error.code, error.message, error.details);
+        fail40(error.code, error.message, error.details);
       }
       throw error;
     }
@@ -13472,7 +14140,7 @@ function validateSemanticData(value, result2) {
   }
   exact13(value, ["records"], "result.data");
   if (!Array.isArray(value.records) || value.records.length > 128) {
-    fail38("invalid_records", "result.data.records must contain at most 128 records");
+    fail40("invalid_records", "result.data.records must contain at most 128 records");
   }
   value.records.forEach((record, index) => {
     const label2 = `result.data.records[${index}]`;
@@ -13481,7 +14149,7 @@ function validateSemanticData(value, result2) {
     validateOwnedReference(record.ref, result2.adapter, SEMANTIC_REFERENCE_KINDS, `${label2}.ref`);
     if (record.name !== void 0) string6(record.name, `${label2}.name`, 256);
     if (!Array.isArray(record.linkRefs) || record.linkRefs.length > 32) {
-      fail38("invalid_references", `${label2}.linkRefs must contain at most 32 references`);
+      fail40("invalid_references", `${label2}.linkRefs must contain at most 32 references`);
     }
     record.linkRefs.forEach(validateExternalReference);
     requireEvidence(result2, record.ref, `${label2}.ref`);
@@ -13494,7 +14162,7 @@ function validateSuccessfulData(value) {
     exact13(value.data, ["descriptor"], "result.data");
     validateAdapterDescriptor(value.data.descriptor);
     if (canonicalJson3(value.data.descriptor.identity) !== canonicalJson3(value.adapter)) {
-      fail38("result_identity_mismatch", "Capability discovery returned another adapter identity");
+      fail40("result_identity_mismatch", "Capability discovery returned another adapter identity");
     }
     return;
   }
@@ -13551,7 +14219,7 @@ function validateAdapterResult(value) {
     "extensions"
   ], "result");
   if (value.schemaVersion !== 1 || value.contractVersion !== ADAPTER_CONTRACT_VERSION) {
-    fail38("unsupported_contract", "Adapter result contract is unsupported");
+    fail40("unsupported_contract", "Adapter result contract is unsupported");
   }
   validateAdapterIdentity(value.adapter);
   validateResultOperation(value.operation, value.adapter.adapterFamily);
@@ -13559,10 +14227,10 @@ function validateAdapterResult(value) {
   validateAuthorityReference(value.authority);
   const authorityType = value.adapter.adapterFamily === "execution-provider" ? "provider" : "external-semantic-source";
   if (value.authority.authorityType !== authorityType || value.authority.sourceId !== value.adapter.sourceId || value.authority.contractVersion !== value.adapter.adapterVersion) {
-    fail38("authority_mismatch", "Result authority does not match its adapter source");
+    fail40("authority_mismatch", "Result authority does not match its adapter source");
   }
   validateFreshness(value.freshness);
-  if (!ADAPTER_OUTCOMES.includes(value.outcome)) fail38("unsupported_outcome", "result.outcome is invalid");
+  if (!ADAPTER_OUTCOMES.includes(value.outcome)) fail40("unsupported_outcome", "result.outcome is invalid");
   validateLifecycle(value.lifecycle);
   validateRetry(value.retry);
   validateEvidenceRefs(value.evidenceRefs);
@@ -13570,15 +14238,15 @@ function validateAdapterResult(value) {
   const successOutcomes = /* @__PURE__ */ new Set(["accepted", "started", "completed", "cancelled", "interrupted"]);
   const expectedType = successOutcomes.has(value.outcome) ? "success" : "error";
   if (value.resultType !== expectedType) {
-    fail38("inconsistent_result", "resultType does not match outcome");
+    fail40("inconsistent_result", "resultType does not match outcome");
   }
   if (expectedType === "success") {
     if (value.error !== null || value.retry.allowed) {
-      fail38("inconsistent_result", "Successful results cannot carry errors or request replay");
+      fail40("inconsistent_result", "Successful results cannot carry errors or request replay");
     }
     validateSuccessfulData(value);
   } else {
-    if (value.data !== null) fail38("inconsistent_result", "Error results cannot select data");
+    if (value.data !== null) fail40("inconsistent_result", "Error results cannot select data");
     validateResultError(value.error, value.outcome, value.retry.allowed);
   }
   const lifecycleOutcomes = /* @__PURE__ */ new Map([
@@ -13589,48 +14257,48 @@ function validateAdapterResult(value) {
     ["failed", "failed"]
   ]);
   if (value.lifecycle.state !== "none" && value.lifecycle.state !== lifecycleOutcomes.get(value.outcome)) {
-    fail38("inconsistent_lifecycle", `${value.outcome} requires matching lifecycle evidence`);
+    fail40("inconsistent_lifecycle", `${value.outcome} requires matching lifecycle evidence`);
   }
   if (value.lifecycle.state !== "none") {
     if (value.adapter.adapterFamily !== "execution-provider" || !["observeLifecycle", "readExecution"].includes(value.operation.name)) {
-      fail38("inconsistent_lifecycle", "Only provider observation may publish lifecycle truth");
+      fail40("inconsistent_lifecycle", "Only provider observation may publish lifecycle truth");
     }
     const nativeEvidence = value.evidenceRefs.find((ref) => PROVIDER_REFERENCE_KINDS.has(ref.kind) && ref.authority.authorityType === "provider" && ref.authority.sourceId === value.adapter.sourceId && ref.authority.contractVersion === value.adapter.adapterVersion && ref.authority.externalId === value.authority.externalId);
     if (!nativeEvidence) {
-      fail38("missing_evidence", "Provider lifecycle requires exact native provider evidence");
+      fail40("missing_evidence", "Provider lifecycle requires exact native provider evidence");
     }
     if (value.lifecycle.providerOccurredAtUtc !== null && Date.parse(value.lifecycle.providerOccurredAtUtc) > Date.parse(value.observedAtUtc) + 5e3) {
-      fail38("invalid_lifecycle", "Provider occurrence cannot materially follow adapter observation");
+      fail40("invalid_lifecycle", "Provider occurrence cannot materially follow adapter observation");
     }
   } else if (["started", "cancelled", "interrupted", "failed"].includes(value.outcome)) {
-    fail38("inconsistent_lifecycle", "Lifecycle outcomes require provider observation");
+    fail40("inconsistent_lifecycle", "Lifecycle outcomes require provider observation");
   }
   if (value.operation.name === "startExecution" && value.resultType === "success" && value.outcome !== "accepted") {
-    fail38("accepted_not_started", "startExecution success proves acceptance, not observed start");
+    fail40("accepted_not_started", "startExecution success proves acceptance, not observed start");
   }
   if (["interruptExecution", "resumeExecution", "cancelExecution"].includes(value.operation.name) && value.resultType === "success" && value.outcome !== "accepted") {
-    fail38("accepted_not_terminal", `${value.operation.name} success proves acceptance, not terminal state`);
+    fail40("accepted_not_terminal", `${value.operation.name} success proves acceptance, not terminal state`);
   }
   if (["createThread", "forkThread"].includes(value.operation.name) && value.resultType === "success" && value.outcome !== "accepted") {
-    fail38("accepted_not_created", `${value.operation.name} success is a provider command acceptance`);
+    fail40("accepted_not_created", `${value.operation.name} success is a provider command acceptance`);
   }
   if (["listModels", "listThreads", "readThread", "openVisibleSurface"].includes(value.operation.name) && value.resultType === "success" && value.outcome !== "completed") {
-    fail38("inconsistent_result", `${value.operation.name} success must complete its bounded operation`);
+    fail40("inconsistent_result", `${value.operation.name} success must complete its bounded operation`);
   }
   if (value.adapter.adapterFamily === "semantic-work-source" && value.resultType === "success" && value.outcome !== "completed") {
-    fail38("inconsistent_result", "Semantic read success must be a completed read, not command acceptance");
+    fail40("inconsistent_result", "Semantic read success must be a completed read, not command acceptance");
   }
   if (value.outcome === "stale" && value.freshness.status !== "stale") {
-    fail38("invalid_freshness", "Stale outcomes require stale freshness metadata");
+    fail40("invalid_freshness", "Stale outcomes require stale freshness metadata");
   }
   if (value.outcome === "uncertain" && (value.error.code !== "post_submit_uncertain" || value.retry.allowed)) {
-    fail38("unsafe_retry", "Post-submit uncertainty must forbid retry");
+    fail40("unsafe_retry", "Post-submit uncertainty must forbid retry");
   }
   return value;
 }
 
 // orchestrator/src/provider-conversation-content-policy.mjs
-import { createHash as createHash20 } from "node:crypto";
+import { createHash as createHash22 } from "node:crypto";
 var PROVIDER_CONVERSATION_CONTENT_POLICY_VERSION = "v0.1.0";
 var PROVIDER_CONVERSATION_VISIBLE_CONTENT_CLASSES = Object.freeze([
   "user-message",
@@ -13672,22 +14340,22 @@ var ProviderConversationContentPolicyError = class extends Error {
     this.details = details;
   }
 };
-function fail39(code, message, details = {}) {
+function fail41(code, message, details = {}) {
   throw new ProviderConversationContentPolicyError(code, message, details);
 }
 function object9(value, label2) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    fail39("invalid_type", `${label2} must be an object`);
+    fail41("invalid_type", `${label2} must be an object`);
   }
   return value;
 }
 function exact14(value, allowed, label2) {
   const unknown = Object.keys(value).filter((key) => !allowed.includes(key));
-  if (unknown.length > 0) fail39("unknown_field", `${label2} has unsupported fields`, { unknown });
+  if (unknown.length > 0) fail41("unknown_field", `${label2} has unsupported fields`, { unknown });
 }
 function utc14(value, label2) {
   if (typeof value !== "string" || value.length > 64 || !value.endsWith("Z") || !Number.isFinite(Date.parse(value))) {
-    fail39("invalid_timestamp", `${label2} must be a bounded UTC timestamp`);
+    fail41("invalid_timestamp", `${label2} must be a bounded UTC timestamp`);
   }
 }
 function providerRef(value, provider, kind2, label2) {
@@ -13695,20 +14363,20 @@ function providerRef(value, provider, kind2, label2) {
   exact14(value, ["schemaVersion", "kind", "relationship", "authority"], label2);
   validateExternalReference(value);
   if (value.kind !== kind2 || value.authority.authorityType !== "provider" || value.authority.sourceId !== provider.sourceId || value.authority.contractVersion !== provider.adapterVersion) {
-    fail39("authority_mismatch", `${label2} is not owned by the exact provider runtime`);
+    fail41("authority_mismatch", `${label2} is not owned by the exact provider runtime`);
   }
 }
 function visibleText(value) {
   if (typeof value !== "string" || value.length === 0 || Buffer.byteLength(value, "utf8") > 65536 || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u.test(value)) {
-    fail39("invalid_content", "Visible provider content must be bounded text");
+    fail41("invalid_content", "Visible provider content must be bounded text");
   }
   if (SENSITIVE.some((pattern) => pattern.test(value))) {
-    fail39("unsafe_content", "Visible provider content contains private or inline data");
+    fail41("unsafe_content", "Visible provider content contains private or inline data");
   }
   return value;
 }
 function hashText2(value) {
-  return createHash20("sha256").update(value, "utf8").digest("hex");
+  return createHash22("sha256").update(value, "utf8").digest("hex");
 }
 function validateProviderConversationContentItem(value) {
   object9(value, "conversationContent");
@@ -13727,27 +14395,27 @@ function validateProviderConversationContentItem(value) {
     "observedAtUtc"
   ], "conversationContent");
   if (value.schemaVersion !== 1 || value.contractVersion !== PROVIDER_CONVERSATION_CONTENT_POLICY_VERSION) {
-    fail39("unsupported_contract", "Provider conversation content policy is unsupported");
+    fail41("unsupported_contract", "Provider conversation content policy is unsupported");
   }
   validateAdapterIdentity(value.provider);
   if (value.provider.adapterFamily !== "execution-provider") {
-    fail39("authority_mismatch", "Provider conversation content requires an execution provider");
+    fail41("authority_mismatch", "Provider conversation content requires an execution provider");
   }
   providerRef(value.itemRef, value.provider, "provider-item", "itemRef");
   providerRef(value.turnRef, value.provider, "provider-turn", "turnRef");
   utc14(value.observedAtUtc, "observedAtUtc");
   if (value.contentClass === "omitted") {
     if (value.role !== null || value.visibility !== "omitted" || value.text !== null || value.contentSha256 !== null || !OMISSION_SET.has(value.omissionReason)) {
-      fail39("invalid_omission", "Omitted provider content must remain body-free with a known reason");
+      fail41("invalid_omission", "Omitted provider content must remain body-free with a known reason");
     }
     return value;
   }
   if (!Object.hasOwn(CLASS_ROLE, value.contentClass) || value.role !== CLASS_ROLE[value.contentClass] || value.visibility !== "user-visible" || value.omissionReason !== null) {
-    fail39("invalid_content_class", "Visible provider content class, role or visibility is invalid");
+    fail41("invalid_content_class", "Visible provider content class, role or visibility is invalid");
   }
   visibleText(value.text);
   if (!SHA25610.test(value.contentSha256 ?? "") || value.contentSha256 !== hashText2(value.text)) {
-    fail39("content_mismatch", "Visible provider content hash does not match exact text");
+    fail41("content_mismatch", "Visible provider content hash does not match exact text");
   }
   return value;
 }
@@ -13766,17 +14434,17 @@ function createVisibleProviderConversationContent({
   itemRef,
   turnRef,
   contentClass,
-  text: text10,
+  text: text11,
   observedAtUtc
 }) {
-  visibleText(text10);
+  visibleText(text11);
   const value = {
     ...base({ provider, itemRef, turnRef, observedAtUtc }),
     contentClass,
     role: CLASS_ROLE[contentClass] ?? null,
     visibility: "user-visible",
-    text: text10,
-    contentSha256: hashText2(text10),
+    text: text11,
+    contentSha256: hashText2(text11),
     omissionReason: null
   };
   validateProviderConversationContentItem(value);
@@ -13817,7 +14485,7 @@ var APPLICATION_AUTHENTICATION_CAPABILITIES = Object.freeze([
   "session-reuse",
   "logout"
 ]);
-var ID22 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
+var ID25 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
 var VERSION = /^v\d+\.\d+\.\d+$/u;
 var CAPABILITY_SET = new Set(APPLICATION_AUTHENTICATION_CAPABILITIES);
 var SUPPORT = /* @__PURE__ */ new Set(["supported", "unsupported", "unknown"]);
@@ -13828,29 +14496,29 @@ var REASON_BY_STATUS = Object.freeze({
   unavailable: "provider-unavailable",
   unknown: "not-observed"
 });
-function fail40(message, details = {}) {
+function fail42(message, details = {}) {
   throw new ApplicationContractError("invalid_authentication_state", message, details);
 }
 function exact15(value, allowed, label2) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) fail40(`${label2} must be an object`);
+  if (!value || typeof value !== "object" || Array.isArray(value)) fail42(`${label2} must be an object`);
   const fields = Object.keys(value).filter((key) => !allowed.includes(key));
-  if (fields.length > 0) fail40(`${label2} contains unsupported fields`, { fields });
+  if (fields.length > 0) fail42(`${label2} contains unsupported fields`, { fields });
 }
 function utc15(value, label2) {
-  if (typeof value !== "string" || value.length > 64 || !value.endsWith("Z") || !Number.isFinite(Date.parse(value))) fail40(`${label2} must be a bounded UTC timestamp`);
+  if (typeof value !== "string" || value.length > 64 || !value.endsWith("Z") || !Number.isFinite(Date.parse(value))) fail42(`${label2} must be a bounded UTC timestamp`);
 }
 function validateProvider(value) {
   exact15(value, ["providerId", "providerVersion", "runtimeInstanceId"], "authentication provider");
-  if (!ID22.test(value.providerId ?? "") || !VERSION.test(value.providerVersion ?? "") || !ID22.test(value.runtimeInstanceId ?? "")) fail40("authentication provider identity is invalid");
+  if (!ID25.test(value.providerId ?? "") || !VERSION.test(value.providerVersion ?? "") || !ID25.test(value.runtimeInstanceId ?? "")) fail42("authentication provider identity is invalid");
 }
 function validateCapabilities(value) {
   if (!Array.isArray(value) || value.length > APPLICATION_AUTHENTICATION_CAPABILITIES.length) {
-    fail40("authentication capabilities are invalid");
+    fail42("authentication capabilities are invalid");
   }
   const ids = /* @__PURE__ */ new Set();
   for (const item of value) {
     exact15(item, ["capabilityId", "support"], "authentication capability");
-    if (!CAPABILITY_SET.has(item.capabilityId) || ids.has(item.capabilityId) || !SUPPORT.has(item.support)) fail40("authentication capability entry is invalid");
+    if (!CAPABILITY_SET.has(item.capabilityId) || ids.has(item.capabilityId) || !SUPPORT.has(item.support)) fail42("authentication capability entry is invalid");
     ids.add(item.capabilityId);
   }
 }
@@ -13867,16 +14535,16 @@ function validateApplicationAuthenticationState(value) {
     "capabilities"
   ], "authentication state");
   if (value.schemaVersion !== 1 || value.contractVersion !== APPLICATION_AUTHENTICATION_STATE_CONTRACT_VERSION) {
-    fail40("authentication state contract is unsupported");
+    fail42("authentication state contract is unsupported");
   }
   validateProvider(value.provider);
   if (!APPLICATION_AUTHENTICATION_STATES.includes(value.status) || value.reasonCode !== REASON_BY_STATUS[value.status] || typeof value.requiresUserAction !== "boolean" || value.requiresUserAction !== ["unauthenticated", "expired"].includes(value.status)) {
-    fail40("authentication status is inconsistent");
+    fail42("authentication status is inconsistent");
   }
   utc15(value.observedAtUtc, "observedAtUtc");
   utc15(value.validUntilUtc, "validUntilUtc");
   if (Date.parse(value.validUntilUtc) <= Date.parse(value.observedAtUtc)) {
-    fail40("authentication observation validity is invalid");
+    fail42("authentication observation validity is invalid");
   }
   validateCapabilities(value.capabilities);
   return value;
@@ -13892,7 +14560,7 @@ function createApplicationAuthenticationState({
 }) {
   utc15(observedAtUtc, "observedAtUtc");
   if (!Number.isInteger(validForSeconds) || validForSeconds < 1 || validForSeconds > 3600) {
-    fail40("authentication validForSeconds must be between 1 and 3600");
+    fail42("authentication validForSeconds must be between 1 and 3600");
   }
   const value = {
     schemaVersion: 1,
@@ -13909,12 +14577,12 @@ function createApplicationAuthenticationState({
   return value;
 }
 function validateApplicationAuthenticationStates(value) {
-  if (!Array.isArray(value) || value.length > 32) fail40("authenticationStates must be bounded");
+  if (!Array.isArray(value) || value.length > 32) fail42("authenticationStates must be bounded");
   const identities = /* @__PURE__ */ new Set();
   for (const state2 of value) {
     validateApplicationAuthenticationState(state2);
     const identity2 = `${state2.provider.providerId}\0${state2.provider.runtimeInstanceId}`;
-    if (identities.has(identity2)) fail40("authentication state identity is duplicated");
+    if (identities.has(identity2)) fail42("authentication state identity is duplicated");
     identities.add(identity2);
   }
   return value;
@@ -13968,28 +14636,28 @@ var ProviderConversationReadDataError = class extends Error {
     this.details = details;
   }
 };
-function fail41(code, message, details = {}) {
+function fail43(code, message, details = {}) {
   throw new ProviderConversationReadDataError(code, message, details);
 }
 function object10(value, label2) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    fail41("invalid_type", `${label2} must be an object`);
+    fail43("invalid_type", `${label2} must be an object`);
   }
   return value;
 }
 function exact16(value, allowed, label2) {
   const unknown = Object.keys(value).filter((key) => !allowed.includes(key));
-  if (unknown.length > 0) fail41("unknown_field", `${label2} has unsupported fields`, { unknown });
+  if (unknown.length > 0) fail43("unknown_field", `${label2} has unsupported fields`, { unknown });
 }
-function text2(value, label2, maximum = 256) {
+function text3(value, label2, maximum = 256) {
   if (typeof value !== "string" || value.length === 0 || value.length > maximum || /[\u0000-\u001f\u007f]/u.test(value)) {
-    fail41("invalid_string", `${label2} must be a bounded visible string`);
+    fail43("invalid_string", `${label2} must be a bounded visible string`);
   }
   return value;
 }
 function utc16(value, label2) {
   if (typeof value !== "string" || value.length > 64 || !value.endsWith("Z") || !Number.isFinite(Date.parse(value))) {
-    fail41("invalid_timestamp", `${label2} must be a bounded UTC timestamp`);
+    fail43("invalid_timestamp", `${label2} must be a bounded UTC timestamp`);
   }
   return value;
 }
@@ -13998,13 +14666,13 @@ function nullableUtc4(value, label2) {
 }
 function nonnegative(value, label2) {
   if (!Number.isSafeInteger(value) || value < 0) {
-    fail41("invalid_integer", `${label2} must be a non-negative safe integer`);
+    fail43("invalid_integer", `${label2} must be a non-negative safe integer`);
   }
   return value;
 }
 function array4(value, label2, maximum) {
   if (!Array.isArray(value) || value.length > maximum) {
-    fail41("invalid_array", `${label2} must contain at most ${maximum} items`);
+    fail43("invalid_array", `${label2} must contain at most ${maximum} items`);
   }
   return value;
 }
@@ -14020,7 +14688,7 @@ function refKey2(value) {
 function providerRef2(value, provider, kinds, label2) {
   validateExternalReference(value);
   if (!kinds.includes(value.kind) || value.authority.authorityType !== "provider" || value.authority.sourceId !== provider.sourceId || value.authority.contractVersion !== provider.adapterVersion) {
-    fail41("authority_mismatch", `${label2} is not owned by the exact provider adapter`);
+    fail43("authority_mismatch", `${label2} is not owned by the exact provider adapter`);
   }
   return value;
 }
@@ -14028,29 +14696,29 @@ function validateFreshness2(value) {
   object10(value, "conversationRead.freshness");
   exact16(value, ["status", "ageSeconds", "staleAfterSeconds"], "conversationRead.freshness");
   if (!["fresh", "stale", "unknown"].includes(value.status)) {
-    fail41("invalid_freshness", "conversationRead.freshness.status is unsupported");
+    fail43("invalid_freshness", "conversationRead.freshness.status is unsupported");
   }
   for (const key of ["ageSeconds", "staleAfterSeconds"]) {
     if (value[key] !== null) nonnegative(value[key], `conversationRead.freshness.${key}`);
   }
   if (value.status === "fresh" && (value.ageSeconds === null || value.staleAfterSeconds === null || value.ageSeconds >= value.staleAfterSeconds)) {
-    fail41("invalid_freshness", "Fresh data requires age below its stale threshold");
+    fail43("invalid_freshness", "Fresh data requires age below its stale threshold");
   }
 }
 function validateCompleteness2(value, label2) {
   object10(value, label2);
   exact16(value, ["status", "reasonCode", "nextCursor"], label2);
   if (!["complete", "partial", "metadata-only"].includes(value.status)) {
-    fail41("invalid_completeness", `${label2}.status is unsupported`);
+    fail43("invalid_completeness", `${label2}.status is unsupported`);
   }
   if (value.status === "complete") {
     if (value.reasonCode !== null || value.nextCursor !== null) {
-      fail41("invalid_completeness", `${label2} complete data cannot claim omissions`);
+      fail43("invalid_completeness", `${label2} complete data cannot claim omissions`);
     }
   } else if (!REASON2.test(value.reasonCode ?? "")) {
-    fail41("invalid_completeness", `${label2} incomplete data requires a reasonCode`);
+    fail43("invalid_completeness", `${label2} incomplete data requires a reasonCode`);
   }
-  if (value.nextCursor !== null) text2(value.nextCursor, `${label2}.nextCursor`, 512);
+  if (value.nextCursor !== null) text3(value.nextCursor, `${label2}.nextCursor`, 512);
 }
 function validateModelCatalog(value, provider) {
   object10(value, "conversationRead.data");
@@ -14067,22 +14735,22 @@ function validateModelCatalog(value, provider) {
       "defaultReasoningEffort"
     ], label2);
     providerRef2(record.modelRef, provider, ["provider-item"], `${label2}.modelRef`);
-    text2(record.name, `${label2}.name`);
+    text3(record.name, `${label2}.name`);
     array4(record.supportedReasoningEfforts, `${label2}.supportedReasoningEfforts`, 32);
     record.supportedReasoningEfforts.forEach(
-      (effort, effortIndex) => text2(effort, `${label2}.supportedReasoningEfforts[${effortIndex}]`, 96)
+      (effort, effortIndex) => text3(effort, `${label2}.supportedReasoningEfforts[${effortIndex}]`, 96)
     );
     if (new Set(record.supportedReasoningEfforts).size !== record.supportedReasoningEfforts.length) {
-      fail41("duplicate_identity", `${label2} repeats a reasoning effort`);
+      fail43("duplicate_identity", `${label2} repeats a reasoning effort`);
     }
     if (record.defaultReasoningEffort !== null) {
-      text2(record.defaultReasoningEffort, `${label2}.defaultReasoningEffort`, 96);
+      text3(record.defaultReasoningEffort, `${label2}.defaultReasoningEffort`, 96);
       if (!record.supportedReasoningEfforts.includes(record.defaultReasoningEffort)) {
-        fail41("invalid_model", `${label2}.defaultReasoningEffort is not supported`);
+        fail43("invalid_model", `${label2}.defaultReasoningEffort is not supported`);
       }
     }
     const key = refKey2(record.modelRef);
-    if (seen.has(key)) fail41("duplicate_identity", "Model catalog repeats a provider model");
+    if (seen.has(key)) fail43("duplicate_identity", "Model catalog repeats a provider model");
     seen.add(key);
   });
   validateCompleteness2(value.completeness, "conversationRead.data.completeness");
@@ -14092,7 +14760,7 @@ function validateAuthentication(value, provider) {
   exact16(value, ["state"], "conversationRead.data");
   validateApplicationAuthenticationState(value.state);
   if (value.state.provider.providerId !== provider.adapterId || value.state.provider.providerVersion !== provider.adapterVersion || value.state.provider.runtimeInstanceId !== provider.runtimeInstanceId) {
-    fail41("authority_mismatch", "Authentication state belongs to another provider runtime");
+    fail43("authority_mismatch", "Authentication state belongs to another provider runtime");
   }
 }
 function validateThreadMetadata(value, provider, label2) {
@@ -14110,15 +14778,15 @@ function validateThreadMetadata(value, provider, label2) {
   if (value.parentThreadRef !== null) {
     providerRef2(value.parentThreadRef, provider, ["provider-thread"], `${label2}.parentThreadRef`);
   }
-  if (value.title !== null) text2(value.title, `${label2}.title`);
-  if (!THREAD_STATES.has(value.state)) fail41("invalid_thread", `${label2}.state is unsupported`);
-  if (typeof value.archived !== "boolean") fail41("invalid_thread", `${label2}.archived must be boolean`);
+  if (value.title !== null) text3(value.title, `${label2}.title`);
+  if (!THREAD_STATES.has(value.state)) fail43("invalid_thread", `${label2}.state is unsupported`);
+  if (typeof value.archived !== "boolean") fail43("invalid_thread", `${label2}.archived must be boolean`);
   nullableUtc4(value.updatedAtUtc, `${label2}.updatedAtUtc`);
   if (value.activeTurnRef !== null) {
     providerRef2(value.activeTurnRef, provider, ["provider-turn"], `${label2}.activeTurnRef`);
   }
   if (value.archived && value.activeTurnRef !== null) {
-    fail41("invalid_thread", `${label2} cannot be archived with an active turn`);
+    fail43("invalid_thread", `${label2} cannot be archived with an active turn`);
   }
   return value.threadRef;
 }
@@ -14134,15 +14802,15 @@ function validateTurnMetadata(value, provider, label2) {
   ], label2);
   providerRef2(value.turnRef, provider, ["provider-turn"], `${label2}.turnRef`);
   providerRef2(value.threadRef, provider, ["provider-thread"], `${label2}.threadRef`);
-  if (!TURN_STATES.has(value.state)) fail41("invalid_turn", `${label2}.state is unsupported`);
+  if (!TURN_STATES.has(value.state)) fail43("invalid_turn", `${label2}.state is unsupported`);
   nullableUtc4(value.startedAtUtc, `${label2}.startedAtUtc`);
   nullableUtc4(value.completedAtUtc, `${label2}.completedAtUtc`);
   nonnegative(value.itemCount, `${label2}.itemCount`);
   if (value.startedAtUtc !== null && value.completedAtUtc !== null && Date.parse(value.completedAtUtc) < Date.parse(value.startedAtUtc)) {
-    fail41("invalid_turn", `${label2} completed before it started`);
+    fail43("invalid_turn", `${label2} completed before it started`);
   }
   if (["pending", "active"].includes(value.state) && value.completedAtUtc !== null) {
-    fail41("invalid_turn", `${label2} active state cannot have completion time`);
+    fail43("invalid_turn", `${label2} active state cannot have completion time`);
   }
   return value.turnRef;
 }
@@ -14156,7 +14824,7 @@ function validateThreadCatalog(value, provider) {
     `conversationRead.data.records[${index}]`
   ));
   if (new Set(refs.map(refKey2)).size !== refs.length) {
-    fail41("duplicate_identity", "Thread catalog repeats a provider thread");
+    fail43("duplicate_identity", "Thread catalog repeats a provider thread");
   }
   validateCompleteness2(value.completeness, "conversationRead.data.completeness");
 }
@@ -14168,16 +14836,16 @@ function validateThreadRead(value, provider) {
   const turnRefs = value.turns.map((turn, index) => {
     const ref = validateTurnMetadata(turn, provider, `conversationRead.data.turns[${index}]`);
     if (refKey2(turn.threadRef) !== refKey2(threadRef)) {
-      fail41("authority_mismatch", "Thread read contains a turn from another thread");
+      fail43("authority_mismatch", "Thread read contains a turn from another thread");
     }
     return ref;
   });
   if (new Set(turnRefs.map(refKey2)).size !== turnRefs.length) {
-    fail41("duplicate_identity", "Thread read repeats a provider turn");
+    fail43("duplicate_identity", "Thread read repeats a provider turn");
   }
   validateCompleteness2(value.completeness, "conversationRead.data.completeness");
   if (value.completeness.status === "metadata-only" && value.turns.length !== 0) {
-    fail41("invalid_completeness", "Metadata-only thread read cannot contain turns");
+    fail43("invalid_completeness", "Metadata-only thread read cannot contain turns");
   }
 }
 function validateTurnState(value, provider) {
@@ -14200,7 +14868,7 @@ function validateUsage(value, provider) {
     "measuredAtUtc"
   ], "conversationRead.data");
   if (!["available", "unavailable"].includes(value.availability)) {
-    fail41("invalid_usage", "conversationRead.data.availability is unsupported");
+    fail43("invalid_usage", "conversationRead.data.availability is unsupported");
   }
   if (value.threadRef !== null) {
     providerRef2(value.threadRef, provider, ["provider-thread"], "conversationRead.data.threadRef");
@@ -14222,10 +14890,10 @@ function validateUsage(value, provider) {
   nullableUtc4(value.measuredAtUtc, "conversationRead.data.measuredAtUtc");
   if (value.availability === "available") {
     if (value.threadRef === null || value.totalTokens === null || value.measuredAtUtc === null || value.contextWindow === null || value.contextWindow === 0) {
-      fail41("invalid_usage", "Available usage requires thread, total, window and observation");
+      fail43("invalid_usage", "Available usage requires thread, total, window and observation");
     }
   } else if (value.threadRef !== null || value.turnRef !== null || value.measuredAtUtc !== null || metrics.some((key) => value[key] !== null)) {
-    fail41("invalid_usage", "Unavailable usage cannot claim provider measurements");
+    fail43("invalid_usage", "Unavailable usage cannot claim provider measurements");
   }
 }
 function validateProviderEvent(value, provider) {
@@ -14240,12 +14908,12 @@ function validateProviderEvent(value, provider) {
     "itemRef",
     "providerOccurredAtUtc"
   ], "conversationRead.data");
-  text2(value.eventId, "conversationRead.data.eventId", 256);
+  text3(value.eventId, "conversationRead.data.eventId", 256);
   if (!EVENT_KINDS.has(value.eventKind)) {
-    fail41("invalid_event", "conversationRead.data.eventKind is unsupported");
+    fail43("invalid_event", "conversationRead.data.eventKind is unsupported");
   }
   if (value.sequence !== null) nonnegative(value.sequence, "conversationRead.data.sequence");
-  if (value.cursor !== null) text2(value.cursor, "conversationRead.data.cursor", 512);
+  if (value.cursor !== null) text3(value.cursor, "conversationRead.data.cursor", 512);
   if (value.threadRef !== null) {
     providerRef2(value.threadRef, provider, ["provider-thread"], "conversationRead.data.threadRef");
   }
@@ -14257,7 +14925,7 @@ function validateProviderEvent(value, provider) {
   }
   nullableUtc4(value.providerOccurredAtUtc, "conversationRead.data.providerOccurredAtUtc");
   if (value.threadRef === null && value.turnRef === null && value.itemRef === null) {
-    fail41("invalid_event", "Provider event requires an exact provider subject");
+    fail43("invalid_event", "Provider event requires an exact provider subject");
   }
 }
 var VALIDATORS = Object.freeze({
@@ -14281,12 +14949,12 @@ function validateProviderConversationReadData(value) {
     "data"
   ], "conversationRead");
   if (value.schemaVersion !== 1 || value.contractVersion !== PROVIDER_CONVERSATION_READ_DATA_VERSION) {
-    fail41("unsupported_contract", "Provider conversation-read data contract is unsupported");
+    fail43("unsupported_contract", "Provider conversation-read data contract is unsupported");
   }
-  if (!KIND_SET.has(value.kind)) fail41("unsupported_kind", "Conversation-read kind is unsupported");
+  if (!KIND_SET.has(value.kind)) fail43("unsupported_kind", "Conversation-read kind is unsupported");
   validateAdapterIdentity(value.provider);
   if (value.provider.adapterFamily !== "execution-provider") {
-    fail41("authority_mismatch", "Conversation-read data requires an execution provider");
+    fail43("authority_mismatch", "Conversation-read data requires an execution provider");
   }
   utc16(value.observedAtUtc, "conversationRead.observedAtUtc");
   validateFreshness2(value.freshness);
@@ -14439,18 +15107,18 @@ var ProviderConversationReaderError = class extends Error {
     this.details = details;
   }
 };
-function fail42(code, message, details = {}) {
+function fail44(code, message, details = {}) {
   throw new ProviderConversationReaderError(code, message, details);
 }
 function object11(value, label2) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    fail42("invalid_type", `${label2} must be an object`);
+    fail44("invalid_type", `${label2} must be an object`);
   }
 }
 function exact17(value, fields, label2) {
   object11(value, label2);
   const unknown = Object.keys(value).filter((field) => !fields.includes(field));
-  if (unknown.length > 0) fail42("unknown_field", `${label2} has unsupported fields`, { unknown });
+  if (unknown.length > 0) fail44("unknown_field", `${label2} has unsupported fields`, { unknown });
 }
 function refKey3(ref) {
   return JSON.stringify([
@@ -14464,17 +15132,17 @@ function refKey3(ref) {
 function validateCompleteness3(value) {
   exact17(value, ["status", "reasonCode", "nextCursor"], "contentCompleteness");
   if (!["complete", "partial", "metadata-only"].includes(value.status)) {
-    fail42("invalid_completeness", "contentCompleteness.status is unsupported");
+    fail44("invalid_completeness", "contentCompleteness.status is unsupported");
   }
   if (value.status === "complete") {
     if (value.reasonCode !== null || value.nextCursor !== null) {
-      fail42("invalid_completeness", "Complete content cannot claim omissions");
+      fail44("invalid_completeness", "Complete content cannot claim omissions");
     }
   } else if (!/^[a-z][a-z0-9_]{0,95}$/u.test(value.reasonCode ?? "")) {
-    fail42("invalid_completeness", "Incomplete content requires a reasonCode");
+    fail44("invalid_completeness", "Incomplete content requires a reasonCode");
   }
   if (value.nextCursor !== null && (typeof value.nextCursor !== "string" || value.nextCursor.length > 512)) {
-    fail42("invalid_completeness", "contentCompleteness.nextCursor is invalid");
+    fail44("invalid_completeness", "contentCompleteness.nextCursor is invalid");
   }
 }
 function validateProviderConversationReader(reader) {
@@ -14482,13 +15150,13 @@ function validateProviderConversationReader(reader) {
   const descriptor = validateAdapterDescriptor(reader.descriptor);
   const assessment = assessProviderConversationReadCapabilities(descriptor);
   if (!assessment.compatible) {
-    fail42("capability_mismatch", "Reader provider lacks conversation-read capabilities", {
+    fail44("capability_mismatch", "Reader provider lacks conversation-read capabilities", {
       failures: assessment.failures
     });
   }
   for (const method of PROVIDER_CONVERSATION_READER_METHODS) {
     if (typeof reader[method] !== "function") {
-      fail42("missing_method", `Provider conversation reader lacks ${method}`);
+      fail44("missing_method", `Provider conversation reader lacks ${method}`);
     }
   }
   return descriptor;
@@ -14503,14 +15171,14 @@ function validateProviderConversationThreadReadResult(value) {
     "contentCompleteness"
   ], "provider conversation thread read result");
   if (value.schemaVersion !== 1 || value.contractVersion !== PROVIDER_CONVERSATION_READER_VERSION) {
-    fail42("unsupported_contract", "Provider conversation reader result is unsupported");
+    fail44("unsupported_contract", "Provider conversation reader result is unsupported");
   }
   validateProviderConversationReadData(value.threadRead);
   if (value.threadRead.kind !== "thread-read" || !adapterIdentitiesEqual(value.provider, value.threadRead.provider)) {
-    fail42("identity_mismatch", "Thread read does not preserve exact provider identity");
+    fail44("identity_mismatch", "Thread read does not preserve exact provider identity");
   }
   if (!Array.isArray(value.content) || value.content.length > 256) {
-    fail42("invalid_content", "Thread read content must contain at most 256 records");
+    fail44("invalid_content", "Thread read content must contain at most 256 records");
   }
   validateCompleteness3(value.contentCompleteness);
   const turnRefs = new Set(value.threadRead.data.turns.map((turn) => refKey3(turn.turnRef)));
@@ -14518,14 +15186,14 @@ function validateProviderConversationThreadReadResult(value) {
   for (const item of value.content) {
     validateProviderConversationContentItem(item);
     if (!adapterIdentitiesEqual(value.provider, item.provider) || !turnRefs.has(refKey3(item.turnRef))) {
-      fail42("identity_mismatch", "Content is not bound to a returned provider turn");
+      fail44("identity_mismatch", "Content is not bound to a returned provider turn");
     }
     const key = refKey3(item.itemRef);
-    if (itemRefs.has(key)) fail42("duplicate_identity", "Thread read repeats a provider item");
+    if (itemRefs.has(key)) fail44("duplicate_identity", "Thread read repeats a provider item");
     itemRefs.add(key);
   }
   if (value.contentCompleteness.status === "metadata-only" && value.content.length !== 0) {
-    fail42("invalid_completeness", "Metadata-only thread content cannot contain records");
+    fail44("invalid_completeness", "Metadata-only thread content cannot contain records");
   }
   return value;
 }
@@ -14553,7 +15221,7 @@ var APPLICATION_AGENT_CONVERSATION_OPERATIONS = Object.freeze({
   resolve: "query.agent-conversation.resolve",
   read: "query.agent-conversation.read"
 });
-var ID23 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
+var ID26 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
 var REASONS = /* @__PURE__ */ new Set([
   "identity_mismatch",
   "concurrent_update",
@@ -14567,14 +15235,14 @@ var REASONS = /* @__PURE__ */ new Set([
   "source_unavailable",
   "privacy_violation"
 ]);
-function fail43(code) {
+function fail45(code) {
   throw new ApplicationContractError(code, "Agent conversation read unavailable");
 }
 function input(value, read) {
   const keys = read ? ["agentId", "cursor", "limit"] : ["agentId"];
-  if (!value || Object.getPrototypeOf(value) !== Object.prototype || Object.keys(value).some((key) => !keys.includes(key)) || typeof value.agentId !== "string" || !ID23.test(value.agentId)) fail43("conflict");
+  if (!value || Object.getPrototypeOf(value) !== Object.prototype || Object.keys(value).some((key) => !keys.includes(key)) || typeof value.agentId !== "string" || !ID26.test(value.agentId)) fail45("conflict");
   const limit = value.limit === void 0 ? 50 : value.limit, cursor = value.cursor ?? null;
-  if (!Number.isInteger(limit) || limit < 1 || limit > 128 || cursor !== null && (typeof cursor !== "string" || !cursor.length || cursor.length > 2048)) fail43("conflict");
+  if (!Number.isInteger(limit) || limit < 1 || limit > 128 || cursor !== null && (typeof cursor !== "string" || !cursor.length || cursor.length > 2048)) fail45("conflict");
   return { agentId: value.agentId, limit, cursor };
 }
 function errorCode3(error) {
@@ -14594,30 +15262,30 @@ function createApplicationAgentConversationHandlers({
   routes = null
 } = {}) {
   if (!service) return Object.freeze({});
-  if (typeof service.readAgent !== "function" || !ID23.test(instanceId ?? "")) throw new TypeError("Invalid agent reader configuration");
+  if (typeof service.readAgent !== "function" || !ID26.test(instanceId ?? "")) throw new TypeError("Invalid agent reader configuration");
   const table = (routes ?? [{ providerId: providerId2, adapterId, reader }]).filter((route) => route && route.providerId);
   const routeOf = (binding) => table.find((route) => route.providerId === binding?.providerId) ?? null;
   const anyReader = table.some((route) => route.reader);
-  const secret = randomBytes3(32);
+  const secret = randomBytes5(32);
   const seal = (value) => {
-    const iv = randomBytes3(12), cipher = createCipheriv("aes-256-gcm", secret, iv);
+    const iv = randomBytes5(12), cipher = createCipheriv("aes-256-gcm", secret, iv);
     const bytes = Buffer.concat([cipher.update(JSON.stringify(value), "utf8"), cipher.final()]);
     return Buffer.concat([iv, cipher.getAuthTag(), bytes]).toString("base64url");
   };
   const unseal = (cursor) => {
     try {
       const bytes = Buffer.from(cursor, "base64url");
-      if (bytes.length < 29 || bytes.toString("base64url") !== cursor) fail43("stale_revision");
+      if (bytes.length < 29 || bytes.toString("base64url") !== cursor) fail45("stale_revision");
       const cipher = createDecipheriv("aes-256-gcm", secret, bytes.subarray(0, 12));
       cipher.setAuthTag(bytes.subarray(12, 28));
       return JSON.parse(Buffer.concat([cipher.update(bytes.subarray(28)), cipher.final()]).toString("utf8"));
     } catch {
-      fail43("stale_revision");
+      fail45("stale_revision");
     }
   };
   const resolve = async (agentId) => {
     const agent = await service.readAgent({ agentId });
-    if (agent.agentId !== agentId) fail43("source_unavailable");
+    if (agent.agentId !== agentId) fail45("source_unavailable");
     const binding = agent.binding;
     const conversationId = binding ? conversationArchiveIdentity(binding) : null;
     const route = binding ? routeOf(binding) : null;
@@ -14653,8 +15321,8 @@ function createApplicationAgentConversationHandlers({
         atUtc: now().toISOString(),
         reasonCode: REASONS.has(error?.code) ? error.code : "source_unavailable",
         code,
-        requestId: ID23.test(request?.requestId ?? "") ? request.requestId : null,
-        correlationId: ID23.test(request?.correlationId ?? "") ? request.correlationId : null
+        requestId: ID26.test(request?.requestId ?? "") ? request.requestId : null,
+        correlationId: ID26.test(request?.correlationId ?? "") ? request.correlationId : null
       };
       try {
         await onDiagnostic(diagnostic);
@@ -14675,7 +15343,7 @@ function createApplicationAgentConversationHandlers({
     phase("binding");
     const { agent, view, reader: reader2 } = await resolve(options.agentId);
     if (view.liveRead.status !== "available") {
-      fail43(view.liveRead.reasonCode === "agent_archived" ? "conflict" : "source_unavailable");
+      fail45(view.liveRead.reasonCode === "agent_archived" ? "conflict" : "source_unavailable");
     }
     const provider = reader2.descriptor.identity;
     const threadRef = {
@@ -14692,7 +15360,7 @@ function createApplicationAgentConversationHandlers({
     };
     phase("continuation");
     const previous = options.cursor === null ? null : unseal(options.cursor);
-    if (previous && (previous.agentId !== options.agentId || previous.conversationId !== view.conversationId || previous.instanceId !== instanceId || previous.limit !== options.limit)) fail43("stale_revision");
+    if (previous && (previous.agentId !== options.agentId || previous.conversationId !== view.conversationId || previous.instanceId !== instanceId || previous.limit !== options.limit)) fail45("stale_revision");
     phase("provider-read");
     const read = structuredClone(await reader2.readThread({
       threadRef,
@@ -14702,14 +15370,14 @@ function createApplicationAgentConversationHandlers({
     }));
     validateProviderConversationThreadReadResult(read);
     const returned = read.threadRead.data.thread.threadRef;
-    if (read.provider.sourceId !== provider.sourceId || read.provider.adapterId !== provider.adapterId || read.provider.adapterVersion !== provider.adapterVersion || read.provider.runtimeInstanceId !== provider.runtimeInstanceId || returned.authority.externalId !== agent.binding.threadId || returned.authority.sourceId !== provider.sourceId) fail43("source_unavailable");
+    if (read.provider.sourceId !== provider.sourceId || read.provider.adapterId !== provider.adapterId || read.provider.adapterVersion !== provider.adapterVersion || read.provider.runtimeInstanceId !== provider.runtimeInstanceId || returned.authority.externalId !== agent.binding.threadId || returned.authority.sourceId !== provider.sourceId) fail45("source_unavailable");
     const revision2 = read.threadRead.data.thread.updatedAtUtc;
-    if (!revision2 || previous && previous.revision !== revision2) fail43("stale_revision");
+    if (!revision2 || previous && previous.revision !== revision2) fail45("stale_revision");
     phase("binding-recheck");
     const current = await resolve(options.agentId);
-    if (current.view.conversationId !== view.conversationId || current.view.liveRead.status !== "available") fail43("conflict");
+    if (current.view.conversationId !== view.conversationId || current.view.liveRead.status !== "available") fail45("conflict");
     const providerCursor2 = read.threadRead.data.completeness.nextCursor;
-    if (providerCursor2 !== read.contentCompleteness.nextCursor) fail43("source_unavailable");
+    if (providerCursor2 !== read.contentCompleteness.nextCursor) fail45("source_unavailable");
     const nextCursor = providerCursor2 === null ? null : seal({
       agentId: options.agentId,
       conversationId: view.conversationId,
@@ -14764,7 +15432,7 @@ function createApplicationAgentControlHandlers(service) {
 }
 
 // orchestrator/src/application-change-proposal.mjs
-import { createHash as createHash21 } from "node:crypto";
+import { createHash as createHash23 } from "node:crypto";
 var APPLICATION_CHANGE_PROPOSAL_VERSION = "v0.1.0";
 var APPLICATION_CHANGE_KINDS = Object.freeze(["create", "update", "delete"]);
 var APPLICATION_CHANGE_OPERATION_KINDS = Object.freeze([
@@ -14782,7 +15450,7 @@ var APPLICATION_CHANGE_PROPOSAL_LIMITS = Object.freeze({
   maxOperations: 128,
   maxOperationTextBytes: 262144
 });
-var ID24 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
+var ID27 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
 var SHA25611 = /^[a-f0-9]{64}$/u;
 var ALLOWED_PROPOSERS = /* @__PURE__ */ new Set(["local-operator", "controller", "child-agent"]);
 var BODY_FIELDS = [
@@ -14807,78 +15475,78 @@ var ApplicationChangeProposalError = class extends Error {
     this.details = details;
   }
 };
-function fail44(code, message, details = {}) {
+function fail46(code, message, details = {}) {
   throw new ApplicationChangeProposalError(code, message, details);
 }
 function exact18(value, fields, label2) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    fail44("invalid_change_proposal", `${label2} must be an object`);
+    fail46("invalid_change_proposal", `${label2} must be an object`);
   }
   const unknown = Object.keys(value).filter((field) => !fields.includes(field));
   const missing = fields.filter((field) => !Object.hasOwn(value, field));
   if (unknown.length > 0 || missing.length > 0) {
-    fail44("invalid_change_proposal", `${label2} has unknown or missing fields`, { unknown, missing });
+    fail46("invalid_change_proposal", `${label2} has unknown or missing fields`, { unknown, missing });
   }
 }
-function id7(value, label2) {
-  if (typeof value !== "string" || !ID24.test(value)) {
-    fail44("invalid_change_identity", `${label2} is invalid`);
+function id9(value, label2) {
+  if (typeof value !== "string" || !ID27.test(value)) {
+    fail46("invalid_change_identity", `${label2} is invalid`);
   }
   return value;
 }
 function hash3(value, label2, nullable = false) {
   if (nullable && value === null) return value;
   if (typeof value !== "string" || !SHA25611.test(value)) {
-    fail44("invalid_change_hash", `${label2} must be lowercase SHA-256`);
+    fail46("invalid_change_hash", `${label2} must be lowercase SHA-256`);
   }
   return value;
 }
 function utc17(value, label2) {
   if (typeof value !== "string" || !value.endsWith("Z") || !Number.isFinite(Date.parse(value))) {
-    fail44("invalid_change_time", `${label2} must be a UTC date-time ending in Z`);
+    fail46("invalid_change_time", `${label2} must be a UTC date-time ending in Z`);
   }
   return value;
 }
 function proposer(value) {
   validateApplicationActorRef(value);
   if (!ALLOWED_PROPOSERS.has(value.actorType)) {
-    fail44("invalid_change_proposer", "Frontend and provider actors cannot author proposals");
+    fail46("invalid_change_proposer", "Frontend and provider actors cannot author proposals");
   }
   return value;
 }
 function textHash(value) {
-  return createHash21("sha256").update(Buffer.from(value, "utf8")).digest("hex");
+  return createHash23("sha256").update(Buffer.from(value, "utf8")).digest("hex");
 }
-function text3(value, label2) {
+function text4(value, label2) {
   if (typeof value !== "string" || Buffer.byteLength(value, "utf8") > APPLICATION_CHANGE_PROPOSAL_LIMITS.maxOperationTextBytes) {
-    fail44("invalid_change_text", `${label2} exceeds the UTF-8 byte limit`);
+    fail46("invalid_change_text", `${label2} exceeds the UTF-8 byte limit`);
   }
   if (/\u0000/u.test(value) || /[\u0001-\u0008\u000b\u000c\u000e-\u001f]/u.test(value)) {
-    fail44("invalid_change_text", `${label2} contains binary control characters`);
+    fail46("invalid_change_text", `${label2} contains binary control characters`);
   }
   return value;
 }
 function rationale(value, index) {
   exact18(value, ["provenanceId", "kind", "sourceId", "sourceSha256"], `rationaleSources[${index}]`);
-  id7(value.provenanceId, `rationaleSources[${index}].provenanceId`);
+  id9(value.provenanceId, `rationaleSources[${index}].provenanceId`);
   if (!APPLICATION_CHANGE_RATIONALE_KINDS.includes(value.kind)) {
-    fail44("invalid_change_rationale", "Rationale provenance kind is unsupported");
+    fail46("invalid_change_rationale", "Rationale provenance kind is unsupported");
   }
-  id7(value.sourceId, `rationaleSources[${index}].sourceId`);
+  id9(value.sourceId, `rationaleSources[${index}].sourceId`);
   hash3(value.sourceSha256, `rationaleSources[${index}].sourceSha256`);
 }
 function operation(value, index) {
   const label2 = `operations[${index}]`;
   const common = ["operationId", "changeId", "kind"];
   if (!APPLICATION_CHANGE_OPERATION_KINDS.includes(value?.kind)) {
-    fail44("invalid_change_operation", `${label2}.kind is unsupported`);
+    fail46("invalid_change_operation", `${label2}.kind is unsupported`);
   }
   if (value.kind === "create-text") {
     exact18(value, [...common, "content", "contentSha256"], label2);
-    text3(value.content, `${label2}.content`);
+    text4(value.content, `${label2}.content`);
     hash3(value.contentSha256, `${label2}.contentSha256`);
     if (textHash(value.content) !== value.contentSha256) {
-      fail44("change_operation_hash_mismatch", "Created text hash does not match content");
+      fail46("change_operation_hash_mismatch", "Created text hash does not match content");
     }
   } else if (value.kind === "replace-text") {
     exact18(value, [
@@ -14890,20 +15558,20 @@ function operation(value, index) {
       "replacementSha256"
     ], label2);
     if (!Number.isSafeInteger(value.startByte) || value.startByte < 0 || !Number.isSafeInteger(value.endByte) || value.endByte < value.startByte) {
-      fail44("invalid_change_range", `${label2} byte range is invalid`);
+      fail46("invalid_change_range", `${label2} byte range is invalid`);
     }
     hash3(value.expectedSha256, `${label2}.expectedSha256`);
-    text3(value.replacement, `${label2}.replacement`);
+    text4(value.replacement, `${label2}.replacement`);
     hash3(value.replacementSha256, `${label2}.replacementSha256`);
     if (textHash(value.replacement) !== value.replacementSha256) {
-      fail44("change_operation_hash_mismatch", "Replacement hash does not match text");
+      fail46("change_operation_hash_mismatch", "Replacement hash does not match text");
     }
   } else {
     exact18(value, [...common, "expectedContentSha256"], label2);
     hash3(value.expectedContentSha256, `${label2}.expectedContentSha256`);
   }
-  id7(value.operationId, `${label2}.operationId`);
-  id7(value.changeId, `${label2}.changeId`);
+  id9(value.operationId, `${label2}.operationId`);
+  id9(value.changeId, `${label2}.changeId`);
 }
 function sameCanonical(left, right) {
   return applicationCanonicalSha256(left) === applicationCanonicalSha256(right);
@@ -14919,38 +15587,38 @@ function affectedResource(value, index) {
     "proposedContentSha256",
     "operationIds"
   ], label2);
-  id7(value.changeId, `${label2}.changeId`);
+  id9(value.changeId, `${label2}.changeId`);
   if (!APPLICATION_CHANGE_KINDS.includes(value.changeKind)) {
-    fail44("invalid_change_kind", `${label2}.changeKind is unsupported`);
+    fail46("invalid_change_kind", `${label2}.changeKind is unsupported`);
   }
   validateApplicationResourceRef(value.resource);
   if (value.resource.resourceKind !== "project-file") {
-    fail44("invalid_change_resource", "Change proposal supports project files only");
+    fail46("invalid_change_resource", "Change proposal supports project files only");
   }
   hash3(value.resource.contentSha256, `${label2}.resource.contentSha256`);
   hash3(value.baseContentSha256, `${label2}.baseContentSha256`, true);
   hash3(value.proposedContentSha256, `${label2}.proposedContentSha256`, true);
   if (!Array.isArray(value.operationIds) || value.operationIds.length < 1 || value.operationIds.length > APPLICATION_CHANGE_PROPOSAL_LIMITS.maxOperations) {
-    fail44("invalid_change_operations", `${label2}.operationIds are invalid`);
+    fail46("invalid_change_operations", `${label2}.operationIds are invalid`);
   }
-  value.operationIds.forEach((item, itemIndex) => id7(item, `${label2}.operationIds[${itemIndex}]`));
+  value.operationIds.forEach((item, itemIndex) => id9(item, `${label2}.operationIds[${itemIndex}]`));
   const sortedIds = [...value.operationIds].sort();
   if (new Set(value.operationIds).size !== value.operationIds.length || value.operationIds.some((item, itemIndex) => item !== sortedIds[itemIndex])) {
-    fail44("noncanonical_change_proposal", "Affected operation IDs must be unique and sorted");
+    fail46("noncanonical_change_proposal", "Affected operation IDs must be unique and sorted");
   }
   if (value.changeKind === "create") {
     if (value.baseRevision !== null || value.baseContentSha256 !== null || value.proposedContentSha256 !== value.resource.contentSha256) {
-      fail44("invalid_change_base", "Create requires no base and exact proposed resource content");
+      fail46("invalid_change_base", "Create requires no base and exact proposed resource content");
     }
   } else {
     if (value.baseRevision === null || !sameCanonical(value.baseRevision, value.resource.revision) || value.baseContentSha256 !== value.resource.contentSha256) {
-      fail44("invalid_change_base", "Update/delete requires exact resource base revision and content");
+      fail46("invalid_change_base", "Update/delete requires exact resource base revision and content");
     }
     if (value.changeKind === "update" && (value.proposedContentSha256 === null || value.proposedContentSha256 === value.baseContentSha256)) {
-      fail44("invalid_change_result", "Update requires changed proposed content");
+      fail46("invalid_change_result", "Update requires changed proposed content");
     }
     if (value.changeKind === "delete" && value.proposedContentSha256 !== null) {
-      fail44("invalid_change_result", "Delete cannot have proposed content");
+      fail46("invalid_change_result", "Delete cannot have proposed content");
     }
   }
 }
@@ -14959,30 +15627,30 @@ function validateChangeLinks(resources, operations) {
   for (const resource2 of resources) {
     const linked = resource2.operationIds.map((operationId) => operationById.get(operationId));
     if (linked.some((item) => !item || item.changeId !== resource2.changeId)) {
-      fail44("change_operation_binding_mismatch", "Operation does not bind the affected resource");
+      fail46("change_operation_binding_mismatch", "Operation does not bind the affected resource");
     }
     if (resource2.changeKind === "create") {
       if (linked.length !== 1 || linked[0].kind !== "create-text" || linked[0].contentSha256 !== resource2.proposedContentSha256) {
-        fail44("change_operation_binding_mismatch", "Create requires one exact create-text operation");
+        fail46("change_operation_binding_mismatch", "Create requires one exact create-text operation");
       }
     } else if (resource2.changeKind === "delete") {
       if (linked.length !== 1 || linked[0].kind !== "delete-resource" || linked[0].expectedContentSha256 !== resource2.baseContentSha256) {
-        fail44("change_operation_binding_mismatch", "Delete requires one exact delete operation");
+        fail46("change_operation_binding_mismatch", "Delete requires one exact delete operation");
       }
     } else if (linked.some((item) => item.kind !== "replace-text")) {
-      fail44("change_operation_binding_mismatch", "Update supports replace-text operations only");
+      fail46("change_operation_binding_mismatch", "Update supports replace-text operations only");
     } else {
       const ranges = [...linked].sort((left, right) => left.startByte - right.startByte);
       for (let index = 1; index < ranges.length; index += 1) {
         if (ranges[index].startByte < ranges[index - 1].endByte || ranges[index].startByte === ranges[index - 1].startByte) {
-          fail44("overlapping_change_operations", "Update byte ranges overlap or share a start");
+          fail46("overlapping_change_operations", "Update byte ranges overlap or share a start");
         }
       }
     }
   }
   const linkedIds = resources.flatMap((item) => item.operationIds);
   if (new Set(linkedIds).size !== operations.length || linkedIds.some((operationId) => !operationById.has(operationId))) {
-    fail44("change_operation_binding_mismatch", "Every operation must be linked exactly once");
+    fail46("change_operation_binding_mismatch", "Every operation must be linked exactly once");
   }
 }
 function operationTextBytes(value) {
@@ -15015,9 +15683,9 @@ function preview(value, parametersSha256, resources, operations, createdAtUtc) {
     "previewSha256"
   ], "change preview");
   if (value.schemaVersion !== 1 || value.contractVersion !== APPLICATION_CHANGE_PROPOSAL_VERSION) {
-    fail44("unsupported_change_proposal", "Change preview contract is unsupported");
+    fail46("unsupported_change_proposal", "Change preview contract is unsupported");
   }
-  id7(value.previewId, "preview.previewId");
+  id9(value.previewId, "preview.previewId");
   hash3(value.parametersSha256, "preview.parametersSha256");
   const expected = {
     resourceCount: resources.length,
@@ -15029,11 +15697,11 @@ function preview(value, parametersSha256, resources, operations, createdAtUtc) {
   };
   for (const [field, count] of Object.entries(expected)) {
     if (!Number.isSafeInteger(value[field]) || value[field] < 0 || value[field] !== count) {
-      fail44("change_preview_mismatch", `preview.${field} does not match proposal operations`);
+      fail46("change_preview_mismatch", `preview.${field} does not match proposal operations`);
     }
   }
   if (value.parametersSha256 !== parametersSha256 || value.generatedAtUtc !== createdAtUtc) {
-    fail44("change_preview_mismatch", "Preview identity or time does not match proposal");
+    fail46("change_preview_mismatch", "Preview identity or time does not match proposal");
   }
   utc17(value.generatedAtUtc, "preview.generatedAtUtc");
   hash3(value.previewSha256, "preview.previewSha256");
@@ -15041,54 +15709,54 @@ function preview(value, parametersSha256, resources, operations, createdAtUtc) {
     Object.keys(value).filter((field) => field !== "previewSha256").map((field) => [field, value[field]])
   );
   if (applicationCanonicalSha256(body2) !== value.previewSha256) {
-    fail44("change_preview_hash_mismatch", "Change preview body changed");
+    fail46("change_preview_hash_mismatch", "Change preview body changed");
   }
 }
 function validateApplicationChangeProposal(value) {
   exact18(value, [...BODY_FIELDS, "proposalSha256"], "change proposal");
   if (value.schemaVersion !== 1 || value.contractVersion !== APPLICATION_CHANGE_PROPOSAL_VERSION) {
-    fail44("unsupported_change_proposal", "Change proposal contract is unsupported");
+    fail46("unsupported_change_proposal", "Change proposal contract is unsupported");
   }
-  id7(value.proposalId, "proposalId");
+  id9(value.proposalId, "proposalId");
   if (!Number.isSafeInteger(value.proposalRevision) || value.proposalRevision < 1) {
-    fail44("invalid_change_revision", "proposalRevision must be positive");
+    fail46("invalid_change_revision", "proposalRevision must be positive");
   }
   hash3(value.previousProposalSha256, "previousProposalSha256", true);
   if (value.proposalRevision === 1 !== (value.previousProposalSha256 === null)) {
-    fail44("invalid_change_revision", "First proposal revision alone has no previous hash");
+    fail46("invalid_change_revision", "First proposal revision alone has no previous hash");
   }
   proposer(value.proposer);
   if (!Number.isSafeInteger(value.sourceSequence) || value.sourceSequence < 0) {
-    fail44("invalid_change_sequence", "sourceSequence must be non-negative");
+    fail46("invalid_change_sequence", "sourceSequence must be non-negative");
   }
   if (!Array.isArray(value.rationaleSources) || value.rationaleSources.length < 1 || value.rationaleSources.length > 32) {
-    fail44("invalid_change_rationale", "Proposal requires 1-32 rationale sources");
+    fail46("invalid_change_rationale", "Proposal requires 1-32 rationale sources");
   }
   if (!Array.isArray(value.affectedResources) || value.affectedResources.length < 1 || value.affectedResources.length > APPLICATION_CHANGE_PROPOSAL_LIMITS.maxResources) {
-    fail44("invalid_change_resources", "Proposal requires bounded affected resources");
+    fail46("invalid_change_resources", "Proposal requires bounded affected resources");
   }
   if (!Array.isArray(value.operations) || value.operations.length < 1 || value.operations.length > APPLICATION_CHANGE_PROPOSAL_LIMITS.maxOperations) {
-    fail44("invalid_change_operations", "Proposal requires bounded operations");
+    fail46("invalid_change_operations", "Proposal requires bounded operations");
   }
   value.rationaleSources.forEach(rationale);
   value.affectedResources.forEach(affectedResource);
   value.operations.forEach(operation);
-  for (const [items, key, label2] of [
+  for (const [items2, key, label2] of [
     [value.rationaleSources, "provenanceId", "rationale"],
     [value.affectedResources, "changeId", "resource"],
     [value.operations, "operationId", "operation"]
   ]) {
-    const ids = items.map((item) => item[key]);
+    const ids = items2.map((item) => item[key]);
     const sorted = [...ids].sort();
     if (new Set(ids).size !== ids.length || ids.some((item, index) => item !== sorted[index])) {
-      fail44("noncanonical_change_proposal", `${label2} IDs must be unique and sorted`);
+      fail46("noncanonical_change_proposal", `${label2} IDs must be unique and sorted`);
     }
   }
   const resourceKeys = value.affectedResources.map(
     (item) => `${item.resource.sourceId}:${item.resource.nativeId}`
   );
   if (new Set(resourceKeys).size !== resourceKeys.length) {
-    fail44("duplicate_change_resource", "A resource can appear only once per proposal");
+    fail46("duplicate_change_resource", "A resource can appear only once per proposal");
   }
   validateChangeLinks(value.affectedResources, value.operations);
   const parametersSha256 = applicationCanonicalSha256(proposalParameters(value));
@@ -15098,14 +15766,14 @@ function validateApplicationChangeProposal(value) {
   const body2 = Object.fromEntries(BODY_FIELDS.map((field) => [field, value[field]]));
   validateApplicationPayloadPrivacy(body2, { zone: "request-input" });
   if (applicationCanonicalSha256(body2) !== value.proposalSha256) {
-    fail44("change_proposal_hash_mismatch", "Change proposal body changed");
+    fail46("change_proposal_hash_mismatch", "Change proposal body changed");
   }
   return value;
 }
 
 // orchestrator/src/application-interaction-contract.mjs
 var APPLICATION_INTERACTION_CONTRACT_VERSION = "v0.1.0";
-var ID25 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
+var ID28 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
 var SOURCE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$/u;
 var RESPONSE_ID = /^[a-z][a-z0-9-]{0,63}$/u;
 var SHA25612 = /^[a-f0-9]{64}$/u;
@@ -15181,16 +15849,16 @@ var ApplicationInteractionContractError = class extends Error {
     this.details = details;
   }
 };
-function fail45(code, message, details = {}) {
+function fail47(code, message, details = {}) {
   throw new ApplicationInteractionContractError(code, message, details);
 }
 function object12(value, label2) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    fail45("invalid_interaction_object", `${label2} must be a plain object`);
+    fail47("invalid_interaction_object", `${label2} must be a plain object`);
   }
   const prototype = Object.getPrototypeOf(value);
   if (prototype !== Object.prototype && prototype !== null) {
-    fail45("invalid_interaction_object", `${label2} must be a plain object`);
+    fail47("invalid_interaction_object", `${label2} must be a plain object`);
   }
   return value;
 }
@@ -15199,27 +15867,27 @@ function exact19(value, fields, label2) {
   const unknown = Object.keys(value).filter((field) => !fields.includes(field));
   const missing = fields.filter((field) => !Object.hasOwn(value, field));
   if (unknown.length > 0 || missing.length > 0) {
-    fail45("invalid_interaction_shape", `${label2} has unknown or missing fields`, {
+    fail47("invalid_interaction_shape", `${label2} has unknown or missing fields`, {
       unknown,
       missing
     });
   }
 }
-function identifier8(value, label2, pattern = ID25) {
+function identifier8(value, label2, pattern = ID28) {
   if (typeof value !== "string" || !pattern.test(value)) {
-    fail45("invalid_interaction_identity", `${label2} is invalid`);
+    fail47("invalid_interaction_identity", `${label2} is invalid`);
   }
   return value;
 }
-function sha2569(value, label2) {
+function sha25611(value, label2) {
   if (typeof value !== "string" || !SHA25612.test(value)) {
-    fail45("invalid_interaction_hash", `${label2} must be lowercase SHA-256`);
+    fail47("invalid_interaction_hash", `${label2} must be lowercase SHA-256`);
   }
   return value;
 }
 function utc18(value, label2) {
   if (typeof value !== "string" || !value.endsWith("Z") || !Number.isFinite(Date.parse(value))) {
-    fail45("invalid_interaction_time", `${label2} must be a UTC timestamp ending in Z`);
+    fail47("invalid_interaction_time", `${label2} must be a UTC timestamp ending in Z`);
   }
   return value;
 }
@@ -15229,7 +15897,7 @@ function target(value) {
     exact19(value, ["kind", "sourceId", "taskId", "taskSha256"], "target");
     identifier8(value.sourceId, "target.sourceId", SOURCE_ID);
     identifier8(value.taskId, "target.taskId");
-    sha2569(value.taskSha256, "target.taskSha256");
+    sha25611(value.taskSha256, "target.taskSha256");
   } else if (value.kind === "execution") {
     exact19(value, ["kind", "sourceId", "taskId", "executionId"], "target");
     identifier8(value.sourceId, "target.sourceId", SOURCE_ID);
@@ -15239,26 +15907,26 @@ function target(value) {
     exact19(value, ["kind", "resourceRef"], "target");
     validateApplicationResourceRef(value.resourceRef);
   } else {
-    fail45("unsupported_interaction_target", "Interaction target kind is not supported");
+    fail47("unsupported_interaction_target", "Interaction target kind is not supported");
   }
   return value;
 }
 function allowedResponses(value, definition3) {
   if (!Array.isArray(value) || value.length > 16 || value.some((item) => typeof item !== "string" || !RESPONSE_ID.test(item))) {
-    fail45("invalid_interaction_responses", "allowedResponses must be bounded response IDs");
+    fail47("invalid_interaction_responses", "allowedResponses must be bounded response IDs");
   }
   const normalized = [...new Set(value)].sort();
   if (normalized.length !== value.length || normalized.some((item, index) => item !== value[index])) {
-    fail45("noncanonical_interaction_responses", "allowedResponses must be unique and sorted");
+    fail47("noncanonical_interaction_responses", "allowedResponses must be unique and sorted");
   }
   if (definition3.fixedResponses === null) {
     if (normalized.length < 2) {
-      fail45("invalid_interaction_responses", "Closed choice requires at least two responses");
+      fail47("invalid_interaction_responses", "Closed choice requires at least two responses");
     }
   } else {
     const expected = [...definition3.fixedResponses].sort();
     if (JSON.stringify(normalized) !== JSON.stringify(expected)) {
-      fail45("invalid_interaction_responses", "allowedResponses do not match the request type");
+      fail47("invalid_interaction_responses", "allowedResponses do not match the request type");
     }
   }
   return normalized;
@@ -15266,13 +15934,13 @@ function allowedResponses(value, definition3) {
 function responseValue(value, selectedResponse) {
   if (selectedResponse === "submit-text") {
     if (typeof value !== "string" || value.length < 1 || value.length > 4096 || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u.test(value)) {
-      fail45("invalid_interaction_response_value", "Text response must be a bounded string");
+      fail47("invalid_interaction_response_value", "Text response must be a bounded string");
     }
     validateApplicationPayloadPrivacy({ responseValue: value }, { zone: "request-input" });
     return value;
   }
   if (value !== null) {
-    fail45("invalid_interaction_response_value", "Non-text response must have null responseValue");
+    fail47("invalid_interaction_response_value", "Non-text response must have null responseValue");
   }
   return null;
 }
@@ -15281,7 +15949,7 @@ function sameActor(left, right) {
 }
 function interactionRequestTypeDefinition(type) {
   if (typeof type !== "string" || !Object.hasOwn(DEFINITIONS, type)) {
-    fail45("unsupported_interaction_type", "Interaction request type is not supported", { type });
+    fail47("unsupported_interaction_type", "Interaction request type is not supported", { type });
   }
   return APPLICATION_INTERACTION_TYPE_DEFINITIONS[type];
 }
@@ -15303,36 +15971,36 @@ var REQUEST_BODY_FIELDS = [
 function validateApplicationInteractionRequest(value) {
   exact19(value, [...REQUEST_BODY_FIELDS, "requestSha256"], "interaction request");
   if (value.schemaVersion !== 1 || value.contractVersion !== APPLICATION_INTERACTION_CONTRACT_VERSION) {
-    fail45("unsupported_interaction_contract", "Interaction request contract is unsupported");
+    fail47("unsupported_interaction_contract", "Interaction request contract is unsupported");
   }
   identifier8(value.requestId, "requestId");
   const definition3 = interactionRequestTypeDefinition(value.requestType);
   if (value.mode !== definition3.mode) {
-    fail45("interaction_mode_mismatch", "Interaction mode does not match request type");
+    fail47("interaction_mode_mismatch", "Interaction mode does not match request type");
   }
   validateApplicationActorRef(value.owner);
   if (value.owner.actorType !== "local-operator") {
-    fail45("owner_authority_required", "Interaction owner must be a local operator");
+    fail47("owner_authority_required", "Interaction owner must be a local operator");
   }
   target(value.target);
   if (!Number.isSafeInteger(value.requestRevision) || value.requestRevision < 1) {
-    fail45("invalid_interaction_revision", "requestRevision must be a positive safe integer");
+    fail47("invalid_interaction_revision", "requestRevision must be a positive safe integer");
   }
   if (!Number.isSafeInteger(value.sourceSequence) || value.sourceSequence < 0) {
-    fail45("invalid_interaction_sequence", "sourceSequence must be a non-negative safe integer");
+    fail47("invalid_interaction_sequence", "sourceSequence must be a non-negative safe integer");
   }
-  sha2569(value.contextSha256, "contextSha256");
+  sha25611(value.contextSha256, "contextSha256");
   allowedResponses(value.allowedResponses, definition3);
   utc18(value.requestedAtUtc, "requestedAtUtc");
   utc18(value.expiresAtUtc, "expiresAtUtc");
   if (Date.parse(value.expiresAtUtc) <= Date.parse(value.requestedAtUtc)) {
-    fail45("invalid_interaction_expiry", "expiresAtUtc must be later than requestedAtUtc");
+    fail47("invalid_interaction_expiry", "expiresAtUtc must be later than requestedAtUtc");
   }
-  sha2569(value.requestSha256, "requestSha256");
+  sha25611(value.requestSha256, "requestSha256");
   const body2 = Object.fromEntries(REQUEST_BODY_FIELDS.map((field) => [field, value[field]]));
   validateApplicationPayloadPrivacy(body2, { zone: "request-input" });
   if (applicationCanonicalSha256(body2) !== value.requestSha256) {
-    fail45("interaction_request_hash_mismatch", "Interaction request body changed");
+    fail47("interaction_request_hash_mismatch", "Interaction request body changed");
   }
   return value;
 }
@@ -15351,7 +16019,7 @@ function createApplicationInteractionRequest(value = {}) {
   ], "interaction request input");
   const definition3 = interactionRequestTypeDefinition(value.requestType);
   if (!Array.isArray(value.allowedResponses) || new Set(value.allowedResponses).size !== value.allowedResponses.length) {
-    fail45("invalid_interaction_responses", "allowedResponses must not contain duplicates");
+    fail47("invalid_interaction_responses", "allowedResponses must not contain duplicates");
   }
   const body2 = {
     schemaVersion: 1,
@@ -15391,29 +16059,29 @@ var RESPONSE_BODY_FIELDS = [
 function validateApplicationInteractionResponse(value) {
   exact19(value, [...RESPONSE_BODY_FIELDS, "responseSha256"], "interaction response");
   if (value.schemaVersion !== 1 || value.contractVersion !== APPLICATION_INTERACTION_CONTRACT_VERSION) {
-    fail45("unsupported_interaction_contract", "Interaction response contract is unsupported");
+    fail47("unsupported_interaction_contract", "Interaction response contract is unsupported");
   }
   identifier8(value.responseId, "responseId");
   identifier8(value.requestId, "requestId");
-  sha2569(value.requestSha256, "requestSha256");
+  sha25611(value.requestSha256, "requestSha256");
   if (!Number.isSafeInteger(value.requestRevision) || value.requestRevision < 1) {
-    fail45("invalid_interaction_revision", "requestRevision must be a positive safe integer");
+    fail47("invalid_interaction_revision", "requestRevision must be a positive safe integer");
   }
   if (!Number.isSafeInteger(value.sourceSequence) || value.sourceSequence < 0) {
-    fail45("invalid_interaction_sequence", "sourceSequence must be a non-negative safe integer");
+    fail47("invalid_interaction_sequence", "sourceSequence must be a non-negative safe integer");
   }
   validateApplicationActorRef(value.operator);
   if (value.operator.actorType !== "local-operator") {
-    fail45("owner_authority_required", "Interaction response requires a local operator");
+    fail47("owner_authority_required", "Interaction response requires a local operator");
   }
   identifier8(value.selectedResponse, "selectedResponse", RESPONSE_ID);
   responseValue(value.responseValue, value.selectedResponse);
   utc18(value.respondedAtUtc, "respondedAtUtc");
-  sha2569(value.responseSha256, "responseSha256");
+  sha25611(value.responseSha256, "responseSha256");
   const body2 = Object.fromEntries(RESPONSE_BODY_FIELDS.map((field) => [field, value[field]]));
   validateApplicationPayloadPrivacy(body2, { zone: "request-input" });
   if (applicationCanonicalSha256(body2) !== value.responseSha256) {
-    fail45("interaction_response_hash_mismatch", "Interaction response body changed");
+    fail47("interaction_response_hash_mismatch", "Interaction response body changed");
   }
   return value;
 }
@@ -15429,27 +16097,27 @@ function authorizeApplicationInteractionResponse({
   if (existingResponse !== null) {
     validateApplicationInteractionResponse(existingResponse);
     const code = existingResponse.requestId === request.requestId && existingResponse.requestSha256 === request.requestSha256 ? "duplicate_interaction_response" : "interaction_response_conflict";
-    fail45(code, "An interaction response already exists for this authority slot");
+    fail47(code, "An interaction response already exists for this authority slot");
   }
   if (request.mode === "notification-only") {
-    fail45("interaction_response_not_allowed", "Notification does not accept a response");
+    fail47("interaction_response_not_allowed", "Notification does not accept a response");
   }
   if (response3.requestId !== request.requestId || response3.requestSha256 !== request.requestSha256 || response3.requestRevision !== request.requestRevision) {
-    fail45("interaction_request_changed", "Response does not bind the current request revision");
+    fail47("interaction_request_changed", "Response does not bind the current request revision");
   }
   if (!sameActor(response3.operator, request.owner)) {
-    fail45("foreign_interaction_operator", "Response operator is not the requested owner");
+    fail47("foreign_interaction_operator", "Response operator is not the requested owner");
   }
   if (!request.allowedResponses.includes(response3.selectedResponse)) {
-    fail45("interaction_response_not_allowed", "Response is not allowed by this request");
+    fail47("interaction_response_not_allowed", "Response is not allowed by this request");
   }
   if (currentSourceSequence !== request.sourceSequence || response3.sourceSequence !== request.sourceSequence) {
-    fail45("stale_interaction_sequence", "Interaction source sequence changed");
+    fail47("stale_interaction_sequence", "Interaction source sequence changed");
   }
   utc18(observedAtUtc, "observedAtUtc");
   const responded = Date.parse(response3.respondedAtUtc);
   if (responded < Date.parse(request.requestedAtUtc) || responded > Date.parse(request.expiresAtUtc) || Date.parse(observedAtUtc) > Date.parse(request.expiresAtUtc)) {
-    fail45("interaction_response_expired", "Interaction response is outside the request lifetime");
+    fail47("interaction_response_expired", "Interaction response is outside the request lifetime");
   }
   return response3;
 }
@@ -15518,7 +16186,7 @@ var APPLICATION_KEEP_OPERATION = Object.freeze({
 
 // orchestrator/src/application-inverse-proposal.mjs
 var APPLICATION_INVERSE_PROPOSAL_VERSION = "v0.1.0";
-var ID26 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
+var ID29 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
 var SOURCE_ID2 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$/u;
 var SHA25613 = /^[a-f0-9]{64}$/u;
 var INVERSE_KIND = Object.freeze({ create: "delete", delete: "create", update: "update" });
@@ -15539,47 +16207,47 @@ var ApplicationInverseProposalError = class extends Error {
     this.details = details;
   }
 };
-function fail46(code, message, details = {}) {
+function fail48(code, message, details = {}) {
   throw new ApplicationInverseProposalError(code, message, details);
 }
 function exact20(value, fields, label2) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    fail46("invalid_inverse_value", `${label2} must be an object`);
+    fail48("invalid_inverse_value", `${label2} must be an object`);
   }
   const unknown = Object.keys(value).filter((field) => !fields.includes(field));
   const missing = fields.filter((field) => !Object.hasOwn(value, field));
   if (unknown.length > 0 || missing.length > 0) {
-    fail46("invalid_inverse_value", `${label2} has unknown or missing fields`, { unknown, missing });
+    fail48("invalid_inverse_value", `${label2} has unknown or missing fields`, { unknown, missing });
   }
 }
 function identifier9(value, label2) {
-  if (typeof value !== "string" || !ID26.test(value)) {
-    fail46("invalid_inverse_identity", `${label2} is invalid`);
+  if (typeof value !== "string" || !ID29.test(value)) {
+    fail48("invalid_inverse_identity", `${label2} is invalid`);
   }
   return value;
 }
 function sourceIdentifier(value, label2) {
   if (typeof value !== "string" || !SOURCE_ID2.test(value)) {
-    fail46("invalid_inverse_identity", `${label2} is not a canonical source ID`);
+    fail48("invalid_inverse_identity", `${label2} is not a canonical source ID`);
   }
   return value;
 }
 function nativeIdentifier(value, label2) {
   if (typeof value !== "string" || value.length < 1 || value.length > 256 || /[\u0000-\u001f\u007f]/u.test(value) || value.startsWith("/") || value.includes("\\") || /^[A-Za-z]:/u.test(value) || value.includes("://") || value.split("/").includes("..")) {
-    fail46("invalid_inverse_identity", `${label2} is not a bounded native ID`);
+    fail48("invalid_inverse_identity", `${label2} is not a bounded native ID`);
   }
   return value;
 }
 function hash4(value, label2, nullable = false) {
   if (nullable && value === null) return value;
   if (typeof value !== "string" || !SHA25613.test(value)) {
-    fail46("invalid_inverse_hash", `${label2} must be lowercase SHA-256`);
+    fail48("invalid_inverse_hash", `${label2} must be lowercase SHA-256`);
   }
   return value;
 }
 function utc19(value, label2) {
   if (typeof value !== "string" || !value.endsWith("Z") || !Number.isFinite(Date.parse(value))) {
-    fail46("invalid_inverse_time", `${label2} must be a UTC date-time ending in Z`);
+    fail48("invalid_inverse_time", `${label2} must be a UTC date-time ending in Z`);
   }
   return value;
 }
@@ -15593,7 +16261,7 @@ function originalRef(value) {
   exact20(value, ["proposalId", "proposalRevision", "proposalSha256"], "originalProposalRef");
   identifier9(value.proposalId, "originalProposalRef.proposalId");
   if (!Number.isSafeInteger(value.proposalRevision) || value.proposalRevision < 1) {
-    fail46("invalid_inverse_revision", "Original proposal revision must be positive");
+    fail48("invalid_inverse_revision", "Original proposal revision must be positive");
   }
   hash4(value.proposalSha256, "originalProposalRef.proposalSha256");
 }
@@ -15614,7 +16282,7 @@ function mapping2(value, index) {
   sourceIdentifier(value.resourceSourceId, `resourceMappings[${index}].resourceSourceId`);
   nativeIdentifier(value.resourceNativeId, `resourceMappings[${index}].resourceNativeId`);
   if (INVERSE_KIND[value.originalChangeKind] !== value.inverseChangeKind) {
-    fail46("invalid_inverse_kind", "Resource mapping is not an opposite change kind");
+    fail48("invalid_inverse_kind", "Resource mapping is not an opposite change kind");
   }
   hash4(value.currentContentSha256, "mapping.currentContentSha256", true);
   hash4(value.restoredContentSha256, "mapping.restoredContentSha256", true);
@@ -15633,37 +16301,37 @@ function expectedMapping(original, inverse) {
 }
 function assertInverseResource(original, inverse) {
   if (resourceKey(original.resource) !== resourceKey(inverse.resource) || original.resource.resourceKind !== inverse.resource.resourceKind || !sameAuthority(original.resource, inverse.resource)) {
-    fail46("inverse_resource_mismatch", "Inverse proposal changed resource identity or authority");
+    fail48("inverse_resource_mismatch", "Inverse proposal changed resource identity or authority");
   }
   const inverseKind = INVERSE_KIND[original.changeKind];
   if (inverse.changeKind !== inverseKind) {
-    fail46("invalid_inverse_kind", "Inverse proposal uses the wrong change kind");
+    fail48("invalid_inverse_kind", "Inverse proposal uses the wrong change kind");
   }
   const current = original.proposedContentSha256;
   const restored = original.baseContentSha256;
   if (inverseKind === "create") {
     if (inverse.baseRevision !== null || inverse.baseContentSha256 !== null || inverse.resource.contentSha256 !== restored || inverse.proposedContentSha256 !== restored) {
-      fail46("inverse_base_mismatch", "Deleted resource inverse must recreate exact prior content");
+      fail48("inverse_base_mismatch", "Deleted resource inverse must recreate exact prior content");
     }
   } else {
     if (current === null || inverse.resource.contentSha256 !== current || inverse.baseContentSha256 !== current || applicationCanonicalSha256(inverse.baseRevision) !== applicationCanonicalSha256(inverse.resource.revision)) {
-      fail46("inverse_base_mismatch", "Inverse must bind the exact post-Keep resource base");
+      fail48("inverse_base_mismatch", "Inverse must bind the exact post-Keep resource base");
     }
     if (inverse.proposedContentSha256 !== restored) {
-      fail46("inverse_result_mismatch", "Inverse does not restore the original content identity");
+      fail48("inverse_result_mismatch", "Inverse does not restore the original content identity");
     }
   }
 }
 function expectedMappings(originalProposal, inverseProposal) {
   if (originalProposal.affectedResources.length !== inverseProposal.affectedResources.length) {
-    fail46("incomplete_inverse", "Inverse must cover every original affected resource exactly once");
+    fail48("incomplete_inverse", "Inverse must cover every original affected resource exactly once");
   }
   const inverseByResource = new Map(
     inverseProposal.affectedResources.map((item) => [resourceKey(item.resource), item])
   );
   return originalProposal.affectedResources.map((original) => {
     const inverse = inverseByResource.get(resourceKey(original.resource));
-    if (!inverse) fail46("incomplete_inverse", "Original affected resource has no inverse change");
+    if (!inverse) fail48("incomplete_inverse", "Original affected resource has no inverse change");
     assertInverseResource(original, inverse);
     return expectedMapping(original, inverse);
   }).sort((left, right) => left.originalChangeId < right.originalChangeId ? -1 : left.originalChangeId > right.originalChangeId ? 1 : 0);
@@ -15674,42 +16342,42 @@ function sameMappings(left, right) {
 function validateApplicationInverseProposal(value, { originalProposal } = {}) {
   exact20(value, [...BODY_FIELDS2, "inverseSha256"], "inverse proposal");
   if (value.schemaVersion !== 1 || value.contractVersion !== APPLICATION_INVERSE_PROPOSAL_VERSION) {
-    fail46("unsupported_inverse_contract", "Inverse proposal contract is unsupported");
+    fail48("unsupported_inverse_contract", "Inverse proposal contract is unsupported");
   }
   identifier9(value.inverseId, "inverseId");
   originalRef(value.originalProposalRef);
   validateApplicationChangeProposal(originalProposal);
   validateApplicationChangeProposal(value.inverseProposal);
   if (value.originalProposalRef.proposalId !== originalProposal.proposalId || value.originalProposalRef.proposalRevision !== originalProposal.proposalRevision || value.originalProposalRef.proposalSha256 !== originalProposal.proposalSha256) {
-    fail46("original_proposal_mismatch", "Inverse references another original proposal");
+    fail48("original_proposal_mismatch", "Inverse references another original proposal");
   }
   if (value.inverseProposal.proposalId === originalProposal.proposalId || value.inverseProposal.proposalSha256 === originalProposal.proposalSha256) {
-    fail46("inverse_identity_conflict", "Inverse must be a distinct change proposal");
+    fail48("inverse_identity_conflict", "Inverse must be a distinct change proposal");
   }
   if (value.inverseProposal.sourceSequence <= originalProposal.sourceSequence) {
-    fail46("stale_inverse_sequence", "Inverse must target a later project state");
+    fail48("stale_inverse_sequence", "Inverse must target a later project state");
   }
   utc19(value.createdAtUtc, "createdAtUtc");
   if (Date.parse(value.inverseProposal.createdAtUtc) <= Date.parse(originalProposal.createdAtUtc) || Date.parse(value.createdAtUtc) < Date.parse(value.inverseProposal.createdAtUtc)) {
-    fail46("invalid_inverse_time", "Inverse timeline does not follow the original proposal");
+    fail48("invalid_inverse_time", "Inverse timeline does not follow the original proposal");
   }
   if (!Array.isArray(value.resourceMappings) || value.resourceMappings.length < 1 || value.resourceMappings.length > 32) {
-    fail46("invalid_inverse_mappings", "Inverse requires 1-32 resource mappings");
+    fail48("invalid_inverse_mappings", "Inverse requires 1-32 resource mappings");
   }
   value.resourceMappings.forEach(mapping2);
   const mappingIds = value.resourceMappings.map((item) => item.originalChangeId);
   const sortedIds = [...mappingIds].sort();
   if (new Set(mappingIds).size !== mappingIds.length || mappingIds.some((item, index) => item !== sortedIds[index])) {
-    fail46("noncanonical_inverse", "Inverse mappings must have unique sorted original IDs");
+    fail48("noncanonical_inverse", "Inverse mappings must have unique sorted original IDs");
   }
   const expected = expectedMappings(originalProposal, value.inverseProposal);
   if (!sameMappings(expected, value.resourceMappings)) {
-    fail46("inverse_mapping_mismatch", "Inverse mappings do not match proposal resources");
+    fail48("inverse_mapping_mismatch", "Inverse mappings do not match proposal resources");
   }
   hash4(value.inverseSha256, "inverseSha256");
   const body2 = Object.fromEntries(BODY_FIELDS2.map((field) => [field, value[field]]));
   if (applicationCanonicalSha256(body2) !== value.inverseSha256) {
-    fail46("inverse_hash_mismatch", "Inverse proposal body changed");
+    fail48("inverse_hash_mismatch", "Inverse proposal body changed");
   }
   return value;
 }
@@ -15744,7 +16412,7 @@ function createApplicationInverseProposal({
 
 // orchestrator/src/application-change-receipt.mjs
 var APPLICATION_CHANGE_RECEIPT_VERSION = "v0.1.0";
-var ID27 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
+var ID30 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
 var SOURCE_ID3 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$/u;
 var SHA25614 = /^[a-f0-9]{64}$/u;
 var OPERATION_KINDS = /* @__PURE__ */ new Set(["keep", "undo"]);
@@ -15776,35 +16444,35 @@ var ApplicationChangeReceiptError = class extends Error {
     this.details = details;
   }
 };
-function fail47(code, message, details = {}) {
+function fail49(code, message, details = {}) {
   throw new ApplicationChangeReceiptError(code, message, details);
 }
 function exact21(value, fields, label2) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    fail47("invalid_change_receipt", `${label2} must be an object`);
+    fail49("invalid_change_receipt", `${label2} must be an object`);
   }
   const unknown = Object.keys(value).filter((field) => !fields.includes(field));
   const missing = fields.filter((field) => !Object.hasOwn(value, field));
   if (unknown.length > 0 || missing.length > 0) {
-    fail47("invalid_change_receipt", `${label2} has unknown or missing fields`, { unknown, missing });
+    fail49("invalid_change_receipt", `${label2} has unknown or missing fields`, { unknown, missing });
   }
 }
 function identifier10(value, label2) {
-  if (typeof value !== "string" || !ID27.test(value)) {
-    fail47("invalid_receipt_identity", `${label2} is invalid`);
+  if (typeof value !== "string" || !ID30.test(value)) {
+    fail49("invalid_receipt_identity", `${label2} is invalid`);
   }
   return value;
 }
 function hash5(value, label2, nullable = false) {
   if (nullable && value === null) return value;
   if (typeof value !== "string" || !SHA25614.test(value)) {
-    fail47("invalid_receipt_hash", `${label2} must be lowercase SHA-256`);
+    fail49("invalid_receipt_hash", `${label2} must be lowercase SHA-256`);
   }
   return value;
 }
 function utc20(value, label2) {
   if (typeof value !== "string" || !value.endsWith("Z") || !Number.isFinite(Date.parse(value))) {
-    fail47("invalid_receipt_time", `${label2} must be a UTC date-time ending in Z`);
+    fail49("invalid_receipt_time", `${label2} must be a UTC date-time ending in Z`);
   }
   return value;
 }
@@ -15812,7 +16480,7 @@ function proposalRef(value) {
   exact21(value, ["proposalId", "proposalRevision", "proposalSha256"], "proposalRef");
   identifier10(value.proposalId, "proposalRef.proposalId");
   if (!Number.isSafeInteger(value.proposalRevision) || value.proposalRevision < 1) {
-    fail47("invalid_receipt_revision", "proposalRef.proposalRevision must be positive");
+    fail49("invalid_receipt_revision", "proposalRef.proposalRevision must be positive");
   }
   hash5(value.proposalSha256, "proposalRef.proposalSha256");
 }
@@ -15844,27 +16512,27 @@ function validateApplicationKeepExecution(value) {
     "fencingRevision"
   ], "Keep execution");
   if (value.schemaVersion !== 1 || value.contractVersion !== APPLICATION_KEEP_VERSION) {
-    fail47("unsupported_keep_execution", "Keep execution contract is unsupported");
+    fail49("unsupported_keep_execution", "Keep execution contract is unsupported");
   }
   if (!OUTCOMES2.has(value.status) || !BASE_STATES.has(value.baseState)) {
-    fail47("invalid_keep_execution", "Keep execution outcome/base state is invalid");
+    fail49("invalid_keep_execution", "Keep execution outcome/base state is invalid");
   }
   for (const field of ["proposalId", "writerId", "leaseId"]) identifier10(value[field], field);
   if (!Number.isSafeInteger(value.proposalRevision) || value.proposalRevision < 1 || !Number.isSafeInteger(value.fencingRevision) || value.fencingRevision < 1) {
-    fail47("invalid_keep_execution", "Keep execution revision/fence is invalid");
+    fail49("invalid_keep_execution", "Keep execution revision/fence is invalid");
   }
   for (const field of ["proposalSha256", "previewSha256", "decisionSha256"]) {
     hash5(value[field], field);
   }
   hash5(value.evidenceSha256, "evidenceSha256", value.status === "uncertain");
   if (value.status === "applied" && value.baseState !== "matched") {
-    fail47("invalid_keep_execution", "Applied execution requires matched base");
+    fail49("invalid_keep_execution", "Applied execution requires matched base");
   }
   if (value.status === "not-applied" && value.baseState === "unknown") {
-    fail47("invalid_keep_execution", "Definitive no-write execution requires observed base");
+    fail49("invalid_keep_execution", "Definitive no-write execution requires observed base");
   }
   if (value.status === "uncertain" && value.baseState !== "unknown") {
-    fail47("invalid_keep_execution", "Uncertain execution requires unknown base");
+    fail49("invalid_keep_execution", "Uncertain execution requires unknown base");
   }
   return value;
 }
@@ -15876,19 +16544,19 @@ function publication(value) {
     "observedAtUtc"
   ], "publication");
   if (!PUBLICATION_STATES.has(value.status)) {
-    fail47("invalid_receipt_publication", "Publication status is unsupported");
+    fail49("invalid_receipt_publication", "Publication status is unsupported");
   }
   if (value.publicationId !== null) identifier10(value.publicationId, "publication.publicationId");
   hash5(value.evidenceSha256, "publication.evidenceSha256", true);
   utc20(value.observedAtUtc, "publication.observedAtUtc");
   if (value.status === "published" && (value.publicationId === null || value.evidenceSha256 === null)) {
-    fail47("invalid_receipt_publication", "Published state requires identity and evidence");
+    fail49("invalid_receipt_publication", "Published state requires identity and evidence");
   }
   if (value.status === "failed" && value.evidenceSha256 === null) {
-    fail47("invalid_receipt_publication", "Failed publication requires evidence");
+    fail49("invalid_receipt_publication", "Failed publication requires evidence");
   }
   if (value.status === "not-required" && (value.publicationId !== null || value.evidenceSha256 !== null)) {
-    fail47("invalid_receipt_publication", "Not-required publication carries no identity/evidence");
+    fail49("invalid_receipt_publication", "Not-required publication carries no identity/evidence");
   }
 }
 function resource(value, index) {
@@ -15903,7 +16571,7 @@ function resource(value, index) {
   ], `resources[${index}]`);
   identifier10(value.changeId, `resources[${index}].changeId`);
   if (typeof value.sourceId !== "string" || !SOURCE_ID3.test(value.sourceId) || typeof value.nativeId !== "string" || value.nativeId.length < 1 || value.nativeId.length > 256 || /[\u0000-\u001f\u007f]/u.test(value.nativeId) || value.nativeId.startsWith("/") || value.nativeId.includes("\\") || /^[A-Za-z]:/u.test(value.nativeId) || value.nativeId.includes("://") || value.nativeId.split("/").includes("..")) {
-    fail47("invalid_receipt_resource", "Receipt resource identity is invalid");
+    fail49("invalid_receipt_resource", "Receipt resource identity is invalid");
   }
   for (const field of [
     "expectedPreContentSha256",
@@ -15937,16 +16605,16 @@ function expectedInverseRef(inverseEnvelope) {
 function validateOperationBinding(value, proposal, inverseEnvelope, originalProposal) {
   if (value.operationKind === "keep") {
     if (value.inverseRef !== null || inverseEnvelope !== null || originalProposal !== null) {
-      fail47("receipt_operation_mismatch", "Keep receipt cannot carry inverse evidence");
+      fail49("receipt_operation_mismatch", "Keep receipt cannot carry inverse evidence");
     }
     return;
   }
   if (inverseEnvelope === null || originalProposal === null) {
-    fail47("receipt_operation_mismatch", "Undo receipt requires exact inverse/original evidence");
+    fail49("receipt_operation_mismatch", "Undo receipt requires exact inverse/original evidence");
   }
   validateApplicationInverseProposal(inverseEnvelope, { originalProposal });
   if (inverseEnvelope.inverseProposal.proposalSha256 !== proposal.proposalSha256 || applicationCanonicalSha256(value.inverseRef) !== applicationCanonicalSha256(expectedInverseRef(inverseEnvelope))) {
-    fail47("receipt_operation_mismatch", "Undo receipt does not bind the exact inverse proposal");
+    fail49("receipt_operation_mismatch", "Undo receipt does not bind the exact inverse proposal");
   }
 }
 function validateApplicationChangeReceipt(value, {
@@ -15956,11 +16624,11 @@ function validateApplicationChangeReceipt(value, {
 } = {}) {
   exact21(value, [...BODY_FIELDS3, "receiptSha256"], "change receipt");
   if (value.schemaVersion !== 1 || value.contractVersion !== APPLICATION_CHANGE_RECEIPT_VERSION) {
-    fail47("unsupported_receipt_contract", "Change receipt contract is unsupported");
+    fail49("unsupported_receipt_contract", "Change receipt contract is unsupported");
   }
   identifier10(value.receiptId, "receiptId");
   if (!OPERATION_KINDS.has(value.operationKind) || !OUTCOMES2.has(value.outcome)) {
-    fail47("invalid_change_receipt", "Receipt operation/outcome is unsupported");
+    fail49("invalid_change_receipt", "Receipt operation/outcome is unsupported");
   }
   validateApplicationChangeProposal(proposal);
   proposalRef(value.proposalRef);
@@ -15970,7 +16638,7 @@ function validateApplicationChangeReceipt(value, {
     proposalSha256: proposal.proposalSha256
   };
   if (applicationCanonicalSha256(value.proposalRef) !== applicationCanonicalSha256(expectedProposalRef)) {
-    fail47("receipt_proposal_mismatch", "Receipt references another proposal");
+    fail49("receipt_proposal_mismatch", "Receipt references another proposal");
   }
   inverseRef(value.inverseRef, true);
   validateOperationBinding(value, proposal, inverseEnvelope, originalProposal);
@@ -15979,20 +16647,20 @@ function validateApplicationChangeReceipt(value, {
   exact21(value.writer, ["writerId", "writerKind", "evidenceSha256"], "writer");
   identifier10(value.writer.writerId, "writer.writerId");
   if (value.writer.writerKind !== APPLICATION_KEEP_WRITER_KIND) {
-    fail47("invalid_receipt_writer", "Receipt writer kind is unsupported");
+    fail49("invalid_receipt_writer", "Receipt writer kind is unsupported");
   }
   hash5(value.writer.evidenceSha256, "writer.evidenceSha256", value.outcome === "uncertain");
   exact21(value.lease, ["leaseId", "fencingRevision"], "lease");
   identifier10(value.lease.leaseId, "lease.leaseId");
   if (!Number.isSafeInteger(value.lease.fencingRevision) || value.lease.fencingRevision < 1) {
-    fail47("invalid_receipt_lease", "Receipt fencing revision is invalid");
+    fail49("invalid_receipt_lease", "Receipt fencing revision is invalid");
   }
   if (!Array.isArray(value.resources) || value.resources.length < 1 || value.resources.length > 32) {
-    fail47("invalid_receipt_resources", "Receipt requires 1-32 resource results");
+    fail49("invalid_receipt_resources", "Receipt requires 1-32 resource results");
   }
   value.resources.forEach(resource);
   if (applicationCanonicalSha256(value.resources) !== applicationCanonicalSha256(expectedResources(proposal, value.outcome))) {
-    fail47("receipt_resource_mismatch", "Receipt resource hashes do not match proposal/outcome");
+    fail49("receipt_resource_mismatch", "Receipt resource hashes do not match proposal/outcome");
   }
   exact21(value.validation, ["status", "evidenceSha256", "validatedAtUtc"], "validation");
   const expectedValidation = {
@@ -16001,25 +16669,25 @@ function validateApplicationChangeReceipt(value, {
     uncertain: "uncertain"
   }[value.outcome];
   if (value.validation.status !== expectedValidation || value.validation.evidenceSha256 !== value.writer.evidenceSha256) {
-    fail47("receipt_validation_mismatch", "Validation does not match writer outcome/evidence");
+    fail49("receipt_validation_mismatch", "Validation does not match writer outcome/evidence");
   }
   hash5(value.validation.evidenceSha256, "validation.evidenceSha256", value.outcome === "uncertain");
   utc20(value.validation.validatedAtUtc, "validation.validatedAtUtc");
   publication(value.publication);
   if (value.outcome === "not-applied" && value.publication.status !== "not-required") {
-    fail47("receipt_publication_mismatch", "No-write outcome cannot publish changed state");
+    fail49("receipt_publication_mismatch", "No-write outcome cannot publish changed state");
   }
   if (value.outcome === "uncertain" && !["uncertain", "not-required"].includes(value.publication.status)) {
-    fail47("receipt_publication_mismatch", "Uncertain mutation cannot claim definitive publication");
+    fail49("receipt_publication_mismatch", "Uncertain mutation cannot claim definitive publication");
   }
   utc20(value.completedAtUtc, "completedAtUtc");
   if (Date.parse(value.completedAtUtc) < Date.parse(value.validation.validatedAtUtc) || Date.parse(value.completedAtUtc) < Date.parse(value.publication.observedAtUtc)) {
-    fail47("invalid_receipt_time", "Receipt completed before validation/publication observation");
+    fail49("invalid_receipt_time", "Receipt completed before validation/publication observation");
   }
   hash5(value.receiptSha256, "receiptSha256");
   const body2 = Object.fromEntries(BODY_FIELDS3.map((field) => [field, value[field]]));
   if (applicationCanonicalSha256(body2) !== value.receiptSha256) {
-    fail47("receipt_hash_mismatch", "Change receipt body changed");
+    fail49("receipt_hash_mismatch", "Change receipt body changed");
   }
   return value;
 }
@@ -16038,7 +16706,7 @@ function createApplicationChangeReceipt({
   validateApplicationKeepExecution(execution);
   publication(publicationValue);
   if (execution.proposalId !== proposal.proposalId || execution.proposalRevision !== proposal.proposalRevision || execution.proposalSha256 !== proposal.proposalSha256) {
-    fail47("receipt_execution_mismatch", "Keep execution belongs to another proposal");
+    fail49("receipt_execution_mismatch", "Keep execution belongs to another proposal");
   }
   const body2 = {
     schemaVersion: 1,
@@ -16096,7 +16764,7 @@ var APPLICATION_OWNER_CHAT_OPERATION_IDS = Object.freeze({
 });
 
 // orchestrator/src/application-provider-interaction-bridge.mjs
-import { createHash as createHash22, randomUUID as randomUUID8 } from "node:crypto";
+import { createHash as createHash24, randomUUID as randomUUID8 } from "node:crypto";
 import path22 from "node:path";
 
 // orchestrator/src/provider-interaction-router.mjs
@@ -16159,7 +16827,7 @@ var CODEX_PROVIDER_INTERACTION_METHODS = Object.freeze([
   "mcpServer/elicitation/request"
 ]);
 var METHOD_SET = new Set(CODEX_PROVIDER_INTERACTION_METHODS);
-var ID28 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
+var ID31 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
 var SHA25615 = /^[a-f0-9]{64}$/u;
 var MAX_RECORD_BYTES2 = 64 * 1024;
 var MAX_INDEX_BYTES = 128 * 1024;
@@ -16171,32 +16839,32 @@ var ApplicationProviderInteractionError = class extends Error {
     this.code = code;
   }
 };
-function fail48(code, message) {
+function fail50(code, message) {
   throw new ApplicationProviderInteractionError(code, message);
 }
 function object13(value, label2) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    fail48("conflict", `${label2} must be an object`);
+    fail50("conflict", `${label2} must be an object`);
   }
   const prototype = Object.getPrototypeOf(value);
   if (prototype !== Object.prototype && prototype !== null) {
-    fail48("conflict", `${label2} must be a plain object`);
+    fail50("conflict", `${label2} must be a plain object`);
   }
   return value;
 }
 function exact22(value, fields, label2) {
   object13(value, label2);
   if (Object.keys(value).some((field) => !fields.includes(field)) || fields.some((field) => !Object.hasOwn(value, field))) {
-    fail48("conflict", `${label2} has invalid fields`);
+    fail50("conflict", `${label2} has invalid fields`);
   }
 }
 function identifier11(value, label2) {
-  if (typeof value !== "string" || !ID28.test(value)) fail48("conflict", `${label2} is invalid`);
+  if (typeof value !== "string" || !ID31.test(value)) fail50("conflict", `${label2} is invalid`);
   return value;
 }
 function timestamp3(value, label2) {
   if (typeof value !== "string" || !value.endsWith("Z") || !Number.isFinite(Date.parse(value))) {
-    fail48("conflict", `${label2} is invalid`);
+    fail50("conflict", `${label2} is invalid`);
   }
   return value;
 }
@@ -16205,10 +16873,10 @@ function boundedJson2(value, label2, maximumBytes = 32 * 1024) {
   try {
     encoded3 = JSON.stringify(value);
   } catch {
-    fail48("conflict", `${label2} is not JSON`);
+    fail50("conflict", `${label2} is not JSON`);
   }
   if (encoded3 === void 0 || Buffer.byteLength(encoded3, "utf8") > maximumBytes || /data:(?:image|audio|video)\//iu.test(encoded3) || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u.test(encoded3)) {
-    fail48("conflict", `${label2} exceeds its public bounded content policy`);
+    fail50("conflict", `${label2} exceeds its public bounded content policy`);
   }
   return structuredClone(value);
 }
@@ -16220,7 +16888,7 @@ function providerIdentity(descriptor) {
   return Object.fromEntries(["adapterId", "adapterVersion", "sourceId", "runtimeInstanceId"].map((field) => [field, identifier11(identity2[field], `provider.${field}`)]));
 }
 function recordFileName(interactionId) {
-  return `${createHash22("sha256").update(interactionId, "utf8").digest("hex")}.json`;
+  return `${createHash24("sha256").update(interactionId, "utf8").digest("hex")}.json`;
 }
 function operatorActor() {
   return {
@@ -16244,11 +16912,11 @@ function providerText(value, label2, { required: required2 = false, nullable = t
   if (value === void 0 && !required2) return;
   if (value === null && nullable) return;
   if (typeof value !== "string" || value.length > 16 * 1024 || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u.test(value)) {
-    fail48("conflict", `${label2} is invalid`);
+    fail50("conflict", `${label2} is invalid`);
   }
 }
 function validateQuestions(params) {
-  if (typeof params.isBlocking !== "boolean" || !Array.isArray(params.questions) || params.questions.length < 1 || params.questions.length > 16) fail48("conflict", "Provider questions are invalid");
+  if (typeof params.isBlocking !== "boolean" || !Array.isArray(params.questions) || params.questions.length < 1 || params.questions.length > 16) fail50("conflict", "Provider questions are invalid");
   const ids = [];
   const questions = [];
   for (const question of params.questions) {
@@ -16257,17 +16925,17 @@ function validateQuestions(params) {
     providerText(question.header, "question.header", { required: true, nullable: false });
     providerText(question.question, "question.question", { required: true, nullable: false });
     if (question.isOther !== void 0 && typeof question.isOther !== "boolean") {
-      fail48("conflict", "question.isOther is invalid");
+      fail50("conflict", "question.isOther is invalid");
     }
     if (question.isSecret !== void 0 && typeof question.isSecret !== "boolean") {
-      fail48("conflict", "question.isSecret is invalid");
+      fail50("conflict", "question.isSecret is invalid");
     }
     if (question.multiSelect !== void 0 && typeof question.multiSelect !== "boolean") {
-      fail48("conflict", "question.multiSelect is invalid");
+      fail50("conflict", "question.multiSelect is invalid");
     }
     if (question.options !== void 0 && question.options !== null) {
       if (!Array.isArray(question.options) || question.options.length > 16) {
-        fail48("conflict", "question.options are invalid");
+        fail50("conflict", "question.options are invalid");
       }
       for (const option of question.options) {
         object13(option, "provider question option");
@@ -16292,7 +16960,7 @@ function validateQuestions(params) {
       })) ?? question.options
     }));
   }
-  if (new Set(ids).size !== ids.length) fail48("conflict", "Provider question IDs are ambiguous");
+  if (new Set(ids).size !== ids.length) fail50("conflict", "Provider question IDs are ambiguous");
   return questions;
 }
 function requestDisplay(method, params) {
@@ -16301,7 +16969,7 @@ function requestDisplay(method, params) {
     providerText(params.cwd, "command cwd");
     providerText(params.reason, "command reason");
     if (params.kind !== void 0 && !["command", "writeStdin"].includes(params.kind)) {
-      fail48("conflict", "Command approval kind is invalid");
+      fail50("conflict", "Command approval kind is invalid");
     }
     if (params.additionalPermissions !== void 0 && params.additionalPermissions !== null) {
       object13(params.additionalPermissions, "additional permissions");
@@ -16346,7 +17014,7 @@ function requestDisplay(method, params) {
     };
   }
   providerText(params.serverName, "MCP server name", { required: true, nullable: false });
-  if (!["openai/userVerification", "form", "openai/form", "openaiForm", "url"].includes(params.mode)) fail48("conflict", "MCP elicitation mode is invalid");
+  if (!["openai/userVerification", "form", "openai/form", "openaiForm", "url"].includes(params.mode)) fail50("conflict", "MCP elicitation mode is invalid");
   for (const field of ["title", "message", "description", "url"]) {
     providerText(params[field], `MCP ${field}`);
   }
@@ -16372,11 +17040,11 @@ function choices(method, params) {
       return supported;
     }
     if (!Array.isArray(params.availableDecisions)) {
-      fail48("conflict", "Command approval decisions are invalid");
+      fail50("conflict", "Command approval decisions are invalid");
     }
     const available = [...new Set(params.availableDecisions.filter((decision2) => typeof decision2 === "string" && supported.includes(decision2)))].sort();
     if (available.length < 2) {
-      fail48("unsupported_capability", "Command approval has no safe closed one-shot choice set");
+      fail50("unsupported_capability", "Command approval has no safe closed one-shot choice set");
     }
     return available;
   }
@@ -16399,7 +17067,7 @@ var DISPLAY_KIND_BY_METHOD = Object.freeze({
 function validateDisplay(value, method) {
   exact22(value, ["kind", "title", "fields"], "provider interaction display");
   if (value.kind !== DISPLAY_KIND_BY_METHOD[method] || typeof value.title !== "string" || value.title.length > 4096 || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u.test(value.title)) {
-    fail48("conflict", "Provider interaction display is invalid");
+    fail50("conflict", "Provider interaction display is invalid");
   }
   object13(value.fields, "provider interaction display fields");
   boundedJson2(value.fields, "provider interaction display fields", MAX_RECORD_BYTES2);
@@ -16436,10 +17104,10 @@ function validateRecord(value) {
     "expired",
     "stale",
     "uncertain"
-  ].includes(value.state) || value.automaticRetryAllowed !== false) fail48("conflict", "Provider interaction state is invalid");
+  ].includes(value.state) || value.automaticRetryAllowed !== false) fail50("conflict", "Provider interaction state is invalid");
   identifier11(value.interactionId, "interactionId");
   if (typeof value.conversationId !== "string" || !/^conversation:[a-f0-9]{64}$/u.test(value.conversationId)) {
-    fail48("conflict", "conversationId is invalid");
+    fail50("conflict", "conversationId is invalid");
   }
   providerIdentity({ identity: value.provider });
   exact22(value.providerRequest, [
@@ -16453,7 +17121,7 @@ function validateRecord(value) {
     "requestSha256"
   ], "provider request identity");
   if (!METHOD_SET.has(value.providerRequest.method) || typeof value.providerRequest.requestId !== "string" || value.providerRequest.requestId.length < 1 || value.providerRequest.requestId.length > 512 || !["number", "string"].includes(value.providerRequest.requestIdType) || !Number.isSafeInteger(value.providerRequest.generation) || value.providerRequest.generation < 1) {
-    fail48("conflict", "Provider request identity is invalid");
+    fail50("conflict", "Provider request identity is invalid");
   }
   identifier11(value.providerRequest.threadId, "providerRequest.threadId");
   if (value.providerRequest.turnId !== null) {
@@ -16463,10 +17131,10 @@ function validateRecord(value) {
     identifier11(value.providerRequest.itemId, "providerRequest.itemId");
   }
   if (value.providerRequest.method !== "mcpServer/elicitation/request" && (value.providerRequest.turnId === null || value.providerRequest.itemId === null)) {
-    fail48("conflict", "Provider request item and turn identity are required");
+    fail50("conflict", "Provider request item and turn identity are required");
   }
   if (!SHA25615.test(value.providerRequest.requestSha256)) {
-    fail48("conflict", "Provider request hash is invalid");
+    fail50("conflict", "Provider request hash is invalid");
   }
   validateApplicationInteractionRequest(value.interactionRequest);
   validateDisplay(value.display, value.providerRequest.method);
@@ -16474,37 +17142,37 @@ function validateRecord(value) {
   timestamp3(value.deadlineAtUtc, "deadlineAtUtc");
   timestamp3(value.updatedAtUtc, "updatedAtUtc");
   if (value.providerResponseSha256 !== null && !SHA25615.test(value.providerResponseSha256)) {
-    fail48("conflict", "providerResponseSha256 is invalid");
+    fail50("conflict", "providerResponseSha256 is invalid");
   }
   const unanswered = ["awaiting-owner", "expired", "stale"].includes(value.state);
   if (unanswered !== (value.response === null && value.providerResponseSha256 === null)) {
-    fail48("conflict", "Provider interaction response state is inconsistent");
+    fail50("conflict", "Provider interaction response state is inconsistent");
   }
   if (value.response !== null) {
     validateApplicationInteractionResponse(value.response);
     if (value.response.requestId !== value.interactionRequest.requestId || value.response.requestSha256 !== value.interactionRequest.requestSha256 || !value.interactionRequest.allowedResponses.includes(value.response.selectedResponse)) {
-      fail48("conflict", "Provider interaction response identity changed");
+      fail50("conflict", "Provider interaction response identity changed");
     }
   }
   const { recordSha256, ...body2 } = value;
-  if (recordSha256 !== digest5(body2)) fail48("conflict", "Provider interaction record changed");
+  if (recordSha256 !== digest5(body2)) fail50("conflict", "Provider interaction record changed");
   return structuredClone(value);
 }
 function createRecord({ descriptor, conversationId, method, params, metadata, sourceSequence, now }) {
-  if (!METHOD_SET.has(method)) fail48("unsupported_capability", "Provider request method is unsupported");
+  if (!METHOD_SET.has(method)) fail50("unsupported_capability", "Provider request method is unsupported");
   object13(params, "provider request");
   if (!["number", "string"].includes(typeof metadata?.requestId) || String(metadata.requestId).length < 1 || String(metadata.requestId).length > 512 || !Number.isSafeInteger(metadata.generation) || metadata.generation < 1) {
-    fail48("conflict", "Provider transport request identity is invalid");
+    fail50("conflict", "Provider transport request identity is invalid");
   }
   timestamp3(metadata.deadlineAtUtc, "provider deadlineAtUtc");
   const threadId2 = identifier11(params.threadId, "threadId");
   const turnId2 = params.turnId === null || params.turnId === void 0 ? null : identifier11(params.turnId, "turnId");
   if (method !== "mcpServer/elicitation/request" && turnId2 === null) {
-    fail48("conflict", "Provider turn identity is required");
+    fail50("conflict", "Provider turn identity is required");
   }
   const itemId = params.itemId === void 0 ? null : identifier11(params.itemId, "itemId");
   if (method !== "mcpServer/elicitation/request" && itemId === null) {
-    fail48("conflict", "Provider item identity is required");
+    fail50("conflict", "Provider item identity is required");
   }
   const provider = providerIdentity(descriptor);
   const display = boundedJson2(requestDisplay(method, params), "provider request display");
@@ -16522,7 +17190,7 @@ function createRecord({ descriptor, conversationId, method, params, metadata, so
   let requestedAtUtc = now.toISOString();
   if (Number.isSafeInteger(params.startedAtMs)) {
     const startedAt = new Date(params.startedAtMs);
-    if (!Number.isFinite(startedAt.valueOf())) fail48("conflict", "Provider startedAtMs is invalid");
+    if (!Number.isFinite(startedAt.valueOf())) fail50("conflict", "Provider startedAtMs is invalid");
     requestedAtUtc = startedAt.toISOString();
   }
   const minimumDeadline = new Date(Date.parse(requestedAtUtc) + 1e3).toISOString();
@@ -16571,39 +17239,39 @@ function responsePayload(record, selectedResponse, candidate) {
   const payload = boundedJson2(candidate, "provider response", 16 * 1024);
   if (["item/commandExecution/requestApproval", "item/fileChange/requestApproval"].includes(method)) {
     exact22(payload, ["decision"], "provider approval response");
-    if (!["accept", "decline", "cancel"].includes(payload.decision) || payload.decision !== selectedResponse) fail48("conflict", "Approval decision is invalid");
+    if (!["accept", "decline", "cancel"].includes(payload.decision) || payload.decision !== selectedResponse) fail50("conflict", "Approval decision is invalid");
   } else if (method === "item/tool/requestUserInput") {
     exact22(payload, ["answers"], "provider question response");
     object13(payload.answers, "provider answers");
     const questions = record.display.fields.questions;
     const expected = questions.map((question) => identifier11(question.id, "question.id")).sort();
     if (selectedResponse !== "submit-text" || JSON.stringify(Object.keys(payload.answers).sort()) !== JSON.stringify(expected)) {
-      fail48("conflict", "Provider answers do not match the exact questions");
+      fail50("conflict", "Provider answers do not match the exact questions");
     }
     for (const answer of Object.values(payload.answers)) {
       exact22(answer, ["answers"], "provider answer");
       if (!Array.isArray(answer.answers) || answer.answers.length < 1 || answer.answers.length > 16 || answer.answers.some((item) => typeof item !== "string" || item.length > 4096)) {
-        fail48("conflict", "Provider answer is invalid");
+        fail50("conflict", "Provider answer is invalid");
       }
     }
   } else if (method === "item/permissions/requestApproval") {
     object13(payload, "provider permission response");
     if (!Object.hasOwn(payload, "permissions") || Object.keys(payload).some((key) => !["permissions", "scope", "strictAutoReview"].includes(key))) {
-      fail48("conflict", "Permission response has invalid fields");
+      fail50("conflict", "Permission response has invalid fields");
     }
     if (selectedResponse === "deny") {
       if (digest5(payload) !== digest5({ permissions: {}, scope: "turn" })) {
-        fail48("conflict", "Permission denial must grant no permissions");
+        fail50("conflict", "Permission denial must grant no permissions");
       }
     } else if (selectedResponse === "grant") {
       if (digest5(payload.permissions) !== digest5(record.display.fields.permissions) || ![void 0, "turn"].includes(payload.scope) || ![void 0, null, false].includes(payload.strictAutoReview)) {
-        fail48("conflict", "Permission grant must equal the request and remain turn-scoped");
+        fail50("conflict", "Permission grant must equal the request and remain turn-scoped");
       }
-    } else fail48("conflict", "Permission response is invalid");
+    } else fail50("conflict", "Permission response is invalid");
   } else {
     object13(payload, "MCP elicitation response");
     if (Object.keys(payload).some((key) => !["action", "content", "_meta"].includes(key)) || !["accept", "decline", "cancel"].includes(selectedResponse) || payload.action !== selectedResponse || selectedResponse !== "accept" && Object.keys(payload).some((key) => key !== "action")) {
-      fail48("conflict", "MCP elicitation response is invalid");
+      fail50("conflict", "MCP elicitation response is invalid");
     }
   }
   return payload;
@@ -16614,21 +17282,21 @@ async function readJson2(filePath, maximumBytes, optional = false) {
     stat6 = await lstat12(filePath);
   } catch (error) {
     if (optional && error.code === "ENOENT") return null;
-    fail48("source_unavailable", `Cannot read ${path22.basename(filePath)}`);
+    fail50("source_unavailable", `Cannot read ${path22.basename(filePath)}`);
   }
   if (!stat6.isFile() || stat6.isSymbolicLink() || stat6.size > maximumBytes) {
-    fail48("source_unavailable", `${path22.basename(filePath)} is not a bounded file`);
+    fail50("source_unavailable", `${path22.basename(filePath)} is not a bounded file`);
   }
   try {
     return JSON.parse(await readFile8(filePath, "utf8"));
   } catch {
-    fail48("source_unavailable", `${path22.basename(filePath)} is invalid JSON`);
+    fail50("source_unavailable", `${path22.basename(filePath)} is invalid JSON`);
   }
 }
 async function writeAtomic(filePath, value, maximumBytes) {
   const bytes = Buffer.from(`${JSON.stringify(value, null, 2)}
 `, "utf8");
-  if (bytes.byteLength > maximumBytes) fail48("source_unavailable", "Interaction state is too large");
+  if (bytes.byteLength > maximumBytes) fail50("source_unavailable", "Interaction state is too large");
   const temporary = `${filePath}.tmp-${randomUUID8()}`;
   let handle;
   try {
@@ -16673,7 +17341,7 @@ var ProviderInteractionStore = class {
     return this.#serialize(async () => {
       const index = await this.#index();
       if (!this.summaryHealthy || this.summaryRecords.size !== index.sequence) {
-        fail48("source_unavailable", "Interaction summary is incomplete");
+        fail50("source_unavailable", "Interaction summary is incomplete");
       }
       let pendingQuestions = 0, pendingApprovals = 0, recoveryRequired = 0;
       const observedAtUtc = this.now().toISOString();
@@ -16715,7 +17383,7 @@ var ProviderInteractionStore = class {
       "provider interaction index"
     );
     if (value.schemaVersion !== 1 || value.contractVersion !== APPLICATION_PROVIDER_INTERACTION_VERSION || !Number.isSafeInteger(value.revision) || value.revision < 0 || !Number.isSafeInteger(value.sequence) || value.sequence < 0 || !Array.isArray(value.recent) || value.recent.length > MAX_RECENT) {
-      fail48("source_unavailable", "Provider interaction index is invalid");
+      fail50("source_unavailable", "Provider interaction index is invalid");
     }
     return value;
   }
@@ -16731,7 +17399,7 @@ var ProviderInteractionStore = class {
     const currentProvider = providerIdentity(this.descriptor);
     const recordProvider = providerIdentity({ identity: record.provider });
     if (record.conversationId !== this.conversationId || recordProvider.adapterId !== currentProvider.adapterId || recordProvider.sourceId !== currentProvider.sourceId) {
-      fail48("source_unavailable", "Provider interaction authority identity changed");
+      fail50("source_unavailable", "Provider interaction authority identity changed");
     }
     return record;
   }
@@ -16757,7 +17425,7 @@ var ProviderInteractionStore = class {
         now: this.now()
       });
       const existing = await this.#readRecord(record.interactionId);
-      if (existing !== null) fail48("conflict", "Provider request identity was already observed");
+      if (existing !== null) fail50("conflict", "Provider request identity was already observed");
       const wasHealthy = this.summaryHealthy;
       this.summaryHealthy = false;
       await this.#writeRecord(record);
@@ -16787,7 +17455,7 @@ var ProviderInteractionStore = class {
     return this.#serialize(async () => {
       const index = await this.#index();
       const current = await this.#readRecord(interactionId);
-      if (current === null) fail48("conflict", "Provider interaction is not available");
+      if (current === null) fail50("conflict", "Provider interaction is not available");
       const next = validateRecord(transform(current));
       const wasHealthy = this.summaryHealthy;
       this.summaryHealthy = false;
@@ -16808,13 +17476,13 @@ var ProviderInteractionStore = class {
     return this.#serialize(() => this.#readRecord(interactionId));
   }
   async list({ limit = 32 } = {}) {
-    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 64) fail48("conflict", "limit is invalid");
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 64) fail50("conflict", "limit is invalid");
     return this.#serialize(async () => {
       const index = await this.#index();
       const records = [];
       for (const entry of index.recent.slice(-limit).reverse()) {
         const record = await this.#readRecord(entry.interactionId);
-        if (record === null) fail48("source_unavailable", "Interaction index references a missing record");
+        if (record === null) fail50("source_unavailable", "Interaction index references a missing record");
         records.push(record);
       }
       return {
@@ -16833,7 +17501,7 @@ var ProviderInteractionStore = class {
       let index = await this.#index();
       const files = await readdir6(this.recordsPath, { withFileTypes: true });
       if (files.some((entry) => !entry.isFile() || !/^[a-f0-9]{64}\.json$/u.test(entry.name))) {
-        fail48("source_unavailable", "Provider interaction record inventory is invalid");
+        fail50("source_unavailable", "Provider interaction record inventory is invalid");
       }
       const inventory = [];
       for (const entry of files) {
@@ -16843,14 +17511,14 @@ var ProviderInteractionStore = class {
         ));
         await this.#readRecord(value.interactionId);
         if (recordFileName(value.interactionId) !== entry.name) {
-          fail48("source_unavailable", "Provider interaction record filename changed");
+          fail50("source_unavailable", "Provider interaction record filename changed");
         }
         inventory.push(value);
       }
       inventory.sort((left, right) => left.interactionRequest.sourceSequence - right.interactionRequest.sourceSequence);
       const sequences = inventory.map((record) => record.interactionRequest.sourceSequence);
       if (new Set(sequences).size !== sequences.length || sequences.some((sequence, index2) => sequence !== index2 + 1)) {
-        fail48("source_unavailable", "Provider interaction sequence is ambiguous");
+        fail50("source_unavailable", "Provider interaction sequence is ambiguous");
       }
       const inventorySequence = sequences.at(-1) ?? 0;
       const recoveredInventory = [];
@@ -16924,7 +17592,7 @@ var ApplicationProviderInteractionBridge = class {
   }
   async #receive(method, params, metadata) {
     if (params.threadId !== this.target.threadId || !Number.isSafeInteger(metadata.generation) || metadata.generation < 1) {
-      fail48("conflict", "Provider request belongs to another exact conversation generation");
+      fail50("conflict", "Provider request belongs to another exact conversation generation");
     }
     const record = await this.store.publish(method, params, metadata);
     await this.#archive(record, "request");
@@ -16948,7 +17616,7 @@ var ApplicationProviderInteractionBridge = class {
           metadata.signal.removeEventListener("abort", abort);
           this.waiters.delete(record.interactionId);
           try {
-            const returned = await this.store.update(record.interactionId, (current) => current.state === "response-recorded" ? updateRecord(current, { state: "response-returned" }, this.now()) : fail48("uncertain_outcome", "Provider request changed before response delivery"));
+            const returned = await this.store.update(record.interactionId, (current) => current.state === "response-recorded" ? updateRecord(current, { state: "response-returned" }, this.now()) : fail50("uncertain_outcome", "Provider request changed before response delivery"));
             await this.#archive(returned, "response");
             resolve(payload);
           } catch (error) {
@@ -16982,15 +17650,15 @@ var ApplicationProviderInteractionBridge = class {
       "respondedAtUtc"
     ], "provider interaction response");
     identifier11(input2.interactionId, "interactionId");
-    if (!SHA25615.test(input2.requestSha256 ?? "")) fail48("conflict", "requestSha256 is invalid");
+    if (!SHA25615.test(input2.requestSha256 ?? "")) fail50("conflict", "requestSha256 is invalid");
     timestamp3(input2.respondedAtUtc, "respondedAtUtc");
     let providerResponse;
     const recorded = await this.store.update(input2.interactionId, (current) => {
       if (current.state !== "awaiting-owner" || current.response !== null) {
-        fail48("conflict", "Provider interaction already has a terminal response decision");
+        fail50("conflict", "Provider interaction already has a terminal response decision");
       }
       if (current.interactionRequest.requestSha256 !== input2.requestSha256 || Date.parse(this.now().toISOString()) > Date.parse(current.deadlineAtUtc)) {
-        fail48("conflict", "Provider interaction request is stale or expired");
+        fail50("conflict", "Provider interaction request is stale or expired");
       }
       providerResponse = responsePayload(current, input2.selectedResponse, input2.providerResponse);
       const providerResponseSha256 = digest5(providerResponse);
@@ -17014,7 +17682,7 @@ var ApplicationProviderInteractionBridge = class {
     if (!waiter) {
       const uncertain = await this.store.update(input2.interactionId, (current) => updateRecord(current, { state: "uncertain" }, this.now()));
       await this.#archive(uncertain, "uncertain").catch(() => void 0);
-      fail48("uncertain_outcome", "Response was recorded after its provider request became unavailable");
+      fail50("uncertain_outcome", "Response was recorded after its provider request became unavailable");
     }
     await waiter.resolve(providerResponse);
     const delivered = await this.store.read(input2.interactionId);
@@ -17034,15 +17702,15 @@ var ApplicationProviderInteractionBridge = class {
     };
   }
   async summary() {
-    if (this.closed) fail48("source_unavailable", "Interaction transport is unavailable");
+    if (this.closed) fail50("source_unavailable", "Interaction transport is unavailable");
     const result2 = await this.store.summary();
-    if (this.closed) fail48("source_unavailable", "Interaction transport is unavailable");
+    if (this.closed) fail50("source_unavailable", "Interaction transport is unavailable");
     return result2;
   }
   async list(input2 = {}) {
     object13(input2, "provider interaction read input");
     if (Object.keys(input2).some((field) => field !== "limit")) {
-      fail48("conflict", "Provider interaction read input has invalid fields");
+      fail50("conflict", "Provider interaction read input has invalid fields");
     }
     return this.store.list({ limit: input2.limit ?? 32 });
   }
@@ -17076,18 +17744,18 @@ async function createApplicationProviderInteractionBridge({
 } = {}) {
   identifier11(projectId, "projectId");
   if (typeof now !== "function" || typeof client?.registerServerRequestHandler !== "function" || typeof client?.on !== "function" || typeof client?.off !== "function") {
-    fail48("source_unavailable", "Provider interaction dependencies are unavailable");
+    fail50("source_unavailable", "Provider interaction dependencies are unavailable");
   }
   const provider = providerIdentity(descriptor);
   exact22(target2, ["sourceId", "threadId"], "provider interaction target");
   identifier11(target2.sourceId, "target.sourceId");
   identifier11(target2.threadId, "target.threadId");
   if (provider.sourceId !== target2.sourceId || typeof conversationId !== "string" || !/^conversation:[a-f0-9]{64}$/u.test(conversationId)) {
-    fail48("conflict", "Provider interaction target does not match its archive identity");
+    fail50("conflict", "Provider interaction target does not match its archive identity");
   }
   const root = await realpath11(controllerRoot);
   const identity2 = await resolveProviderMutationProjectId(root);
-  if (identity2 !== projectId) fail48("conflict", "Provider interaction project identity changed");
+  if (identity2 !== projectId) fail50("conflict", "Provider interaction project identity changed");
   const stateScope = digest5({
     projectId,
     conversationId,
@@ -17106,7 +17774,7 @@ async function createApplicationProviderInteractionBridge({
   const canonicalStateRoot = await realpath11(stateRoot);
   const canonicalRecordsPath = await realpath11(recordsPath);
   if (pathEscapes2(root, canonicalStateRoot) || pathEscapes2(canonicalStateRoot, canonicalRecordsPath)) {
-    fail48("source_unavailable", "Provider interaction state path escapes the controller root");
+    fail50("source_unavailable", "Provider interaction state path escapes the controller root");
   }
   const store = new ProviderInteractionStore({
     indexPath: path22.join(canonicalStateRoot, "index.v1.json"),
@@ -17139,7 +17807,7 @@ var APPLICATION_REVIEW_TARGET_KINDS = Object.freeze([
 var APPLICATION_REVIEW_TARGET_LIMITS = Object.freeze({
   maxRangeBytes: 65536
 });
-var ID29 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
+var ID32 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
 var SHA25616 = /^[a-f0-9]{64}$/u;
 var ApplicationReviewTargetError = class extends Error {
   constructor(code, message, details = {}) {
@@ -17149,60 +17817,60 @@ var ApplicationReviewTargetError = class extends Error {
     this.details = details;
   }
 };
-function fail49(code, message, details = {}) {
+function fail51(code, message, details = {}) {
   throw new ApplicationReviewTargetError(code, message, details);
 }
 function exact23(value, fields, label2) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    fail49("invalid_review_target", `${label2} must be an object`);
+    fail51("invalid_review_target", `${label2} must be an object`);
   }
   const unknown = Object.keys(value).filter((field) => !fields.includes(field));
   const missing = fields.filter((field) => !Object.hasOwn(value, field));
   if (unknown.length > 0 || missing.length > 0) {
-    fail49("invalid_review_target", `${label2} has unknown or missing fields`, { unknown, missing });
+    fail51("invalid_review_target", `${label2} has unknown or missing fields`, { unknown, missing });
   }
 }
-function id8(value, label2) {
-  if (typeof value !== "string" || !ID29.test(value)) {
-    fail49("invalid_review_target_identity", `${label2} is invalid`);
+function id10(value, label2) {
+  if (typeof value !== "string" || !ID32.test(value)) {
+    fail51("invalid_review_target_identity", `${label2} is invalid`);
   }
   return value;
 }
 function validateResource(resource2, targetKind) {
   validateApplicationResourceRef(resource2);
   if (typeof resource2.contentSha256 !== "string" || !SHA25616.test(resource2.contentSha256)) {
-    fail49("review_target_content_hash_required", "Review target requires exact content SHA-256");
+    fail51("review_target_content_hash_required", "Review target requires exact content SHA-256");
   }
   const expectedKind = targetKind === "artifact" ? "artifact" : "project-file";
   if (resource2.resourceKind !== expectedKind) {
-    fail49("review_target_resource_mismatch", `Review target requires ${expectedKind}`);
+    fail51("review_target_resource_mismatch", `Review target requires ${expectedKind}`);
   }
 }
 function validateSelector(selector, targetKind) {
   if (targetKind === "artifact" || targetKind === "file") {
     exact23(selector, ["kind"], "review selector");
     if (selector.kind !== "whole-resource") {
-      fail49("review_target_selector_mismatch", "Whole-resource target requires whole-resource selector");
+      fail51("review_target_selector_mismatch", "Whole-resource target requires whole-resource selector");
     }
     return;
   }
   if (targetKind === "structured-element") {
     exact23(selector, ["kind", "elementKind", "elementId"], "review selector");
     if (selector.kind !== "structured-element") {
-      fail49("review_target_selector_mismatch", "Structured target requires structured-element selector");
+      fail51("review_target_selector_mismatch", "Structured target requires structured-element selector");
     }
-    id8(selector.elementKind, "selector.elementKind");
-    id8(selector.elementId, "selector.elementId");
+    id10(selector.elementKind, "selector.elementKind");
+    id10(selector.elementId, "selector.elementId");
     return;
   }
   if (targetKind === "text-range") {
     exact23(selector, ["kind", "startByte", "endByte"], "review selector");
     if (selector.kind !== "text-range" || !Number.isSafeInteger(selector.startByte) || selector.startByte < 0 || !Number.isSafeInteger(selector.endByte) || selector.endByte <= selector.startByte || selector.endByte - selector.startByte > APPLICATION_REVIEW_TARGET_LIMITS.maxRangeBytes) {
-      fail49("invalid_review_target_range", "Text range is outside the byte limits");
+      fail51("invalid_review_target_range", "Text range is outside the byte limits");
     }
     return;
   }
-  fail49("unsupported_review_target", "Review target kind is unsupported");
+  fail51("unsupported_review_target", "Review target kind is unsupported");
 }
 var BODY_FIELDS4 = [
   "schemaVersion",
@@ -17215,21 +17883,21 @@ var BODY_FIELDS4 = [
 function validateApplicationReviewTarget(value) {
   exact23(value, [...BODY_FIELDS4, "targetSha256"], "review target");
   if (value.schemaVersion !== 1 || value.contractVersion !== APPLICATION_REVIEW_TARGET_VERSION) {
-    fail49("unsupported_review_target", "Review target contract is unsupported");
+    fail51("unsupported_review_target", "Review target contract is unsupported");
   }
-  id8(value.targetId, "targetId");
+  id10(value.targetId, "targetId");
   if (!APPLICATION_REVIEW_TARGET_KINDS.includes(value.targetKind)) {
-    fail49("unsupported_review_target", "Review target kind is unsupported");
+    fail51("unsupported_review_target", "Review target kind is unsupported");
   }
   validateResource(value.resource, value.targetKind);
   validateSelector(value.selector, value.targetKind);
   if (typeof value.targetSha256 !== "string" || !SHA25616.test(value.targetSha256)) {
-    fail49("invalid_review_target_hash", "targetSha256 must be lowercase SHA-256");
+    fail51("invalid_review_target_hash", "targetSha256 must be lowercase SHA-256");
   }
   const body2 = Object.fromEntries(BODY_FIELDS4.map((field) => [field, value[field]]));
   validateApplicationPayloadPrivacy(body2, { zone: "result-output" });
   if (applicationCanonicalSha256(body2) !== value.targetSha256) {
-    fail49("review_target_hash_mismatch", "Review target body changed");
+    fail51("review_target_hash_mismatch", "Review target body changed");
   }
   return value;
 }
@@ -17239,7 +17907,7 @@ var APPLICATION_REVIEW_ANCHOR_VERSION = "v0.1.0";
 var APPLICATION_REVIEW_ANCHOR_LIMITS = Object.freeze({
   maxContextBytesPerSide: 4096
 });
-var ID30 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
+var ID33 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
 var SHA25617 = /^[a-f0-9]{64}$/u;
 var BODY_FIELDS5 = [
   "schemaVersion",
@@ -17263,54 +17931,54 @@ var ApplicationReviewAnchorError = class extends Error {
     this.details = details;
   }
 };
-function fail50(code, message, details = {}) {
+function fail52(code, message, details = {}) {
   throw new ApplicationReviewAnchorError(code, message, details);
 }
 function exact24(value, fields, label2) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    fail50("invalid_review_anchor", `${label2} must be an object`);
+    fail52("invalid_review_anchor", `${label2} must be an object`);
   }
   const unknown = Object.keys(value).filter((field) => !fields.includes(field));
   const missing = fields.filter((field) => !Object.hasOwn(value, field));
   if (unknown.length > 0 || missing.length > 0) {
-    fail50("invalid_review_anchor", `${label2} has unknown or missing fields`, { unknown, missing });
+    fail52("invalid_review_anchor", `${label2} has unknown or missing fields`, { unknown, missing });
   }
 }
-function id9(value, label2) {
-  if (typeof value !== "string" || !ID30.test(value)) {
-    fail50("invalid_review_anchor_identity", `${label2} is invalid`);
+function id11(value, label2) {
+  if (typeof value !== "string" || !ID33.test(value)) {
+    fail52("invalid_review_anchor_identity", `${label2} is invalid`);
   }
 }
 function hash6(value, label2) {
   if (typeof value !== "string" || !SHA25617.test(value)) {
-    fail50("invalid_review_anchor_hash", `${label2} must be lowercase SHA-256`);
+    fail52("invalid_review_anchor_hash", `${label2} must be lowercase SHA-256`);
   }
 }
 function contextBytes(value, label2) {
   if (!Number.isInteger(value) || value < 0 || value > APPLICATION_REVIEW_ANCHOR_LIMITS.maxContextBytesPerSide) {
-    fail50("invalid_review_anchor_context", `${label2} is outside the byte limit`);
+    fail52("invalid_review_anchor_context", `${label2} is outside the byte limit`);
   }
 }
 function validateApplicationReviewAnchor(value) {
   exact24(value, [...BODY_FIELDS5, "anchorSha256"], "review anchor");
   if (value.schemaVersion !== 1 || value.contractVersion !== APPLICATION_REVIEW_ANCHOR_VERSION) {
-    fail50("unsupported_review_anchor", "Review anchor contract is unsupported");
+    fail52("unsupported_review_anchor", "Review anchor contract is unsupported");
   }
-  id9(value.anchorId, "anchorId");
-  id9(value.targetId, "targetId");
+  id11(value.anchorId, "anchorId");
+  id11(value.targetId, "targetId");
   hash6(value.targetSha256, "targetSha256");
   hash6(value.resourceContentSha256, "resourceContentSha256");
   if (!["structured-element", "text-range"].includes(value.anchorKind) || value.selector?.kind !== value.anchorKind) {
-    fail50("review_anchor_selector_mismatch", "Anchor kind and selector do not match");
+    fail52("review_anchor_selector_mismatch", "Anchor kind and selector do not match");
   }
   if (value.anchorKind === "structured-element") {
     exact24(value.selector, ["kind", "elementKind", "elementId"], "anchor selector");
-    id9(value.selector.elementKind, "selector.elementKind");
-    id9(value.selector.elementId, "selector.elementId");
+    id11(value.selector.elementKind, "selector.elementKind");
+    id11(value.selector.elementId, "selector.elementId");
   } else {
     exact24(value.selector, ["kind", "startByte", "endByte"], "anchor selector");
     if (!Number.isSafeInteger(value.selector.startByte) || value.selector.startByte < 0 || !Number.isSafeInteger(value.selector.endByte) || value.selector.endByte <= value.selector.startByte || value.selector.endByte - value.selector.startByte > APPLICATION_REVIEW_TARGET_LIMITS.maxRangeBytes) {
-      fail50("invalid_review_anchor_range", "Anchor range is invalid");
+      fail52("invalid_review_anchor_range", "Anchor range is invalid");
     }
   }
   hash6(value.selectedSha256, "selectedSha256");
@@ -17318,13 +17986,13 @@ function validateApplicationReviewAnchor(value) {
   contextBytes(value.contextBeforeBytes, "contextBeforeBytes");
   contextBytes(value.contextAfterBytes, "contextAfterBytes");
   if (value.contextBeforeBytes + value.contextAfterBytes < 1) {
-    fail50("invalid_review_anchor_context", "Anchor requires bounded surrounding context");
+    fail52("invalid_review_anchor_context", "Anchor requires bounded surrounding context");
   }
   hash6(value.anchorSha256, "anchorSha256");
   const body2 = Object.fromEntries(BODY_FIELDS5.map((field) => [field, value[field]]));
   validateApplicationPayloadPrivacy(body2, { zone: "result-output" });
   if (applicationCanonicalSha256(body2) !== value.anchorSha256) {
-    fail50("review_anchor_hash_mismatch", "Review anchor body changed");
+    fail52("review_anchor_hash_mismatch", "Review anchor body changed");
   }
   return value;
 }
@@ -17340,7 +18008,7 @@ var APPLICATION_REVIEW_RESOLUTION_REASONS = Object.freeze([
 var APPLICATION_REVIEW_COMMENT_LIMITS = Object.freeze({
   maxCommentCharacters: 4096
 });
-var ID31 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
+var ID34 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
 var SHA25618 = /^[a-f0-9]{64}$/u;
 var BODY_FIELDS6 = [
   "schemaVersion",
@@ -17368,67 +18036,67 @@ var ApplicationReviewCommentError = class extends Error {
     this.details = details;
   }
 };
-function fail51(code, message, details = {}) {
+function fail53(code, message, details = {}) {
   throw new ApplicationReviewCommentError(code, message, details);
 }
 function exact25(value, fields, label2) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    fail51("invalid_review_comment", `${label2} must be an object`);
+    fail53("invalid_review_comment", `${label2} must be an object`);
   }
   const unknown = Object.keys(value).filter((field) => !fields.includes(field));
   const missing = fields.filter((field) => !Object.hasOwn(value, field));
   if (unknown.length > 0 || missing.length > 0) {
-    fail51("invalid_review_comment", `${label2} has unknown or missing fields`, { unknown, missing });
+    fail53("invalid_review_comment", `${label2} has unknown or missing fields`, { unknown, missing });
   }
 }
-function id10(value, label2) {
-  if (typeof value !== "string" || !ID31.test(value)) {
-    fail51("invalid_review_comment_identity", `${label2} is invalid`);
+function id12(value, label2) {
+  if (typeof value !== "string" || !ID34.test(value)) {
+    fail53("invalid_review_comment_identity", `${label2} is invalid`);
   }
   return value;
 }
 function hash7(value, label2, nullable = false) {
   if (nullable && value === null) return value;
   if (typeof value !== "string" || !SHA25618.test(value)) {
-    fail51("invalid_review_comment_hash", `${label2} must be lowercase SHA-256`);
+    fail53("invalid_review_comment_hash", `${label2} must be lowercase SHA-256`);
   }
   return value;
 }
 function utc21(value, label2) {
   if (typeof value !== "string" || !Number.isFinite(Date.parse(value))) {
-    fail51("invalid_review_comment_time", `${label2} must be a date-time`);
+    fail53("invalid_review_comment_time", `${label2} must be a date-time`);
   }
   return value;
 }
 function owner(value, label2) {
   validateApplicationActorRef(value);
   if (value.actorType !== "local-operator") {
-    fail51("owner_authority_required", `${label2} requires a local operator`);
+    fail53("owner_authority_required", `${label2} requires a local operator`);
   }
   return value;
 }
 function commentText(value) {
   if (typeof value !== "string" || value.trim().length === 0 || [...value].length > APPLICATION_REVIEW_COMMENT_LIMITS.maxCommentCharacters) {
-    fail51("invalid_review_comment_text", "comment is empty or exceeds the character limit");
+    fail53("invalid_review_comment_text", "comment is empty or exceeds the character limit");
   }
   return value;
 }
 function commentRef(value, label2) {
   if (value === null) return value;
   exact25(value, ["commentId", "commentSha256"], label2);
-  id10(value.commentId, `${label2}.commentId`);
+  id12(value.commentId, `${label2}.commentId`);
   hash7(value.commentSha256, `${label2}.commentSha256`);
   return value;
 }
 function resolution(value, state2) {
   if (state2 === "open") {
-    if (value !== null) fail51("invalid_review_resolution", "Open comment cannot be resolved");
+    if (value !== null) fail53("invalid_review_resolution", "Open comment cannot be resolved");
     return value;
   }
   exact25(value, ["resolvedBy", "reason", "resolvedAtUtc"], "resolution");
   owner(value.resolvedBy, "resolution.resolvedBy");
   if (!APPLICATION_REVIEW_RESOLUTION_REASONS.includes(value.reason)) {
-    fail51("invalid_review_resolution", "resolution reason is unsupported");
+    fail53("invalid_review_resolution", "resolution reason is unsupported");
   }
   utc21(value.resolvedAtUtc, "resolution.resolvedAtUtc");
   return value;
@@ -17436,44 +18104,44 @@ function resolution(value, state2) {
 function validateApplicationReviewComment(value) {
   exact25(value, [...BODY_FIELDS6, "commentSha256"], "review comment");
   if (value.schemaVersion !== 1 || value.contractVersion !== APPLICATION_REVIEW_COMMENT_VERSION) {
-    fail51("unsupported_review_comment", "Review comment contract is unsupported");
+    fail53("unsupported_review_comment", "Review comment contract is unsupported");
   }
-  id10(value.commentId, "commentId");
+  id12(value.commentId, "commentId");
   if (!Number.isSafeInteger(value.commentRevision) || value.commentRevision < 1) {
-    fail51("invalid_review_comment_revision", "commentRevision must be positive");
+    fail53("invalid_review_comment_revision", "commentRevision must be positive");
   }
   hash7(value.previousCommentSha256, "previousCommentSha256", true);
   if (value.commentRevision === 1 !== (value.previousCommentSha256 === null)) {
-    fail51("invalid_review_comment_revision", "First revision alone has no previous hash");
+    fail53("invalid_review_comment_revision", "First revision alone has no previous hash");
   }
-  id10(value.targetId, "targetId");
+  id12(value.targetId, "targetId");
   hash7(value.targetSha256, "targetSha256");
   const hasAnchorId = value.anchorId !== null;
   const hasAnchorHash = value.anchorSha256 !== null;
   if (hasAnchorId !== hasAnchorHash) {
-    fail51("invalid_review_comment_anchor", "Anchor ID and hash must be present together");
+    fail53("invalid_review_comment_anchor", "Anchor ID and hash must be present together");
   }
   if (hasAnchorId) {
-    id10(value.anchorId, "anchorId");
+    id12(value.anchorId, "anchorId");
     hash7(value.anchorSha256, "anchorSha256");
   }
   owner(value.author, "author");
   commentText(value.comment);
   commentRef(value.parentCommentRef, "parentCommentRef");
   if (!APPLICATION_REVIEW_COMMENT_STATES.includes(value.state)) {
-    fail51("invalid_review_comment_state", "Review comment state is unsupported");
+    fail53("invalid_review_comment_state", "Review comment state is unsupported");
   }
   resolution(value.resolution, value.state);
   utc21(value.createdAtUtc, "createdAtUtc");
   utc21(value.updatedAtUtc, "updatedAtUtc");
   if (Date.parse(value.updatedAtUtc) < Date.parse(value.createdAtUtc) || value.resolution !== null && Date.parse(value.resolution.resolvedAtUtc) !== Date.parse(value.updatedAtUtc)) {
-    fail51("invalid_review_comment_time", "Comment timestamps are inconsistent");
+    fail53("invalid_review_comment_time", "Comment timestamps are inconsistent");
   }
   hash7(value.commentSha256, "commentSha256");
   const body2 = Object.fromEntries(BODY_FIELDS6.map((field) => [field, value[field]]));
   validateApplicationPayloadPrivacy(body2, { zone: "request-input" });
   if (applicationCanonicalSha256(body2) !== value.commentSha256) {
-    fail51("review_comment_hash_mismatch", "Review comment body changed");
+    fail53("review_comment_hash_mismatch", "Review comment body changed");
   }
   return value;
 }
@@ -17489,7 +18157,7 @@ function targetAnchorRefs(target2, anchor) {
   }
   validateApplicationReviewAnchor(anchor);
   if (anchor.targetId !== target2.targetId || anchor.targetSha256 !== target2.targetSha256) {
-    fail51("review_comment_anchor_mismatch", "Anchor does not bind the review target");
+    fail53("review_comment_anchor_mismatch", "Anchor does not bind the review target");
   }
   return {
     targetId: target2.targetId,
@@ -17514,10 +18182,10 @@ function createApplicationReviewComment(value = {}) {
   if (input2.parentComment !== null) {
     validateApplicationReviewComment(input2.parentComment);
     if (input2.parentComment.commentId === input2.commentId) {
-      fail51("review_comment_parent_mismatch", "Reply requires a distinct comment identity");
+      fail53("review_comment_parent_mismatch", "Reply requires a distinct comment identity");
     }
     if (input2.parentComment.targetId !== refs.targetId || input2.parentComment.targetSha256 !== refs.targetSha256 || input2.parentComment.anchorId !== refs.anchorId || input2.parentComment.anchorSha256 !== refs.anchorSha256) {
-      fail51("review_comment_parent_mismatch", "Reply parent binds another target or anchor");
+      fail53("review_comment_parent_mismatch", "Reply parent binds another target or anchor");
     }
     parentCommentRef = {
       commentId: input2.parentComment.commentId,
@@ -17555,7 +18223,7 @@ var RECEIPT_STATES = /* @__PURE__ */ new Set([
 
 // orchestrator/src/provider-turn-start-binding.mjs
 var PROVIDER_TURN_START_BINDING_VERSION = "v0.1.0";
-var ID32 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
+var ID35 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
 var SHA25619 = /^[a-f0-9]{64}$/u;
 var MAX_INPUT_BYTES = 1024 * 1024;
 var ProviderTurnStartBindingError = class extends Error {
@@ -17566,19 +18234,19 @@ var ProviderTurnStartBindingError = class extends Error {
     this.details = details;
   }
 };
-function fail52(code, message, details = {}) {
+function fail54(code, message, details = {}) {
   throw new ProviderTurnStartBindingError(code, message, details);
 }
 function object14(value, label2) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    fail52("invalid_object", `${label2} must be a plain object`);
+    fail54("invalid_object", `${label2} must be a plain object`);
   }
   const prototype = Object.getPrototypeOf(value);
   if (prototype !== Object.prototype && prototype !== null) {
-    fail52("invalid_object", `${label2} must be a plain object`);
+    fail54("invalid_object", `${label2} must be a plain object`);
   }
   for (const descriptor of Object.values(Object.getOwnPropertyDescriptors(value))) {
-    if (!("value" in descriptor)) fail52("invalid_object", `${label2} cannot contain accessors`);
+    if (!("value" in descriptor)) fail54("invalid_object", `${label2} cannot contain accessors`);
   }
   return value;
 }
@@ -17587,18 +18255,18 @@ function exact26(value, fields, label2) {
   const unknown = Object.keys(value).filter((field) => !fields.includes(field));
   const missing = fields.filter((field) => !Object.hasOwn(value, field));
   if (unknown.length > 0 || missing.length > 0) {
-    fail52("invalid_shape", `${label2} has unknown or missing fields`, { unknown, missing });
+    fail54("invalid_shape", `${label2} has unknown or missing fields`, { unknown, missing });
   }
 }
 function identifier12(value, label2) {
-  if (typeof value !== "string" || !ID32.test(value)) {
-    fail52("invalid_identity", `${label2} must be a bounded identifier`);
+  if (typeof value !== "string" || !ID35.test(value)) {
+    fail54("invalid_identity", `${label2} must be a bounded identifier`);
   }
   return value;
 }
-function sha25610(value, label2) {
+function sha25612(value, label2) {
   if (typeof value !== "string" || !SHA25619.test(value)) {
-    fail52("invalid_hash", `${label2} must be lowercase SHA-256`);
+    fail54("invalid_hash", `${label2} must be lowercase SHA-256`);
   }
   return value;
 }
@@ -17607,7 +18275,7 @@ function workspace(value) {
   return {
     projectId: identifier12(value.projectId, "workspace.projectId"),
     sourceId: identifier12(value.sourceId, "workspace.sourceId"),
-    workspaceIdentitySha256: sha25610(
+    workspaceIdentitySha256: sha25612(
       value.workspaceIdentitySha256,
       "workspace.workspaceIdentitySha256"
     )
@@ -17615,9 +18283,9 @@ function workspace(value) {
 }
 function submission(value) {
   exact26(value, ["inputSha256", "inputByteLength"], "submission");
-  sha25610(value.inputSha256, "submission.inputSha256");
+  sha25612(value.inputSha256, "submission.inputSha256");
   if (!Number.isInteger(value.inputByteLength) || value.inputByteLength < 1 || value.inputByteLength > MAX_INPUT_BYTES) {
-    fail52("invalid_submission", `submission.inputByteLength must be 1-${MAX_INPUT_BYTES}`);
+    fail54("invalid_submission", `submission.inputByteLength must be 1-${MAX_INPUT_BYTES}`);
   }
   return { inputSha256: value.inputSha256, inputByteLength: value.inputByteLength };
 }
@@ -17631,17 +18299,17 @@ function contextSummary(value) {
     "state"
   ], "contextPreparation");
   identifier12(value.operationId, "contextPreparation.operationId");
-  sha25610(value.receiptSha256, "contextPreparation.receiptSha256");
+  sha25612(value.receiptSha256, "contextPreparation.receiptSha256");
   identifier12(value.threadId, "contextPreparation.threadId");
-  sha25610(value.confirmedIntentSha256, "contextPreparation.confirmedIntentSha256");
+  sha25612(value.confirmedIntentSha256, "contextPreparation.confirmedIntentSha256");
   if (!Number.isInteger(value.revision) || value.revision < 1 || value.state !== "completed") {
-    fail52("context_not_ready", "Context preparation must be a completed revision");
+    fail54("context_not_ready", "Context preparation must be a completed revision");
   }
   return structuredClone(value);
 }
 function threadId(request) {
   if (request.subjectRefs.length !== 1 || request.subjectRefs[0].kind !== "provider-thread") {
-    fail52("thread_binding_required", "Turn start requires one exact provider thread");
+    fail54("thread_binding_required", "Turn start requires one exact provider thread");
   }
   return identifier12(
     request.subjectRefs[0].authority.externalId,
@@ -17658,22 +18326,22 @@ function validateProviderTurnStartBinding(value) {
     "adapterRequest"
   ], "turn start binding");
   if (value.schemaVersion !== 1 || value.contractVersion !== PROVIDER_TURN_START_BINDING_VERSION) {
-    fail52("unsupported_contract", "Turn start binding contract is unsupported");
+    fail54("unsupported_contract", "Turn start binding contract is unsupported");
   }
   validateAdapterIdentity(value.provider);
   validateAdapterOperationRequest(value.adapterRequest, "execution-provider");
   validateAdapterRequestAuthority(value.adapterRequest, value.provider);
   if (value.adapterRequest.operation !== "startExecution" || value.adapterRequest.taskBinding === null || value.adapterRequest.profile === null) {
-    fail52("invalid_start_request", "Binding requires a Task/profile-bound startExecution");
+    fail54("invalid_start_request", "Binding requires a Task/profile-bound startExecution");
   }
   const nativeThreadId = threadId(value.adapterRequest);
   identifier12(value.requestId, "requestId");
-  sha25610(value.requestSha256, "requestSha256");
+  sha25612(value.requestSha256, "requestSha256");
   if (value.requestId !== value.adapterRequest.operationId || value.requestSha256 !== adapterOperationRequestHash(
     value.adapterRequest,
     "execution-provider"
   )) {
-    fail52("request_identity_mismatch", "Turn start request identity or hash changed");
+    fail54("request_identity_mismatch", "Turn start request identity or hash changed");
   }
   exact26(value.adapterRequest.parameters, [
     "workspace",
@@ -17685,7 +18353,7 @@ function validateProviderTurnStartBinding(value) {
   submission(value.adapterRequest.parameters.submission);
   const taskSource = value.adapterRequest.taskBinding.sourceId;
   if (boundWorkspace.sourceId !== taskSource || value.provider.sourceId !== taskSource || boundContext.threadId !== nativeThreadId) {
-    fail52("binding_mismatch", "Thread, provider, task, workspace or context identity differs");
+    fail54("binding_mismatch", "Thread, provider, task, workspace or context identity differs");
   }
   return value;
 }
@@ -17694,7 +18362,7 @@ function validateProviderTurnStartBinding(value) {
 var PROVIDER_TURN_PLANNING_POLICY_VERSION = "v0.1.0";
 var PROVIDER_TURN_START_APPLICATION_OPERATION = "mutation.provider.turn.start";
 var LEGACY_PROVIDER_TURN_START_APPLICATION_OPERATION = "mutation.provider-turn.start";
-var ID33 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
+var ID36 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
 var SHA25620 = /^[a-f0-9]{64}$/u;
 var REPORT_OPERATIONS = /* @__PURE__ */ new Set(["accept", "show", "summarize", "review", "import-only"]);
 var CONTINUATION_POLICIES = /* @__PURE__ */ new Set([
@@ -17709,12 +18377,12 @@ var ProviderTurnPlanningPolicyError = class extends Error {
     this.code = code;
   }
 };
-function fail53(code, message) {
+function fail55(code, message) {
   throw new ProviderTurnPlanningPolicyError(code, message);
 }
 function object15(value, label2) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    fail53("invalid_object", `${label2} must be a plain object`);
+    fail55("invalid_object", `${label2} must be a plain object`);
   }
   return value;
 }
@@ -17722,30 +18390,30 @@ function exact27(value, fields, label2) {
   object15(value, label2);
   const actual = Object.keys(value);
   if (actual.some((field) => !fields.includes(field)) || fields.some((field) => !Object.hasOwn(value, field))) {
-    fail53("invalid_shape", `${label2} must contain only its exact fields`);
+    fail55("invalid_shape", `${label2} must contain only its exact fields`);
   }
 }
 function identifier13(value, label2) {
-  if (typeof value !== "string" || !ID33.test(value)) {
-    fail53("invalid_identity", `${label2} must be a bounded identifier`);
+  if (typeof value !== "string" || !ID36.test(value)) {
+    fail55("invalid_identity", `${label2} must be a bounded identifier`);
   }
   return value;
 }
-function sha25611(value, label2) {
+function sha25613(value, label2) {
   if (typeof value !== "string" || !SHA25620.test(value)) {
-    fail53("invalid_hash", `${label2} must be lowercase SHA-256`);
+    fail55("invalid_hash", `${label2} must be lowercase SHA-256`);
   }
   return value;
 }
 function utc22(value, label2) {
   if (typeof value !== "string" || value.length > 64 || !value.endsWith("Z") || !Number.isFinite(Date.parse(value))) {
-    fail53("invalid_timestamp", `${label2} must be a bounded UTC timestamp`);
+    fail55("invalid_timestamp", `${label2} must be a bounded UTC timestamp`);
   }
   return value;
 }
 function boundedText3(value, label2, maximum) {
   if (typeof value !== "string" || value.length < 1 || value.length > maximum || /[\u0000-\u001f\u007f]/u.test(value)) {
-    fail53("invalid_text", `${label2} must be bounded text`);
+    fail55("invalid_text", `${label2} must be bounded text`);
   }
   return value;
 }
@@ -17753,7 +18421,7 @@ function taskBinding(value) {
   exact27(value, ["sourceId", "taskId", "taskSha256"], "taskBinding");
   identifier13(value.sourceId, "taskBinding.sourceId");
   identifier13(value.taskId, "taskBinding.taskId");
-  sha25611(value.taskSha256, "taskBinding.taskSha256");
+  sha25613(value.taskSha256, "taskBinding.taskSha256");
   return structuredClone(value);
 }
 function executionProfile(value) {
@@ -17761,16 +18429,16 @@ function executionProfile(value) {
   identifier13(value.model, "executionProfile.model");
   identifier13(value.reasoningEffort, "executionProfile.reasoningEffort");
   if (value.fallbackPolicy !== "deny") {
-    fail53("unsafe_fallback", "executionProfile.fallbackPolicy must be deny");
+    fail55("unsafe_fallback", "executionProfile.fallbackPolicy must be deny");
   }
   return structuredClone(value);
 }
 function confirmedPlan(value) {
   exact27(value, ["revision", "sha256", "confirmedBy", "confirmedAtUtc"], "confirmedPlan");
   if (!Number.isSafeInteger(value.revision) || value.revision < 1) {
-    fail53("invalid_plan", "confirmedPlan.revision must be positive");
+    fail55("invalid_plan", "confirmedPlan.revision must be positive");
   }
-  sha25611(value.sha256, "confirmedPlan.sha256");
+  sha25613(value.sha256, "confirmedPlan.sha256");
   boundedText3(value.confirmedBy, "confirmedPlan.confirmedBy", 128);
   utc22(value.confirmedAtUtc, "confirmedPlan.confirmedAtUtc");
   return structuredClone(value);
@@ -17778,7 +18446,7 @@ function confirmedPlan(value) {
 function returnContract(value) {
   exact27(value, ["reportOperation", "continuationPolicy"], "returnContract");
   if (!REPORT_OPERATIONS.has(value.reportOperation) || !CONTINUATION_POLICIES.has(value.continuationPolicy)) {
-    fail53("invalid_return_contract", "Return contract contains an unsupported policy");
+    fail55("invalid_return_contract", "Return contract contains an unsupported policy");
   }
   return structuredClone(value);
 }
@@ -17817,17 +18485,17 @@ function validateProviderTurnPlanningPolicy(value) {
     "policySha256"
   ], "provider turn planning policy");
   if (value.schemaVersion !== 1 || value.contractVersion !== PROVIDER_TURN_PLANNING_POLICY_VERSION) {
-    fail53("unsupported_contract", "Provider turn planning policy is unsupported");
+    fail55("unsupported_contract", "Provider turn planning policy is unsupported");
   }
   taskBinding(value.taskBinding);
   identifier13(value.startRequestId, "startRequestId");
-  sha25611(value.startRequestSha256, "startRequestSha256");
+  sha25613(value.startRequestSha256, "startRequestSha256");
   confirmedPlan(value.confirmedPlan);
   executionProfile(value.executionProfile);
   returnContract(value.returnContract);
-  sha25611(value.policySha256, "policySha256");
+  sha25613(value.policySha256, "policySha256");
   if (value.policySha256 !== applicationCanonicalSha256(policyBody(value))) {
-    fail53("policy_hash_mismatch", "Planning policy bytes changed after confirmation");
+    fail55("policy_hash_mismatch", "Planning policy bytes changed after confirmation");
   }
   return value;
 }
@@ -17858,7 +18526,7 @@ function authorizeProviderTurnApplicationRequest(value = {}) {
     PROVIDER_TURN_START_APPLICATION_OPERATION,
     LEGACY_PROVIDER_TURN_START_APPLICATION_OPERATION
   ].includes(request.operation.operationId)) {
-    fail53("unsupported_operation", "Application request is not provider turn start");
+    fail55("unsupported_operation", "Application request is not provider turn start");
   }
   exact27(request.input, [
     "startRequestId",
@@ -17866,15 +18534,15 @@ function authorizeProviderTurnApplicationRequest(value = {}) {
     "planningPolicySha256"
   ], "request.input");
   identifier13(request.input.startRequestId, "request.input.startRequestId");
-  sha25611(request.input.startRequestSha256, "request.input.startRequestSha256");
-  sha25611(request.input.planningPolicySha256, "request.input.planningPolicySha256");
+  sha25613(request.input.startRequestSha256, "request.input.startRequestSha256");
+  sha25613(request.input.planningPolicySha256, "request.input.planningPolicySha256");
   const bindingTask = binding.adapterRequest.taskBinding;
   const bindingProfile = binding.adapterRequest.profile;
   if (policy.startRequestId !== binding.requestId || policy.startRequestSha256 !== binding.requestSha256 || policy.startRequestId !== request.input.startRequestId || policy.startRequestSha256 !== request.input.startRequestSha256 || policy.policySha256 !== request.input.planningPolicySha256 || applicationCanonicalSha256(policy.taskBinding) !== applicationCanonicalSha256(bindingTask) || applicationCanonicalSha256(policy.executionProfile) !== applicationCanonicalSha256(bindingProfile)) {
-    fail53("planning_policy_mismatch", "Application request changed confirmed start policy");
+    fail55("planning_policy_mismatch", "Application request changed confirmed start policy");
   }
   if (Date.parse(request.requestedAtUtc) < Date.parse(policy.confirmedPlan.confirmedAtUtc)) {
-    fail53("planning_policy_mismatch", "Application request predates plan confirmation");
+    fail55("planning_policy_mismatch", "Application request predates plan confirmation");
   }
   return Object.freeze({
     authorized: true,
@@ -17905,16 +18573,16 @@ var BODY_FIELDS7 = Object.freeze([
   "confirmedPlan",
   "returnContract"
 ]);
-function fail54(message) {
+function fail56(message) {
   throw new ApplicationContractError("invalid_execution_profile_decision", message);
 }
 function exact28(value, fields, label2) {
   if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).some((field) => !fields.includes(field)) || fields.some((field) => !Object.hasOwn(value, field))) {
-    fail54(`${label2} fields are invalid`);
+    fail56(`${label2} fields are invalid`);
   }
 }
 function utc23(value, label2) {
-  if (typeof value !== "string" || value.length > 64 || !value.endsWith("Z") || !Number.isFinite(Date.parse(value))) fail54(`${label2} is invalid`);
+  if (typeof value !== "string" || value.length > 64 || !value.endsWith("Z") || !Number.isFinite(Date.parse(value))) fail56(`${label2} is invalid`);
   return value;
 }
 function same4(left, right) {
@@ -17923,7 +18591,7 @@ function same4(left, right) {
 function freshCatalog(value) {
   const catalog = validateProviderConversationReadData(value);
   if (catalog.kind !== "model-catalog" || catalog.data.completeness.status !== "complete" || catalog.freshness.status !== "fresh" || !Number.isFinite(catalog.freshness.staleAfterSeconds)) {
-    fail54("A fresh complete provider model catalog is required");
+    fail56("A fresh complete provider model catalog is required");
   }
   return catalog;
 }
@@ -17932,7 +18600,7 @@ function supports(catalog, profile3) {
     ({ modelRef }) => modelRef.authority.externalId === profile3.model
   );
   if (!model || !model.supportedReasoningEfforts.includes(profile3.reasoningEffort) || profile3.fallbackPolicy !== "deny") {
-    fail54("The execution profile is unavailable in the exact provider catalog");
+    fail56("The execution profile is unavailable in the exact provider catalog");
   }
 }
 function body(value) {
@@ -17941,7 +18609,7 @@ function body(value) {
 function validateProviderExecutionProfileDecision(value) {
   exact28(value, [...BODY_FIELDS7, "decisionSha256"], "profile decision");
   if (value.schemaVersion !== 1 || value.contractVersion !== PROVIDER_EXECUTION_PROFILE_DECISION_VERSION) {
-    fail54("Profile decision contract is unsupported");
+    fail56("Profile decision contract is unsupported");
   }
   validateAdapterIdentity(value.provider);
   const task = taskBinding(value.taskBinding);
@@ -17951,7 +18619,7 @@ function validateProviderExecutionProfileDecision(value) {
   utc23(value.catalogObservedAtUtc, "catalogObservedAtUtc");
   utc23(value.expiresAtUtc, "expiresAtUtc");
   if (task.sourceId !== value.provider.sourceId || Date.parse(value.expiresAtUtc) <= Date.parse(value.catalogObservedAtUtc) || !SHA25621.test(value.catalogSha256 ?? "") || !SHA25621.test(value.decisionSha256 ?? "") || value.decisionSha256 !== applicationCanonicalSha256(body(value))) {
-    fail54("Profile decision identity, lifetime or hash is invalid");
+    fail56("Profile decision identity, lifetime or hash is invalid");
   }
   return value;
 }
@@ -17968,12 +18636,12 @@ function createProviderExecutionProfileDecision({
   const plan = confirmedPlan(confirmedPlan2);
   const returnValue = returnContract(returnContract2);
   if (task.sourceId !== catalog.provider.sourceId) {
-    fail54("Task and provider catalog belong to different sources");
+    fail56("Task and provider catalog belong to different sources");
   }
   supports(catalog, profile3);
   const expiresMilliseconds = Date.parse(catalog.observedAtUtc) + catalog.freshness.staleAfterSeconds * 1e3;
   if (!Number.isSafeInteger(expiresMilliseconds) || expiresMilliseconds > 864e13) {
-    fail54("Profile decision lifetime exceeds UTC bounds");
+    fail56("Profile decision lifetime exceeds UTC bounds");
   }
   const expiresAtUtc = new Date(expiresMilliseconds).toISOString();
   const decisionBody = {
@@ -18004,13 +18672,13 @@ function verifyProviderExecutionProfileDecision({
   const catalog = freshCatalog(catalogInput);
   const catalogObserved = Date.parse(catalog.observedAtUtc);
   if (!same4(decision2.provider, catalog.provider) || catalogObserved < Date.parse(decision2.catalogObservedAtUtc) || catalogObserved > Date.parse(decision2.expiresAtUtc)) {
-    fail54("Profile decision is stale or belongs to another provider runtime");
+    fail56("Profile decision is stale or belongs to another provider runtime");
   }
   supports(catalog, decision2.executionProfile);
   if (startBinding !== null) {
     const binding = validateProviderTurnStartBinding(startBinding);
     if (!same4(binding.provider, decision2.provider) || !same4(binding.adapterRequest.taskBinding, decision2.taskBinding) || !same4(binding.adapterRequest.profile, decision2.executionProfile)) {
-      fail54("Turn start binding changed the profile decision");
+      fail56("Turn start binding changed the profile decision");
     }
   }
   return Object.freeze({
@@ -18544,32 +19212,32 @@ var APPLICATION_CAPABILITY_SURFACE = deepFreeze({
     }
   ]
 });
-function fail55(message, details = {}) {
+function fail57(message, details = {}) {
   throw new ApplicationContractError("invalid_capability_surface", message, details);
 }
 function exact29(value, allowed, label2) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    fail55(`${label2} must be an object`);
+    fail57(`${label2} must be an object`);
   }
   const unknown = Object.keys(value).filter((key) => !allowed.includes(key));
-  if (unknown.length > 0) fail55(`${label2} contains unsupported fields`, { fields: unknown });
+  if (unknown.length > 0) fail57(`${label2} contains unsupported fields`, { fields: unknown });
 }
 function uniqueBoundedStrings(value, label2, { minimum = 0, maximum = 64, allowed } = {}) {
   if (!Array.isArray(value) || value.length < minimum || value.length > maximum || new Set(value).size !== value.length || value.some((item) => typeof item !== "string" || item.length < 1 || item.length > 128) || allowed && value.some((item) => !allowed.has(item))) {
-    fail55(`${label2} must be a unique bounded string array`);
+    fail57(`${label2} must be a unique bounded string array`);
   }
 }
 function validateBinding(value, transportIds) {
   exact29(value, ["contractId", "contractVersion", "operationId", "transportId"], "binding");
   if (!/^[a-z][a-z0-9-]{1,63}$/u.test(value.contractId ?? "") || !/^v\d+\.\d+\.\d+$/u.test(value.contractVersion ?? "") || !/^[a-z][a-z0-9-]{0,63}$/u.test(value.operationId ?? "") || !transportIds.has(value.transportId)) {
-    fail55("operation binding identity is invalid");
+    fail57("operation binding identity is invalid");
   }
 }
 function validateOperationEntry(value, family, resourceKinds, transportIds, operationIds) {
   exact29(value, ["operation", "resourceKinds", "binding"], "operation entry");
   validateApplicationOperationRef(value.operation);
   if (value.operation.family !== family || operationIds.has(value.operation.operationId)) {
-    fail55("operation family or identity is invalid", { operationId: value.operation.operationId });
+    fail57("operation family or identity is invalid", { operationId: value.operation.operationId });
   }
   operationIds.add(value.operation.operationId);
   uniqueBoundedStrings(value.resourceKinds, "operation resourceKinds", {
@@ -18584,7 +19252,7 @@ function validateApplicationCapabilitySurface(value) {
     ["schemaVersion", "resourceKinds", "operations", "limits", "schemas", "transports"],
     "capability surface"
   );
-  if (value.schemaVersion !== 1) fail55("capability surface schema version is unsupported");
+  if (value.schemaVersion !== 1) fail57("capability surface schema version is unsupported");
   uniqueBoundedStrings(value.resourceKinds, "resourceKinds", {
     minimum: 1,
     allowed: RESOURCE_KIND_SET
@@ -18592,7 +19260,7 @@ function validateApplicationCapabilitySurface(value) {
   exact29(value.operations, FAMILY_KEYS, "operations");
   const transportIds = /* @__PURE__ */ new Set();
   if (!Array.isArray(value.transports) || value.transports.length < 1 || value.transports.length > 16) {
-    fail55("transports must be a bounded non-empty array");
+    fail57("transports must be a bounded non-empty array");
   }
   for (const transport of value.transports) {
     exact29(
@@ -18601,7 +19269,7 @@ function validateApplicationCapabilitySurface(value) {
       "transport"
     );
     if (!/^[a-z][a-z0-9-]{1,63}$/u.test(transport.transportId ?? "") || transportIds.has(transport.transportId) || !["read-only", "write"].includes(transport.access) || transport.scope !== "windows-user-machine-local") {
-      fail55("transport identity is invalid");
+      fail57("transport identity is invalid");
     }
     transportIds.add(transport.transportId);
     uniqueBoundedStrings(transport.operationFamilies, "transport operationFamilies", {
@@ -18614,7 +19282,7 @@ function validateApplicationCapabilitySurface(value) {
   const operationIds = /* @__PURE__ */ new Set();
   for (const family of FAMILY_KEYS) {
     const entries2 = value.operations[family];
-    if (!Array.isArray(entries2) || entries2.length > 64) fail55(`${family} operations are invalid`);
+    if (!Array.isArray(entries2) || entries2.length > 64) fail57(`${family} operations are invalid`);
     entries2.forEach((entry) => validateOperationEntry(
       entry,
       family,
@@ -18624,24 +19292,24 @@ function validateApplicationCapabilitySurface(value) {
     ));
   }
   if (!Array.isArray(value.limits) || value.limits.length < 1 || value.limits.length > 64) {
-    fail55("limits must be a bounded non-empty array");
+    fail57("limits must be a bounded non-empty array");
   }
   const limitIds = /* @__PURE__ */ new Set();
   for (const limit of value.limits) {
     exact29(limit, ["limitId", "value", "unit"], "limit");
     if (!/^[a-z][a-z0-9.-]{2,127}$/u.test(limit.limitId ?? "") || limitIds.has(limit.limitId) || !Number.isSafeInteger(limit.value) || limit.value < 1 || !["bytes", "count"].includes(limit.unit)) {
-      fail55("limit entry is invalid");
+      fail57("limit entry is invalid");
     }
     limitIds.add(limit.limitId);
   }
   if (!Array.isArray(value.schemas) || value.schemas.length < 1 || value.schemas.length > 64) {
-    fail55("schemas must be a bounded non-empty array");
+    fail57("schemas must be a bounded non-empty array");
   }
   const schemaIds = /* @__PURE__ */ new Set();
   for (const schema of value.schemas) {
     exact29(schema, ["schemaId", "contractId", "contractVersion"], "schema ref");
     if (!/^https:\/\/isolate-vscode\.local\/schemas\/[A-Za-z0-9._-]{1,128}$/u.test(schema.schemaId ?? "") || schemaIds.has(schema.schemaId) || !/^[a-z][a-z0-9-]{1,63}$/u.test(schema.contractId ?? "") || !/^v\d+\.\d+\.\d+$/u.test(schema.contractVersion ?? "")) {
-      fail55("schema reference is invalid");
+      fail57("schema reference is invalid");
     }
     schemaIds.add(schema.schemaId);
   }
@@ -18693,13 +19361,13 @@ var APPLICATION_PROVIDER_OPERATION_CATALOG = Object.freeze({
   contractVersion: APPLICATION_PROVIDER_OPERATION_CATALOG_VERSION,
   definitions: APPLICATION_PROVIDER_OPERATION_DEFINITIONS
 });
-function fail56(message, details = {}) {
+function fail58(message, details = {}) {
   throw new ApplicationContractError("invalid_provider_operation_catalog", message, details);
 }
 function exact30(value, allowed, label2) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) fail56(`${label2} must be an object`);
+  if (!value || typeof value !== "object" || Array.isArray(value)) fail58(`${label2} must be an object`);
   const fields = Object.keys(value).filter((key) => !allowed.includes(key));
-  if (fields.length > 0) fail56(`${label2} contains unsupported fields`, { fields });
+  if (fields.length > 0) fail58(`${label2} contains unsupported fields`, { fields });
 }
 function validateBinding2(value) {
   if (value === null) return;
@@ -18709,22 +19377,22 @@ function validateBinding2(value) {
     "provider adapter binding"
   );
   if (value.adapterFamily !== "execution-provider" || value.adapterContractVersion !== ADAPTER_CONTRACT_VERSION || !ADAPTER_OPERATIONS.has(value.operation)) {
-    fail56("provider adapter binding is invalid");
+    fail58("provider adapter binding is invalid");
   }
 }
 function validateApplicationProviderOperationCatalog(value) {
   exact30(value, ["schemaVersion", "contractVersion", "definitions"], "provider operation catalog");
   if (value.schemaVersion !== 1 || value.contractVersion !== APPLICATION_PROVIDER_OPERATION_CATALOG_VERSION || !Array.isArray(value.definitions) || value.definitions.length !== APPLICATION_PROVIDER_OPERATION_DEFINITIONS.length) {
-    fail56("provider operation catalog identity is invalid");
+    fail58("provider operation catalog identity is invalid");
   }
   const ids = /* @__PURE__ */ new Set();
   for (const entry of value.definitions) {
     exact30(entry, ["operation", "resourceKinds", "adapterBinding"], "provider operation definition");
     validateApplicationOperationRef(entry.operation);
-    if (ids.has(entry.operation.operationId)) fail56("provider operation identity is duplicated");
+    if (ids.has(entry.operation.operationId)) fail58("provider operation identity is duplicated");
     ids.add(entry.operation.operationId);
     if (!Array.isArray(entry.resourceKinds) || entry.resourceKinds.length < 1 || entry.resourceKinds.length > 8 || new Set(entry.resourceKinds).size !== entry.resourceKinds.length || entry.resourceKinds.some((kind2) => !RESOURCE_KINDS.has(kind2))) {
-      fail56("provider operation resource kinds are invalid");
+      fail58("provider operation resource kinds are invalid");
     }
     validateBinding2(entry.adapterBinding);
   }
@@ -18761,45 +19429,45 @@ var REASON_CODES = /* @__PURE__ */ new Set([
   "capability-expired",
   "provider-failure"
 ]);
-function fail57(message, details = {}) {
+function fail59(message, details = {}) {
   throw new ApplicationContractError("invalid_provider_operation_state", message, details);
 }
 function exact31(value, allowed, label2) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) fail57(`${label2} must be an object`);
+  if (!value || typeof value !== "object" || Array.isArray(value)) fail59(`${label2} must be an object`);
   const fields = Object.keys(value).filter((key) => !allowed.includes(key));
-  if (fields.length > 0) fail57(`${label2} contains unsupported fields`, { fields });
+  if (fields.length > 0) fail59(`${label2} contains unsupported fields`, { fields });
 }
 function utc24(value, label2) {
-  if (typeof value !== "string" || value.length > 64 || !value.endsWith("Z") || !Number.isFinite(Date.parse(value))) fail57(`${label2} must be a bounded UTC timestamp`);
+  if (typeof value !== "string" || value.length > 64 || !value.endsWith("Z") || !Number.isFinite(Date.parse(value))) fail59(`${label2} must be a bounded UTC timestamp`);
 }
 function validateProvider2(value) {
   exact31(value, ["adapterId", "adapterVersion", "sourceId", "runtimeInstanceId"], "provider identity");
   for (const [key, item] of Object.entries(value)) {
     if (typeof item !== "string" || item.length < 1 || item.length > 160 || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u.test(item)) {
-      fail57(`provider identity ${key} is invalid`);
+      fail59(`provider identity ${key} is invalid`);
     }
   }
-  if (!/^v\d+\.\d+\.\d+$/u.test(value.adapterVersion)) fail57("provider adapter version is invalid");
+  if (!/^v\d+\.\d+\.\d+$/u.test(value.adapterVersion)) fail59("provider adapter version is invalid");
 }
 function normalizePermissions(value) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) fail57("permissions must be an object");
+  if (!value || typeof value !== "object" || Array.isArray(value)) fail59("permissions must be an object");
   const result2 = /* @__PURE__ */ new Map();
   for (const [operationId, decision2] of Object.entries(value)) {
     if (!OPERATION_IDS.has(operationId) || !APPLICATION_PROVIDER_PERMISSION_STATES.includes(decision2)) {
-      fail57("permission observation is invalid", { operationId });
+      fail59("permission observation is invalid", { operationId });
     }
     result2.set(operationId, decision2);
   }
   return result2;
 }
 function normalizeFailures(value) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) fail57("failures must be an object");
+  if (!value || typeof value !== "object" || Array.isArray(value)) fail59("failures must be an object");
   const result2 = /* @__PURE__ */ new Map();
   for (const [operationId, failure3] of Object.entries(value)) {
-    if (!OPERATION_IDS.has(operationId)) fail57("failure operation is invalid", { operationId });
+    if (!OPERATION_IDS.has(operationId)) fail59("failure operation is invalid", { operationId });
     exact31(failure3, ["errorCode", "retryable"], "provider failure");
     if (!ERROR_CODES.has(failure3.errorCode) || typeof failure3.retryable !== "boolean") {
-      fail57("provider failure evidence is invalid", { operationId });
+      fail59("provider failure evidence is invalid", { operationId });
     }
     result2.set(operationId, failure3);
   }
@@ -18866,7 +19534,7 @@ function projectApplicationProviderOperationState({
 }) {
   validateAdapterDescriptor(descriptor);
   if (descriptor.identity.adapterFamily !== "execution-provider") {
-    fail57("provider state requires an execution-provider descriptor");
+    fail59("provider state requires an execution-provider descriptor");
   }
   utc24(asOfUtc, "asOfUtc");
   const permissionMap = normalizePermissions(permissions);
@@ -18921,24 +19589,24 @@ function validateOperationState(value, ids) {
   ], "provider operation state");
   validateApplicationOperationRef(value.operation);
   if (!OPERATION_IDS.has(value.operation.operationId) || ids.has(value.operation.operationId)) {
-    fail57("provider operation state identity is invalid");
+    fail59("provider operation state identity is invalid");
   }
   ids.add(value.operation.operationId);
   exact31(value.support, ["state", "level"], "provider operation support");
   if (!APPLICATION_PROVIDER_SUPPORT_STATES.includes(value.support.state) || value.support.state === "supported" && !SUPPORT_LEVELS.has(value.support.level) || value.support.state === "unsupported" && value.support.level !== null) {
-    fail57("provider operation support is invalid");
+    fail59("provider operation support is invalid");
   }
   if (!APPLICATION_PROVIDER_AVAILABILITY_STATES.includes(value.availability) || !APPLICATION_PROVIDER_PERMISSION_STATES.includes(value.permission) || !APPLICATION_PROVIDER_HEALTH_STATES.includes(value.providerHealth) || typeof value.selectable !== "boolean" || typeof value.retryable !== "boolean" || !REASON_CODES.has(value.reasonCode)) {
-    fail57("provider operation axes are invalid");
+    fail59("provider operation axes are invalid");
   }
   if (value.providerErrorCode !== null && !ERROR_CODES.has(value.providerErrorCode)) {
-    fail57("provider operation error code is invalid");
+    fail59("provider operation error code is invalid");
   }
   if (value.providerHealth === "failed" !== (value.providerErrorCode !== null)) {
-    fail57("provider failure axis and error code disagree");
+    fail59("provider failure axis and error code disagree");
   }
   const selectable = value.support.state === "supported" && value.availability === "available" && value.permission === "allowed" && value.providerHealth === "healthy";
-  if (value.selectable !== selectable) fail57("provider operation selectable state is inconsistent");
+  if (value.selectable !== selectable) fail59("provider operation selectable state is inconsistent");
 }
 function validateApplicationProviderOperationState(value) {
   exact31(value, [
@@ -18951,24 +19619,24 @@ function validateApplicationProviderOperationState(value) {
     "operations"
   ], "provider operation state snapshot");
   if (value.schemaVersion !== 1 || value.contractVersion !== APPLICATION_PROVIDER_STATE_CONTRACT_VERSION) {
-    fail57("provider operation state contract is unsupported");
+    fail59("provider operation state contract is unsupported");
   }
   validateProvider2(value.provider);
   utc24(value.capabilitiesObservedAtUtc, "capabilitiesObservedAtUtc");
   utc24(value.capabilitiesValidUntilUtc, "capabilitiesValidUntilUtc");
   utc24(value.projectedAtUtc, "projectedAtUtc");
   if (Date.parse(value.capabilitiesValidUntilUtc) <= Date.parse(value.capabilitiesObservedAtUtc)) {
-    fail57("provider capability validity interval is invalid");
+    fail59("provider capability validity interval is invalid");
   }
   if (!Array.isArray(value.operations) || value.operations.length !== APPLICATION_PROVIDER_OPERATION_CATALOG.definitions.length) {
-    fail57("provider operation state snapshot must cover the complete catalog");
+    fail59("provider operation state snapshot must cover the complete catalog");
   }
   const ids = /* @__PURE__ */ new Set();
   value.operations.forEach((item) => validateOperationState(item, ids));
   return value;
 }
 function validateApplicationProviderOperationStates(value) {
-  if (!Array.isArray(value) || value.length > 32) fail57("providerStates must be a bounded array");
+  if (!Array.isArray(value) || value.length > 32) fail59("providerStates must be a bounded array");
   const identities = /* @__PURE__ */ new Set();
   for (const snapshot of value) {
     validateApplicationProviderOperationState(snapshot);
@@ -18978,7 +19646,7 @@ function validateApplicationProviderOperationStates(value) {
       snapshot.provider.sourceId,
       snapshot.provider.runtimeInstanceId
     ].join("\0");
-    if (identities.has(identity2)) fail57("provider state snapshot identity is duplicated");
+    if (identities.has(identity2)) fail59("provider state snapshot identity is duplicated");
     identities.add(identity2);
   }
   return value;
@@ -19023,18 +19691,18 @@ var APPLICATION_COMPATIBILITY = Object.freeze({
   deprecations: Object.freeze([])
 });
 var VERSION2 = /^v\d+\.\d+\.\d+$/u;
-var ID34 = /^[a-z][a-z0-9-]{1,95}$/u;
-function fail58(message, details = {}) {
+var ID37 = /^[a-z][a-z0-9-]{1,95}$/u;
+function fail60(message, details = {}) {
   throw new ApplicationContractError("invalid_application_compatibility", message, details);
 }
 function exact32(value, allowed, label2) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) fail58(`${label2} must be an object`);
+  if (!value || typeof value !== "object" || Array.isArray(value)) fail60(`${label2} must be an object`);
   const fields = Object.keys(value).filter((key) => !allowed.includes(key));
-  if (fields.length > 0) fail58(`${label2} contains unsupported fields`, { fields });
+  if (fields.length > 0) fail60(`${label2} contains unsupported fields`, { fields });
 }
 function uniqueStrings2(value, label2, maximum = 64) {
   if (!Array.isArray(value) || value.length > maximum || new Set(value).size !== value.length || value.some((item) => typeof item !== "string" || item.length < 1 || item.length > 128)) {
-    fail58(`${label2} must be a unique bounded string array`);
+    fail60(`${label2} must be a unique bounded string array`);
   }
 }
 function validateApplicationCompatibility(value) {
@@ -19052,40 +19720,40 @@ function validateApplicationCompatibility(value) {
     "supportWindows",
     "deprecations"
   ], "application compatibility");
-  if (value.schemaVersion !== 1 || value.contractVersion !== APPLICATION_COMPATIBILITY_CONTRACT_VERSION || !VERSION2.test(value.minimumClientVersion ?? "") || value.negotiationPolicy !== "highest-mutually-supported" || value.unknownOptionalFeaturePolicy !== "ignore" || value.unknownRequiredFeaturePolicy !== "reject" || value.silentFallbackPolicy !== "deny") fail58("application compatibility policy is invalid");
+  if (value.schemaVersion !== 1 || value.contractVersion !== APPLICATION_COMPATIBILITY_CONTRACT_VERSION || !VERSION2.test(value.minimumClientVersion ?? "") || value.negotiationPolicy !== "highest-mutually-supported" || value.unknownOptionalFeaturePolicy !== "ignore" || value.unknownRequiredFeaturePolicy !== "reject" || value.silentFallbackPolicy !== "deny") fail60("application compatibility policy is invalid");
   uniqueStrings2(value.supportedApplicationContractVersions, "supportedApplicationContractVersions", 16);
   if (value.supportedApplicationContractVersions.length < 1 || value.supportedApplicationContractVersions.some((item) => !VERSION2.test(item))) {
-    fail58("supported application contract versions are invalid");
+    fail60("supported application contract versions are invalid");
   }
   uniqueStrings2(value.minimumClientBehaviors, "minimumClientBehaviors", 16);
   if (value.minimumClientBehaviors.some((item) => !APPLICATION_CLIENT_BEHAVIORS.includes(item))) {
-    fail58("minimum client behaviors are invalid");
+    fail60("minimum client behaviors are invalid");
   }
   validateCompatibilityLists(value);
   return value;
 }
 function validateCompatibilityLists(value) {
-  if (!Array.isArray(value.features) || value.features.length > 64) fail58("features are invalid");
+  if (!Array.isArray(value.features) || value.features.length > 64) fail60("features are invalid");
   const featureIds = /* @__PURE__ */ new Set();
   for (const feature of value.features) {
     exact32(feature, ["featureId", "requirement", "status", "introducedIn"], "feature");
-    if (!ID34.test(feature.featureId ?? "") || featureIds.has(feature.featureId) || !["required", "optional"].includes(feature.requirement) || !["enabled", "disabled"].includes(feature.status) || !VERSION2.test(feature.introducedIn ?? "")) fail58("feature definition is invalid");
+    if (!ID37.test(feature.featureId ?? "") || featureIds.has(feature.featureId) || !["required", "optional"].includes(feature.requirement) || !["enabled", "disabled"].includes(feature.status) || !VERSION2.test(feature.introducedIn ?? "")) fail60("feature definition is invalid");
     featureIds.add(feature.featureId);
   }
   if (!Array.isArray(value.supportWindows) || value.supportWindows.length > 32) {
-    fail58("support windows are invalid");
+    fail60("support windows are invalid");
   }
   const windows = /* @__PURE__ */ new Set();
   for (const window of value.supportWindows) {
     exact32(window, ["contractId", "contractVersion", "status", "supportedUntilUtc"], "support window");
     const key = `${window.contractId}\0${window.contractVersion}`;
-    if (!ID34.test(window.contractId ?? "") || !VERSION2.test(window.contractVersion ?? "") || windows.has(key) || !["current", "supported", "deprecated"].includes(window.status) || window.supportedUntilUtc !== null && (typeof window.supportedUntilUtc !== "string" || !window.supportedUntilUtc.endsWith("Z") || !Number.isFinite(Date.parse(window.supportedUntilUtc)))) {
-      fail58("support window is invalid");
+    if (!ID37.test(window.contractId ?? "") || !VERSION2.test(window.contractVersion ?? "") || windows.has(key) || !["current", "supported", "deprecated"].includes(window.status) || window.supportedUntilUtc !== null && (typeof window.supportedUntilUtc !== "string" || !window.supportedUntilUtc.endsWith("Z") || !Number.isFinite(Date.parse(window.supportedUntilUtc)))) {
+      fail60("support window is invalid");
     }
     windows.add(key);
   }
   if (!Array.isArray(value.deprecations) || value.deprecations.length > 32) {
-    fail58("deprecations are invalid");
+    fail60("deprecations are invalid");
   }
   for (const notice of value.deprecations) {
     exact32(notice, [
@@ -19097,14 +19765,14 @@ function validateCompatibilityLists(value) {
       "replacementContractId",
       "replacementContractVersion"
     ], "deprecation notice");
-    if (!ID34.test(notice.noticeId ?? "") || !ID34.test(notice.contractId ?? "") || !VERSION2.test(notice.contractVersion ?? "") || !ID34.test(notice.replacementContractId ?? "") || !VERSION2.test(notice.replacementContractVersion ?? "")) {
-      fail58("deprecation notice identity is invalid");
+    if (!ID37.test(notice.noticeId ?? "") || !ID37.test(notice.contractId ?? "") || !VERSION2.test(notice.contractVersion ?? "") || !ID37.test(notice.replacementContractId ?? "") || !VERSION2.test(notice.replacementContractVersion ?? "")) {
+      fail60("deprecation notice identity is invalid");
     }
     for (const key of ["announcedAtUtc", "effectiveAfterUtc"]) {
-      if (typeof notice[key] !== "string" || !notice[key].endsWith("Z") || !Number.isFinite(Date.parse(notice[key]))) fail58("deprecation notice time is invalid");
+      if (typeof notice[key] !== "string" || !notice[key].endsWith("Z") || !Number.isFinite(Date.parse(notice[key]))) fail60("deprecation notice time is invalid");
     }
     if (Date.parse(notice.effectiveAfterUtc) <= Date.parse(notice.announcedAtUtc)) {
-      fail58("deprecation effective time must follow its announcement");
+      fail60("deprecation effective time must follow its announcement");
     }
   }
 }
@@ -19159,37 +19827,37 @@ var APPLICATION_CAPABILITY_CONTRACT_REFS = deepFreeze2([
     schemaIds: ["https://isolate-vscode.local/schemas/backend-capabilities.v1.json"]
   }
 ]);
-function fail59(code, message, details = {}) {
+function fail61(code, message, details = {}) {
   throw new ApplicationContractError(code, message, details);
 }
 function utc25(value, label2) {
   if (typeof value !== "string" || value.length > 64 || !value.endsWith("Z") || !Number.isFinite(Date.parse(value))) {
-    fail59("invalid_timestamp", `${label2} must be a bounded UTC timestamp`);
+    fail61("invalid_timestamp", `${label2} must be a bounded UTC timestamp`);
   }
 }
 function validateContractRef(value, index) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    fail59("invalid_capability_descriptor", `contractRefs[${index}] must be an object`);
+    fail61("invalid_capability_descriptor", `contractRefs[${index}] must be an object`);
   }
   const allowed = /* @__PURE__ */ new Set(["schemaVersion", "contractId", "contractVersion", "role", "schemaIds"]);
   const unknown = Object.keys(value).filter((key) => !allowed.has(key));
-  if (unknown.length > 0) fail59("unknown_field", "contractRef contains unsupported fields", { fields: unknown });
+  if (unknown.length > 0) fail61("unknown_field", "contractRef contains unsupported fields", { fields: unknown });
   if (value.schemaVersion !== 1 || !CONTRACT_ID_PATTERN.test(value.contractId ?? "")) {
-    fail59("invalid_capability_descriptor", "contractRef identity is invalid");
+    fail61("invalid_capability_descriptor", "contractRef identity is invalid");
   }
   if (!/^v\d+\.\d+\.\d+$/u.test(value.contractVersion ?? "")) {
-    fail59("invalid_capability_descriptor", "contractRef version is invalid");
+    fail61("invalid_capability_descriptor", "contractRef version is invalid");
   }
   if (!["application-boundary", "semantic-projection", "compatibility-read"].includes(value.role)) {
-    fail59("invalid_capability_descriptor", "contractRef role is invalid");
+    fail61("invalid_capability_descriptor", "contractRef role is invalid");
   }
   if (!Array.isArray(value.schemaIds) || value.schemaIds.length === 0 || value.schemaIds.length > 16 || new Set(value.schemaIds).size !== value.schemaIds.length || value.schemaIds.some((item) => !SCHEMA_ID_PATTERN.test(item))) {
-    fail59("invalid_capability_descriptor", "contractRef schemaIds are invalid");
+    fail61("invalid_capability_descriptor", "contractRef schemaIds are invalid");
   }
 }
 function validateApplicationCapabilityDescriptor(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    fail59("invalid_capability_descriptor", "application capability descriptor must be an object");
+    fail61("invalid_capability_descriptor", "application capability descriptor must be an object");
   }
   const allowed = /* @__PURE__ */ new Set([
     "schemaVersion",
@@ -19209,32 +19877,32 @@ function validateApplicationCapabilityDescriptor(value) {
     "extensions"
   ]);
   const unknown = Object.keys(value).filter((key) => !allowed.has(key));
-  if (unknown.length > 0) fail59("unknown_field", "capability descriptor contains unsupported fields", { fields: unknown });
+  if (unknown.length > 0) fail61("unknown_field", "capability descriptor contains unsupported fields", { fields: unknown });
   if (value.schemaVersion !== 1 || value.contractVersion !== APPLICATION_CAPABILITY_CONTRACT_VERSION) {
-    fail59("unsupported_contract", "application capability descriptor contract is not supported");
+    fail61("unsupported_contract", "application capability descriptor contract is not supported");
   }
   if (!/^application-capabilities:[A-Za-z0-9][A-Za-z0-9._-]{0,95}$/u.test(value.descriptorId ?? "") || !SOURCE_ID_PATTERN2.test(value.sourceId ?? "")) {
-    fail59("invalid_capability_descriptor", "descriptor identity is invalid");
+    fail61("invalid_capability_descriptor", "descriptor identity is invalid");
   }
   if (!Number.isSafeInteger(value.sequence) || value.sequence < 0) {
-    fail59("invalid_capability_descriptor", "descriptor sequence is invalid");
+    fail61("invalid_capability_descriptor", "descriptor sequence is invalid");
   }
   utc25(value.publishedAtUtc, "publishedAtUtc");
   if (!Number.isInteger(value.validForSeconds) || value.validForSeconds < 1 || value.validForSeconds > 3600) {
-    fail59("invalid_capability_descriptor", "validForSeconds must be between 1 and 3600");
+    fail61("invalid_capability_descriptor", "validForSeconds must be between 1 and 3600");
   }
   validateAuthorityReference(value.authority);
   if (value.authority.authorityType !== "coordination-core" || value.authority.sourceId !== value.sourceId) {
-    fail59("authority_mismatch", "capability descriptor requires its coordination-core source authority");
+    fail61("authority_mismatch", "capability descriptor requires its coordination-core source authority");
   }
   if (!Array.isArray(value.contractRefs) || value.contractRefs.length !== APPLICATION_CAPABILITY_CONTRACT_REFS.length) {
-    fail59("invalid_capability_descriptor", "descriptor must reference every required contract");
+    fail61("invalid_capability_descriptor", "descriptor must reference every required contract");
   }
   value.contractRefs.forEach(validateContractRef);
   for (const required2 of APPLICATION_CAPABILITY_CONTRACT_REFS) {
     const actual = value.contractRefs.find((item) => item.contractId === required2.contractId);
     if (!actual || applicationCanonicalSha256(actual) !== applicationCanonicalSha256(required2)) {
-      fail59("contract_reference_mismatch", `contract reference ${required2.contractId} does not match current authority`);
+      fail61("contract_reference_mismatch", `contract reference ${required2.contractId} does not match current authority`);
     }
   }
   validateApplicationCapabilitySurface(value.surface);
@@ -19243,7 +19911,7 @@ function validateApplicationCapabilityDescriptor(value) {
   validateApplicationAuthenticationStates(value.authenticationStates);
   validateApplicationCompatibility(value.compatibility);
   if (!Array.isArray(value.extensions) || value.extensions.length > 16 || new Set(value.extensions).size !== value.extensions.length || value.extensions.some((item) => !/^[a-z][a-z0-9.-]{2,95}$/u.test(item))) {
-    fail59("invalid_capability_descriptor", "extensions are invalid");
+    fail61("invalid_capability_descriptor", "extensions are invalid");
   }
   return value;
 }
@@ -19285,7 +19953,7 @@ function createApplicationCapabilityDescriptor({
 }
 
 // orchestrator/src/application-event-stream.mjs
-import { createHash as createHash23 } from "node:crypto";
+import { createHash as createHash25 } from "node:crypto";
 
 // orchestrator/src/application-event-types.mjs
 var APPLICATION_EVENT_CLASSES = Object.freeze([
@@ -19340,7 +20008,7 @@ var APPLICATION_EVENT_CONTRACT_VERSION = "v0.2.0";
 var APPLICATION_EVENT_ENVELOPE_LIMITS = Object.freeze({
   maximumBytes: 32 * 1024
 });
-var ID35 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/;
+var ID38 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/;
 var EVENT_ID = /^application-event-[a-f0-9]{64}$/;
 var CAUSE_ID = /^(?:application|causal)-event-[a-f0-9]{64}$/;
 var PUBLICATION_ID = /^application-publication-[a-f0-9]{64}$/;
@@ -19352,37 +20020,37 @@ var ApplicationEventEnvelopeError = class extends Error {
     this.code = code;
   }
 };
-function fail60(code, message) {
+function fail62(code, message) {
   throw new ApplicationEventEnvelopeError(code, message);
 }
 function object16(value, label2) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    fail60("invalid_type", `${label2} must be an object`);
+    fail62("invalid_type", `${label2} must be an object`);
   }
   return value;
 }
 function exact33(value, keys, label2) {
   const unknown = Object.keys(value).filter((key) => !keys.includes(key));
-  if (unknown.length > 0) fail60("unknown_field", `${label2} contains unsupported fields`);
+  if (unknown.length > 0) fail62("unknown_field", `${label2} contains unsupported fields`);
 }
-function text4(value, label2, maximum, pattern) {
+function text5(value, label2, maximum, pattern) {
   if (typeof value !== "string" || value.length < 1 || value.length > maximum || /[\u0000-\u001f\u007f]/u.test(value) || pattern && !pattern.test(value)) {
-    fail60("invalid_string", `${label2} must be bounded canonical text`);
+    fail62("invalid_string", `${label2} must be bounded canonical text`);
   }
   return value;
 }
 function utc26(value, label2) {
-  text4(value, label2, 64);
+  text5(value, label2, 64);
   if (!value.endsWith("Z") || !Number.isFinite(Date.parse(value))) {
-    fail60("invalid_timestamp", `${label2} must be a UTC timestamp ending in Z`);
+    fail62("invalid_timestamp", `${label2} must be a UTC timestamp ending in Z`);
   }
   return value;
 }
 function dataSchema(value) {
   object16(value, "dataSchema");
   exact33(value, ["schemaId", "contractVersion"], "dataSchema");
-  text4(value.schemaId, "dataSchema.schemaId", 512);
-  text4(value.contractVersion, "dataSchema.contractVersion", 32, /^v\d+\.\d+\.\d+$/);
+  text5(value.schemaId, "dataSchema.schemaId", 512);
+  text5(value.contractVersion, "dataSchema.contractVersion", 32, /^v\d+\.\d+\.\d+$/);
   return structuredClone(value);
 }
 function publicationWithoutId(value, observedAtUtc) {
@@ -19395,15 +20063,15 @@ function publicationWithoutId(value, observedAtUtc) {
     "publishedAtUtc",
     "publisher"
   ], "publication");
-  text4(value.streamId, "publication.streamId", 160, ID35);
-  text4(value.epoch, "publication.epoch", 160, ID35);
+  text5(value.streamId, "publication.streamId", 160, ID38);
+  text5(value.epoch, "publication.epoch", 160, ID38);
   if (!Number.isSafeInteger(value.sequence) || value.sequence < 1) {
-    fail60("invalid_sequence", "publication.sequence must be a positive safe integer");
+    fail62("invalid_sequence", "publication.sequence must be a positive safe integer");
   }
-  text4(value.cursor, "publication.cursor", 512);
+  text5(value.cursor, "publication.cursor", 512);
   utc26(value.publishedAtUtc, "publication.publishedAtUtc");
   if (Date.parse(value.publishedAtUtc) < Date.parse(observedAtUtc)) {
-    fail60("invalid_timestamp_order", "publication cannot precede observation");
+    fail62("invalid_timestamp_order", "publication cannot precede observation");
   }
   validateAuthorityReference(value.publisher);
   return structuredClone(value);
@@ -19426,26 +20094,26 @@ function normalizeWithoutIds(value) {
     "publication"
   ], "event");
   if (value.schemaVersion !== 1 || value.contractVersion !== APPLICATION_EVENT_CONTRACT_VERSION) {
-    fail60("unsupported_contract", "Application event contract is unsupported");
+    fail62("unsupported_contract", "Application event contract is unsupported");
   }
   try {
     validateApplicationEventType(value.eventClass, value.eventType);
   } catch (error) {
-    fail60(error.code ?? "invalid_event_type", error.message);
+    fail62(error.code ?? "invalid_event_type", error.message);
   }
-  text4(value.correlationId, "event.correlationId", 160, ID35);
+  text5(value.correlationId, "event.correlationId", 160, ID38);
   if (value.causationId !== void 0) {
-    text4(value.causationId, "event.causationId", 96, CAUSE_ID);
+    text5(value.causationId, "event.causationId", 96, CAUSE_ID);
   }
   validateApplicationResourceRef(value.resource);
   utc26(value.occurredAtUtc, "event.occurredAtUtc");
   utc26(value.observedAtUtc, "event.observedAtUtc");
   if (Date.parse(value.observedAtUtc) < Date.parse(value.occurredAtUtc)) {
-    fail60("invalid_timestamp_order", "observation cannot precede occurrence");
+    fail62("invalid_timestamp_order", "observation cannot precede occurrence");
   }
   validateAuthorityReference(value.authority);
   if (!SHA25622.test(value.dataSha256 ?? "")) {
-    fail60("invalid_hash", "event.dataSha256 must be lowercase SHA-256");
+    fail62("invalid_hash", "event.dataSha256 must be lowercase SHA-256");
   }
   return {
     schemaVersion: 1,
@@ -19471,7 +20139,7 @@ function buildApplicationEventEnvelope(value) {
   const normalized = normalizeWithoutIds(value);
   const eventId = `application-event-${applicationCanonicalSha256(occurrenceIdentity(normalized))}`;
   if (normalized.causationId === eventId) {
-    fail60("event_cycle", "Application event cannot cause itself");
+    fail62("event_cycle", "Application event cannot cause itself");
   }
   const publicationId = `application-publication-${applicationCanonicalSha256({
     eventId,
@@ -19484,7 +20152,7 @@ function buildApplicationEventEnvelope(value) {
     publication: { ...normalized.publication, publicationId }
   };
   if (Buffer.byteLength(JSON.stringify(result2), "utf8") > APPLICATION_EVENT_ENVELOPE_LIMITS.maximumBytes) {
-    fail60("event_too_large", "Application event envelope exceeds 32 KiB");
+    fail62("event_too_large", "Application event envelope exceeds 32 KiB");
   }
   return result2;
 }
@@ -19506,7 +20174,7 @@ function validateApplicationEventEnvelope(value) {
     "dataSha256",
     "publication"
   ], "event");
-  text4(value.eventId, "event.eventId", 96, EVENT_ID);
+  text5(value.eventId, "event.eventId", 96, EVENT_ID);
   object16(value.publication, "publication");
   exact33(value.publication, [
     "publicationId",
@@ -19517,7 +20185,7 @@ function validateApplicationEventEnvelope(value) {
     "publishedAtUtc",
     "publisher"
   ], "publication");
-  text4(value.publication.publicationId, "publication.publicationId", 96, PUBLICATION_ID);
+  text5(value.publication.publicationId, "publication.publicationId", 96, PUBLICATION_ID);
   const { eventId, publication: publication2, ...candidate } = value;
   const { publicationId, ...publicationCandidate } = publication2;
   const normalized = buildApplicationEventEnvelope({
@@ -19525,7 +20193,7 @@ function validateApplicationEventEnvelope(value) {
     publication: publicationCandidate
   });
   if (normalized.eventId !== eventId || normalized.publication.publicationId !== publicationId) {
-    fail60("identity_mismatch", "Event or publication identity is not canonical");
+    fail62("identity_mismatch", "Event or publication identity is not canonical");
   }
   return normalized;
 }
@@ -19542,7 +20210,7 @@ var APPLICATION_EVENT_STREAM_LIMITS = Object.freeze({
   defaultReplayBytes: 256 * 1024,
   maximumReplayBytes: 2 * 1024 * 1024
 });
-var ID36 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/;
+var ID39 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/;
 var CURSOR_PREFIX = "application-cursor-v1";
 var MODES = /* @__PURE__ */ new Set(["snapshot-required", "resumed", "resync-required"]);
 var REASONS2 = /* @__PURE__ */ new Set([
@@ -19560,40 +20228,40 @@ var ApplicationEventStreamError = class extends Error {
     this.code = code;
   }
 };
-function fail61(code, message) {
+function fail63(code, message) {
   throw new ApplicationEventStreamError(code, message);
 }
 function object17(value, label2) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    fail61("invalid_type", `${label2} must be an object`);
+    fail63("invalid_type", `${label2} must be an object`);
   }
   return value;
 }
 function exact34(value, keys, label2) {
   if (Object.keys(value).some((key) => !keys.includes(key))) {
-    fail61("unknown_field", `${label2} contains unsupported fields`);
+    fail63("unknown_field", `${label2} contains unsupported fields`);
   }
 }
 function identifier14(value, label2) {
-  if (typeof value !== "string" || !ID36.test(value)) {
-    fail61("invalid_identifier", `${label2} must be a bounded identifier`);
+  if (typeof value !== "string" || !ID39.test(value)) {
+    fail63("invalid_identifier", `${label2} must be a bounded identifier`);
   }
   return value;
 }
 function utc27(value, label2) {
   if (typeof value !== "string" || value.length > 64 || !value.endsWith("Z") || !Number.isFinite(Date.parse(value))) {
-    fail61("invalid_timestamp", `${label2} must be a UTC timestamp ending in Z`);
+    fail63("invalid_timestamp", `${label2} must be a UTC timestamp ending in Z`);
   }
   return value;
 }
 function digest6(value) {
-  return createHash23("sha256").update(value, "utf8").digest("hex");
+  return createHash25("sha256").update(value, "utf8").digest("hex");
 }
 function cursorClaims(streamId, epoch, sequence) {
   identifier14(streamId, "cursor.streamId");
   identifier14(epoch, "cursor.epoch");
   if (!Number.isSafeInteger(sequence) || sequence < 0) {
-    fail61("invalid_cursor", "cursor.sequence must be a non-negative safe integer");
+    fail63("invalid_cursor", "cursor.sequence must be a non-negative safe integer");
   }
   return {
     contractVersion: APPLICATION_EVENT_STREAM_CONTRACT_VERSION,
@@ -19609,11 +20277,11 @@ function createApplicationEventCursor({ streamId, epoch, sequence }) {
 }
 function readApplicationEventCursor(value) {
   if (typeof value !== "string" || value.length > 768) {
-    fail61("invalid_cursor", "Application event cursor is invalid");
+    fail63("invalid_cursor", "Application event cursor is invalid");
   }
   const [prefix, payload, checksum, ...extra] = value.split(".");
   if (prefix !== CURSOR_PREFIX || !payload || !/^[a-f0-9]{64}$/.test(checksum ?? "") || extra.length > 0) {
-    fail61("invalid_cursor", "Application event cursor is invalid");
+    fail63("invalid_cursor", "Application event cursor is invalid");
   }
   let claims;
   let canonical3;
@@ -19621,12 +20289,12 @@ function readApplicationEventCursor(value) {
     canonical3 = Buffer.from(payload, "base64url").toString("utf8");
     claims = JSON.parse(canonical3);
   } catch {
-    fail61("invalid_cursor", "Application event cursor payload is invalid");
+    fail63("invalid_cursor", "Application event cursor payload is invalid");
   }
   object17(claims, "cursor");
   exact34(claims, ["contractVersion", "streamId", "epoch", "sequence"], "cursor");
   if (claims.contractVersion !== APPLICATION_EVENT_STREAM_CONTRACT_VERSION || applicationCanonicalJson(claims) !== canonical3 || digest6(canonical3) !== checksum) {
-    fail61("invalid_cursor", "Application event cursor integrity is invalid");
+    fail63("invalid_cursor", "Application event cursor integrity is invalid");
   }
   return cursorClaims(claims.streamId, claims.epoch, claims.sequence);
 }
@@ -19645,17 +20313,17 @@ function validateApplicationEventReadResult(value) {
     "reasonCode"
   ], "readResult");
   if (value.schemaVersion !== 1 || value.contractVersion !== APPLICATION_EVENT_STREAM_CONTRACT_VERSION) {
-    fail61("unsupported_contract", "Application event stream contract is unsupported");
+    fail63("unsupported_contract", "Application event stream contract is unsupported");
   }
-  if (!MODES.has(value.mode)) fail61("invalid_mode", "readResult.mode is invalid");
+  if (!MODES.has(value.mode)) fail63("invalid_mode", "readResult.mode is invalid");
   identifier14(value.streamId, "readResult.streamId");
   identifier14(value.epoch, "readResult.epoch");
   const cursor = readApplicationEventCursor(value.cursor);
   if (cursor.streamId !== value.streamId || cursor.epoch !== value.epoch) {
-    fail61("cursor_scope_mismatch", "Read cursor does not match stream scope");
+    fail63("cursor_scope_mismatch", "Read cursor does not match stream scope");
   }
   if (!Array.isArray(value.events) || value.events.length > 64) {
-    fail61("invalid_events", "readResult.events exceeds the replay bound");
+    fail63("invalid_events", "readResult.events exceeds the replay bound");
   }
   const events = value.events.map(validateApplicationEventEnvelope);
   let previous = -1;
@@ -19663,27 +20331,27 @@ function validateApplicationEventReadResult(value) {
   for (const event of events) {
     const publication2 = event.publication;
     if (publication2.streamId !== value.streamId || publication2.epoch !== value.epoch || publication2.sequence <= previous || publication2.sequence > cursor.sequence) {
-      fail61("invalid_event_order", "Read events must be ordered inside the cursor scope");
+      fail63("invalid_event_order", "Read events must be ordered inside the cursor scope");
     }
-    if (identities.has(event.eventId)) fail61("duplicate_event", "Read result repeats an event");
+    if (identities.has(event.eventId)) fail63("duplicate_event", "Read result repeats an event");
     identities.add(event.eventId);
     previous = publication2.sequence;
   }
-  if (typeof value.hasMore !== "boolean") fail61("invalid_result", "hasMore must be boolean");
+  if (typeof value.hasMore !== "boolean") fail63("invalid_result", "hasMore must be boolean");
   const needsSnapshot = value.mode !== "resumed";
   if (needsSnapshot) {
     validateApplicationResourceRef(value.snapshotRef);
     if (!REASONS2.has(value.reasonCode) || events.length !== 0 || value.hasMore) {
-      fail61("invalid_resync", "Snapshot results require one reason and no events");
+      fail63("invalid_resync", "Snapshot results require one reason and no events");
     }
     if (value.mode === "snapshot-required" && value.reasonCode !== "initial_snapshot_required") {
-      fail61("invalid_resync", "Initial startup requires initial_snapshot_required");
+      fail63("invalid_resync", "Initial startup requires initial_snapshot_required");
     }
     if (value.mode === "resync-required" && value.reasonCode === "initial_snapshot_required") {
-      fail61("invalid_resync", "Resume failure requires a specific resync reason");
+      fail63("invalid_resync", "Resume failure requires a specific resync reason");
     }
   } else if (value.snapshotRef !== void 0 || value.reasonCode !== void 0) {
-    fail61("invalid_resume", "Resumed result cannot carry snapshot or resync reason");
+    fail63("invalid_resume", "Resumed result cannot carry snapshot or resync reason");
   }
   return {
     ...structuredClone(value),
@@ -19692,7 +20360,7 @@ function validateApplicationEventReadResult(value) {
 }
 function boundedInteger2(value, label2, minimum, maximum) {
   if (!Number.isSafeInteger(value) || value < minimum || value > maximum) {
-    fail61("invalid_limit", `${label2} is outside its bound`);
+    fail63("invalid_limit", `${label2} is outside its bound`);
   }
   return value;
 }
@@ -19761,12 +20429,12 @@ var InMemoryApplicationEventBroker = class {
       APPLICATION_EVENT_STREAM_LIMITS.maximumReplayBytes
     );
     if (this.#maxReplay > this.#maxRetained) {
-      fail61("invalid_limit", "maxReplay cannot exceed maxRetained");
+      fail63("invalid_limit", "maxReplay cannot exceed maxRetained");
     }
     if (this.#maxReplayBytes > this.#maxRetainedBytes) {
-      fail61("invalid_limit", "maxReplayBytes cannot exceed maxRetainedBytes");
+      fail63("invalid_limit", "maxReplayBytes cannot exceed maxRetainedBytes");
     }
-    if (typeof now !== "function") fail61("invalid_clock", "now must be a function");
+    if (typeof now !== "function") fail63("invalid_clock", "now must be a function");
     this.#now = now;
   }
   get currentCursor() {
@@ -19792,7 +20460,7 @@ var InMemoryApplicationEventBroker = class {
   publish(candidate, { publishedAtUtc } = {}) {
     object17(candidate, "eventCandidate");
     if (Object.hasOwn(candidate, "eventId") || Object.hasOwn(candidate, "publication")) {
-      fail61("invalid_publish", "Broker assigns event publication identity");
+      fail63("invalid_publish", "Broker assigns event publication identity");
     }
     const instant = publishedAtUtc ?? this.#now();
     const published = instant instanceof Date ? instant.toISOString() : instant;
@@ -20092,7 +20760,7 @@ function createApplicationGatewayBackend({
 }
 
 // orchestrator/src/application-gateway-read-runtime.mjs
-import { randomBytes as randomBytes4 } from "node:crypto";
+import { randomBytes as randomBytes6 } from "node:crypto";
 import path46 from "node:path";
 
 // orchestrator/src/application-gateway-read-bridge.mjs
@@ -20479,7 +21147,7 @@ function createApplicationGatewayDomainHandlers({
 }
 
 // orchestrator/src/work-projection-v2-client.mjs
-import { createHash as createHash24 } from "node:crypto";
+import { createHash as createHash26 } from "node:crypto";
 import path23 from "node:path";
 import { readFile as fsReadFile } from "node:fs/promises";
 var WORK_PROJECTION_V2_CONTRACT_MODES = Object.freeze(["auto", "v2", "v1"]);
@@ -20514,22 +21182,22 @@ var WorkProjectionV2ClientError = class extends Error {
     return { code: this.code, message: this.message, details: this.details };
   }
 };
-function fail62(code, message, details = {}) {
+function fail64(code, message, details = {}) {
   throw new WorkProjectionV2ClientError(code, message, details);
 }
 function safeControllerPath(controllerRoot, candidate, label2) {
   if (typeof candidate !== "string" || candidate.length === 0 || candidate.length > 512 || candidate.includes("\\") || path23.posix.isAbsolute(candidate) || path23.win32.isAbsolute(candidate)) {
-    fail62("invalid_path", `${label2} must be a portable controller-relative path`, { label: label2 });
+    fail64("invalid_path", `${label2} must be a portable controller-relative path`, { label: label2 });
   }
   const segments = candidate.split("/");
   if (segments.some((segment) => !PORTABLE_SEGMENT2.test(segment) || segment === "." || segment === ".." || PRIVATE_ROOTS2.has(segment.toLowerCase()))) {
-    fail62("invalid_path", `${label2} contains a forbidden path segment`, { label: label2 });
+    fail64("invalid_path", `${label2} contains a forbidden path segment`, { label: label2 });
   }
   const root = path23.resolve(controllerRoot);
   const resolved = path23.resolve(root, ...segments);
   const relative = path23.relative(root, resolved);
   if (!relative || relative.startsWith("..") || path23.isAbsolute(relative)) {
-    fail62("invalid_path", `${label2} escapes the controller workspace`, { label: label2 });
+    fail64("invalid_path", `${label2} escapes the controller workspace`, { label: label2 });
   }
   return { resolved, relative: segments.join("/") };
 }
@@ -20542,13 +21210,13 @@ async function readJsonBounded2(reader, filePath, maximumBytes, artifact, { miss
     bytes = bytesFrom(await reader(filePath));
   } catch (error) {
     if (missing && error?.code === "ENOENT") return null;
-    fail62("artifact_unavailable", `Work Projection artifact '${artifact}' is unavailable`, {
+    fail64("artifact_unavailable", `Work Projection artifact '${artifact}' is unavailable`, {
       artifact,
       cause: String(error?.code ?? "read_failed").slice(0, 80)
     });
   }
   if (bytes.length > maximumBytes) {
-    fail62("artifact_too_large", `Work Projection artifact '${artifact}' exceeds its read budget`, {
+    fail64("artifact_too_large", `Work Projection artifact '${artifact}' exceeds its read budget`, {
       artifact,
       bytes: bytes.length,
       maximumBytes
@@ -20557,32 +21225,32 @@ async function readJsonBounded2(reader, filePath, maximumBytes, artifact, { miss
   try {
     return { bytes, value: JSON.parse(bytes.toString("utf8")) };
   } catch {
-    fail62("invalid_json", `Work Projection artifact '${artifact}' is not valid JSON`, { artifact });
+    fail64("invalid_json", `Work Projection artifact '${artifact}' is not valid JSON`, { artifact });
   }
 }
 function exactClock(now) {
   const value = now();
   const date = value instanceof Date ? value : new Date(value);
-  if (!Number.isFinite(date.getTime())) fail62("invalid_clock", "Consumer clock is invalid");
+  if (!Number.isFinite(date.getTime())) fail64("invalid_clock", "Consumer clock is invalid");
   return date;
 }
-function sha25612(bytes) {
-  return createHash24("sha256").update(bytes).digest("hex");
+function sha25614(bytes) {
+  return createHash26("sha256").update(bytes).digest("hex");
 }
 function publicationFailure(error, fallbackCode, message) {
   if (error instanceof WorkProjectionV2ClientError) throw error;
   if (error instanceof WorkProjectionV2PublicationError) {
-    fail62(error.code, error.message, error.details);
+    fail64(error.code, error.message, error.details);
   }
-  fail62(fallbackCode, message, { cause: String(error?.code ?? error?.name ?? "invalid").slice(0, 80) });
+  fail64(fallbackCode, message, { cause: String(error?.code ?? error?.name ?? "invalid").slice(0, 80) });
 }
 function requireArtifactSchema(artifact, label2) {
   const schema = artifact?.schema;
   if (!schema || typeof schema !== "object" || Array.isArray(schema) || JSON.stringify(Object.keys(schema).sort()) !== JSON.stringify(["id", "path", "version"])) {
-    fail62("invalid_descriptor", `${label2} schema metadata is not strict`);
+    fail64("invalid_descriptor", `${label2} schema metadata is not strict`);
   }
   if (schema.path !== ".orchestrator/schemas/work-projection-v2.schema.json" || schema.id !== ARTIFACT_SCHEMA_ID || schema.version !== 2) {
-    fail62("unsupported_contract", `${label2} schema is not Work Projection v2`);
+    fail64("unsupported_contract", `${label2} schema is not Work Projection v2`);
   }
 }
 function strictDescriptor(value, controllerRoot, expectedPath) {
@@ -20592,12 +21260,12 @@ function strictDescriptor(value, controllerRoot, expectedPath) {
     publicationFailure(error, "invalid_descriptor", "Work Projection v2 descriptor is invalid");
   }
   if (value.transport.descriptorPath !== expectedPath) {
-    fail62("descriptor_identity_mismatch", "The v2 descriptor does not identify its discovery path");
+    fail64("descriptor_identity_mismatch", "The v2 descriptor does not identify its discovery path");
   }
   const v2 = value.handshake.contracts.find((item) => item.id === "work-projection-v2");
   const v1 = value.handshake.contracts.find((item) => item.id === "backend-consumer-v1");
   if (v1?.status !== "fallback" || v2?.status !== (value.status === "enabled" ? "available" : "disabled")) {
-    fail62("invalid_descriptor", "The descriptor handshake status is incoherent");
+    fail64("invalid_descriptor", "The descriptor handshake status is incoherent");
   }
   if (value.artifact !== null) requireArtifactSchema(value.artifact, "artifact");
   if (value.lastKnownGood.status === "available") {
@@ -20610,12 +21278,12 @@ function verifyRecordedFreshness(descriptor, projection) {
   const publishedAt = Date.parse(projection.publishedAtUtc);
   const evaluatedAt = Date.parse(freshness.evaluatedAtUtc);
   if (freshness.projectionPublishedAtUtc !== projection.publishedAtUtc || !Number.isFinite(evaluatedAt) || evaluatedAt < publishedAt) {
-    fail62("incoherent_snapshot", "Descriptor freshness does not identify the selected projection");
+    fail64("incoherent_snapshot", "Descriptor freshness does not identify the selected projection");
   }
   const ageSeconds = Math.floor((evaluatedAt - publishedAt) / 1e3);
   const status = ageSeconds > freshness.staleAfterSeconds ? "stale" : "fresh";
   if (freshness.ageSeconds !== ageSeconds || freshness.status !== status) {
-    fail62("incoherent_snapshot", "Descriptor freshness was not evaluated from the projection clock");
+    fail64("incoherent_snapshot", "Descriptor freshness was not evaluated from the projection clock");
   }
 }
 function projectionDegradationReasons(projection, freshnessStatus) {
@@ -20631,7 +21299,7 @@ function verifyRecordedDegradation(descriptor, projection) {
   const reasons2 = projectionDegradationReasons(projection, descriptor.freshness.status);
   const expectedStatus = reasons2.length > 0 ? "degraded" : "none";
   if (descriptor.degradation.status !== expectedStatus || JSON.stringify(descriptor.degradation.reasonCodes) !== JSON.stringify(reasons2)) {
-    fail62("incoherent_snapshot", "Descriptor degradation does not match projection authority states");
+    fail64("incoherent_snapshot", "Descriptor degradation does not match projection authority states");
   }
 }
 async function verifiedProjection({ descriptor, controllerRoot, reader }) {
@@ -20648,25 +21316,25 @@ async function verifiedProjection({ descriptor, controllerRoot, reader }) {
     "projection-artifact"
   );
   if (artifact.bytes.length !== metadata.byteCount) {
-    fail62("artifact_byte_count_mismatch", "Projection artifact byte count differs from its descriptor", {
+    fail64("artifact_byte_count_mismatch", "Projection artifact byte count differs from its descriptor", {
       expected: metadata.byteCount,
       actual: artifact.bytes.length
     });
   }
-  const fileSha256 = sha25612(artifact.bytes);
+  const fileSha256 = sha25614(artifact.bytes);
   if (fileSha256 !== metadata.fileSha256) {
-    fail62("artifact_hash_mismatch", "Projection artifact SHA-256 differs from its descriptor");
+    fail64("artifact_hash_mismatch", "Projection artifact SHA-256 differs from its descriptor");
   }
   let projection;
   try {
     projection = validateWorkProjectionV2(artifact.value);
   } catch (error) {
-    fail62("invalid_projection", "Projection artifact does not satisfy the strict v2 model", {
+    fail64("invalid_projection", "Projection artifact does not satisfy the strict v2 model", {
       cause: String(error?.code ?? error?.name ?? "invalid_projection").slice(0, 80)
     });
   }
   if (projection.sequence !== metadata.sequence || projection.sequence !== descriptor.sourceV1.control.sequence || projection.projectionSha256 !== metadata.projectionSha256) {
-    fail62("incoherent_snapshot", "Projection identity differs from descriptor publication evidence");
+    fail64("incoherent_snapshot", "Projection identity differs from descriptor publication evidence");
   }
   verifyRecordedFreshness(descriptor, projection);
   verifyRecordedDegradation(descriptor, projection);
@@ -20715,7 +21383,7 @@ function contractLabels(selection) {
 }
 function layersForQuery(descriptor, projection, query) {
   const advertised = descriptor.queries.find((entry) => entry.id === query);
-  if (!advertised) fail62("unknown_query", `Query '${query}' is not advertised by v2`, { query });
+  if (!advertised) fail64("unknown_query", `Query '${query}' is not advertised by v2`, { query });
   const domainLayers = advertised.sourceLayers.filter((layer) => layer !== "authority");
   const factIds = new Set(domainLayers.flatMap((layer) => projection.layers[layer].map((fact) => fact.factId)));
   const layers = {};
@@ -20774,18 +21442,18 @@ var WorkProjectionV2Client = class {
     now = () => /* @__PURE__ */ new Date(),
     readFile: readFile29 = fsReadFile
   } = {}) {
-    if (!controllerRoot) fail62("invalid_argument", "controllerRoot is required");
+    if (!controllerRoot) fail64("invalid_argument", "controllerRoot is required");
     if (!MODE_SET.has(contract)) {
-      fail62("invalid_contract_mode", "contract must be one of auto, v2, or v1", { contract });
+      fail64("invalid_contract_mode", "contract must be one of auto, v2, or v1", { contract });
     }
     if (!Number.isInteger(retryCount) || retryCount < 0 || retryCount > 20) {
-      fail62("invalid_argument", "retryCount must be an integer between 0 and 20");
+      fail64("invalid_argument", "retryCount must be an integer between 0 and 20");
     }
     if (!Number.isInteger(retryDelayMs) || retryDelayMs < 0 || retryDelayMs > 5e3) {
-      fail62("invalid_argument", "retryDelayMs must be an integer between 0 and 5000");
+      fail64("invalid_argument", "retryDelayMs must be an integer between 0 and 5000");
     }
     if (typeof now !== "function" || typeof readFile29 !== "function") {
-      fail62("invalid_argument", "now and readFile must be functions");
+      fail64("invalid_argument", "now and readFile must be functions");
     }
     this.controllerRoot = path23.resolve(controllerRoot);
     this.contract = contract;
@@ -20800,7 +21468,7 @@ var WorkProjectionV2Client = class {
       "v1DescriptorPath"
     );
     if (this.v2Descriptor.relative === this.v1Descriptor.relative) {
-      fail62("invalid_path", "v2 and v1 descriptor paths must be different");
+      fail64("invalid_path", "v2 and v1 descriptor paths must be different");
     }
     this.retryCount = retryCount;
     this.retryDelayMs = retryDelayMs;
@@ -20832,7 +21500,7 @@ var WorkProjectionV2Client = class {
     const descriptor = await this.getV2Descriptor({ missing: true });
     if (descriptor === null) {
       if (this.contract === "v2") {
-        fail62("required_contract_unavailable", "Required Work Projection v2 descriptor is missing", {
+        fail64("required_contract_unavailable", "Required Work Projection v2 descriptor is missing", {
           reasonCode: "v2_descriptor_missing"
         });
       }
@@ -20848,7 +21516,7 @@ var WorkProjectionV2Client = class {
     }
     if (descriptor.status === "disabled") {
       if (this.contract === "v2") {
-        fail62("required_contract_unavailable", "Required Work Projection v2 is disabled", {
+        fail64("required_contract_unavailable", "Required Work Projection v2 is disabled", {
           reasonCode: descriptor.degradation.reasonCodes[0] ?? "v2_disabled",
           lastKnownGoodAvailable: descriptor.degradation.lastKnownGoodAvailable
         });
@@ -20878,7 +21546,7 @@ var WorkProjectionV2Client = class {
   async queryV1(query, options, selection) {
     const sourceQuery = V1_QUERY_MAP[query];
     if (!sourceQuery) {
-      fail62("unsupported_query", `Backend Consumer v1 cannot satisfy '${query}'`, {
+      fail64("unsupported_query", `Backend Consumer v1 cannot satisfy '${query}'`, {
         query,
         selectedContract: "v1"
       });
@@ -20906,7 +21574,7 @@ var WorkProjectionV2Client = class {
   }
   async query(query, options = {}) {
     if (!QUERY_SET.has(query)) {
-      fail62("unknown_query", `Unknown Work Projection query '${query}'`, { query });
+      fail64("unknown_query", `Unknown Work Projection query '${query}'`, { query });
     }
     const selection = await this.negotiate();
     if (selection.selectedContract === "v1") {
@@ -20943,7 +21611,7 @@ var WorkProjectionV2Client = class {
 };
 
 // orchestrator/src/project-memory-service.mjs
-import { createHash as createHash26 } from "node:crypto";
+import { createHash as createHash28 } from "node:crypto";
 import path27 from "node:path";
 
 // orchestrator/src/agent-write-zone.mjs
@@ -20956,30 +21624,30 @@ var FILE_TOOLS = Object.freeze(/* @__PURE__ */ new Map([
   ["NotebookEdit", "notebook_path"]
 ]));
 var SHELL_TOOLS = Object.freeze(/* @__PURE__ */ new Set(["Bash", "PowerShell"]));
-function fail63(code) {
+function fail65(code) {
   throw Object.assign(new Error(code), { code });
 }
 function normalizeWriteZone(patterns) {
-  if (!Array.isArray(patterns)) fail63("memory_invalid_input");
+  if (!Array.isArray(patterns)) fail65("memory_invalid_input");
   const seen = /* @__PURE__ */ new Set();
   const out = [];
   for (const raw of patterns) {
-    if (typeof raw !== "string") fail63("memory_invalid_input");
+    if (typeof raw !== "string") fail65("memory_invalid_input");
     const pattern = raw.trim().replace(/\\/gu, "/").replace(/^(?:\.\/)+/u, "");
     if (pattern === "" || seen.has(pattern)) continue;
     seen.add(pattern);
     out.push(pattern);
   }
-  if (out.length < 1 || out.length > WRITE_ZONE_LIMITS.patterns) fail63("memory_invalid_input");
+  if (out.length < 1 || out.length > WRITE_ZONE_LIMITS.patterns) fail65("memory_invalid_input");
   for (const pattern of out) {
-    if (pattern.length > WRITE_ZONE_LIMITS.patternLength || /[\u0000-\u001f\u007f]/u.test(pattern) || /^[A-Za-z]:/u.test(pattern) || pattern.startsWith("/") || pattern.split("/").includes("..")) fail63("memory_invalid_input");
+    if (pattern.length > WRITE_ZONE_LIMITS.patternLength || /[\u0000-\u001f\u007f]/u.test(pattern) || /^[A-Za-z]:/u.test(pattern) || pattern.startsWith("/") || pattern.split("/").includes("..")) fail65("memory_invalid_input");
   }
   return out;
 }
 function matcherOf(pattern, caseless) {
   let source = pattern;
   if (source.endsWith("/")) source += "**";
-  const fold = (text10) => caseless ? text10.toLowerCase() : text10;
+  const fold = (text11) => caseless ? text11.toLowerCase() : text11;
   if (!/[*?]/u.test(source)) {
     const exact45 = fold(source);
     return (relative) => fold(relative) === exact45 || fold(relative).startsWith(`${exact45}/`);
@@ -21130,9 +21798,9 @@ var OUTPUT_FILE_OPTION = /(?:^|\s)-o(?:\s|$)/u;
 function readOnlyShellCommand(command, { powershell = false } = {}) {
   if (typeof command !== "string" || command.trim() === "" || command.length > 8192) return false;
   if (/`|\$\(|<\(|>\(/u.test(command)) return false;
-  const text10 = command.replace(/'[^']*'|"(?:[^"\\]|\\.)*"/gu, "Q").replace(/\d?&?>{1,2}\s*(?:\/dev\/null|\$null)|2>&1/giu, " ");
-  if (text10.includes(">") || powershell && /\bOut-File\b|\bTee-Object\b|\bSet-Content\b/iu.test(text10)) return false;
-  const parts = text10.split(/&&|\|\||;|\||\r?\n/u).map((part) => part.trim()).filter((part) => part !== "");
+  const text11 = command.replace(/'[^']*'|"(?:[^"\\]|\\.)*"/gu, "Q").replace(/\d?&?>{1,2}\s*(?:\/dev\/null|\$null)|2>&1/giu, " ");
+  if (text11.includes(">") || powershell && /\bOut-File\b|\bTee-Object\b|\bSet-Content\b/iu.test(text11)) return false;
+  const parts = text11.split(/&&|\|\||;|\||\r?\n/u).map((part) => part.trim()).filter((part) => part !== "");
   if (parts.length === 0) return false;
   return parts.every((part) => {
     if (/^[A-Za-z_][A-Za-z0-9_]*=/u.test(part) || /^[&.]\s/u.test(part)) return false;
@@ -21174,17 +21842,17 @@ function claudeWriteZoneHook({ root, patterns, platform = process.platform, perm
 }
 
 // orchestrator/src/memory-documents.mjs
-import { createHash as createHash25 } from "node:crypto";
-import { lstat as lstat13, readFile as readFile9, realpath as realpath12 } from "node:fs/promises";
+import { createHash as createHash27 } from "node:crypto";
+import { lstat as lstat13, mkdir as mkdir11, readFile as readFile9, realpath as realpath12, writeFile as writeFile6 } from "node:fs/promises";
 import path25 from "node:path";
 var MEMORY_DOCUMENT_LIMITS = Object.freeze({ bytes: 256 * 1024, entries: 64, entryBytes: 65536, pathLength: 512 });
-function fail64(code) {
+function fail66(code) {
   throw Object.assign(new Error(code), { code });
 }
 function normalizeDocumentPath(value) {
-  if (typeof value !== "string") fail64("memory_document_path_invalid");
+  if (typeof value !== "string") fail66("memory_document_path_invalid");
   const relative = value.trim().replace(/\\/gu, "/").replace(/^(?:\.\/)+/u, "");
-  if (relative === "" || relative.length > MEMORY_DOCUMENT_LIMITS.pathLength || /[\u0000-\u001f\u007f]/u.test(relative) || /^[A-Za-z]:/u.test(relative) || relative.startsWith("/") || relative.split("/").some((part) => part === ".." || part === "")) fail64("memory_document_path_invalid");
+  if (relative === "" || relative.length > MEMORY_DOCUMENT_LIMITS.pathLength || /[\u0000-\u001f\u007f]/u.test(relative) || /^[A-Za-z]:/u.test(relative) || relative.startsWith("/") || relative.split("/").some((part) => part === ".." || part === "")) fail66("memory_document_path_invalid");
   return relative;
 }
 async function readMemoryDocument(root, value) {
@@ -21195,22 +21863,78 @@ async function readMemoryDocument(root, value) {
   try {
     info = await lstat13(target2);
   } catch {
-    fail64("memory_document_missing");
+    fail66("memory_document_missing");
   }
-  if (!info.isFile() || info.isSymbolicLink()) fail64("memory_document_not_a_file");
-  if (info.size > MEMORY_DOCUMENT_LIMITS.bytes) fail64("memory_document_too_large");
+  if (!info.isFile() || info.isSymbolicLink()) fail66("memory_document_not_a_file");
+  if (info.size > MEMORY_DOCUMENT_LIMITS.bytes) fail66("memory_document_too_large");
   const canonical3 = await realpath12(target2);
   const inside3 = path25.relative(canonicalRoot, canonical3);
-  if (inside3 === "" || inside3.startsWith("..") || path25.isAbsolute(inside3)) fail64("memory_document_path_invalid");
+  if (inside3 === "" || inside3.startsWith("..") || path25.isAbsolute(inside3)) fail66("memory_document_path_invalid");
   const bytes = await readFile9(canonical3);
   return {
     path: relative,
     text: bytes.toString("utf8"),
     bytes: bytes.length,
-    contentSha256: createHash25("sha256").update(bytes).digest("hex")
+    contentSha256: createHash27("sha256").update(bytes).digest("hex")
   };
 }
-function entriesFromDocument(text10, fallbackTitle) {
+var PRIVATE_SEGMENTS = /* @__PURE__ */ new Set([".git", ".project-context", ".project-local", ".project-runtime", "node_modules"]);
+function documentFromEntries(title, entries2) {
+  const lines = [`# ${title}`, ""];
+  for (const entry of entries2) {
+    lines.push(`## ${String(entry.title ?? "").replace(/\s+/gu, " ").trim() || "Entry"}`);
+    for (const line of String(entry.text ?? "").replace(/\r\n?/gu, "\n").split("\n")) {
+      lines.push(/^#/u.test(line) ? ` ${line}` : line);
+    }
+    lines.push("");
+  }
+  return `${lines.join("\n").trimEnd()}
+`;
+}
+async function writeMemoryDocument(root, value, text11, { replace = false } = {}) {
+  const relative = normalizeDocumentPath(value);
+  const parts = relative.split("/");
+  if (!/\.md$/iu.test(relative) || parts.some((part) => PRIVATE_SEGMENTS.has(part.toLowerCase()))) {
+    fail66("memory_document_path_invalid");
+  }
+  const bytes = Buffer.from(text11, "utf8");
+  if (bytes.length > MEMORY_DOCUMENT_LIMITS.bytes) fail66("memory_document_too_large");
+  const canonicalRoot = await realpath12(root);
+  let current = canonicalRoot;
+  for (const part of parts.slice(0, -1)) {
+    current = path25.join(current, part);
+    let info2 = null;
+    try {
+      info2 = await lstat13(current);
+    } catch {
+    }
+    if (info2 === null) await mkdir11(current);
+    else if (!info2.isDirectory() || info2.isSymbolicLink()) fail66("memory_document_path_invalid");
+  }
+  const target2 = path25.join(current, parts.at(-1));
+  let existing = null;
+  let info = null;
+  try {
+    info = await lstat13(target2);
+  } catch {
+  }
+  if (info !== null) {
+    if (!info.isFile() || info.isSymbolicLink()) fail66("memory_document_not_a_file");
+    existing = await readFile9(target2);
+  }
+  const answer = (state2) => ({
+    path: relative,
+    state: state2,
+    contentSha256: createHash27("sha256").update(bytes).digest("hex"),
+    bytes: bytes.length,
+    filePath: target2
+  });
+  if (existing !== null && existing.equals(bytes)) return answer("same");
+  if (existing !== null && !replace) fail66("memory_document_exists");
+  await writeFile6(target2, bytes);
+  return answer(existing === null ? "written" : "replaced");
+}
+function entriesFromDocument(text11, fallbackTitle) {
   const parts = [];
   let title = null;
   let body2 = [];
@@ -21218,21 +21942,21 @@ function entriesFromDocument(text10, fallbackTitle) {
     const said3 = body2.join("\n").trim();
     if (said3 !== "") parts.push({ title: title ?? fallbackTitle, text: said3 });
   };
-  for (const line of String(text10).replace(/\r\n/gu, "\n").split("\n")) {
+  for (const line of String(text11).replace(/\r\n/gu, "\n").split("\n")) {
     const heading = /^##\s+(.+?)\s*#*\s*$/u.exec(line);
     if (heading !== null) {
       flush();
       title = heading[1];
       body2 = [];
     } else if (!/^#\s+/u.test(line)) {
-      body2.push(line);
+      body2.push(line.replace(/^ (?=#)/u, ""));
     }
   }
   flush();
-  if (parts.length === 0) fail64("memory_document_empty");
-  if (parts.length > MEMORY_DOCUMENT_LIMITS.entries) fail64("memory_document_too_many_entries");
+  if (parts.length === 0) fail66("memory_document_empty");
+  if (parts.length > MEMORY_DOCUMENT_LIMITS.entries) fail66("memory_document_too_many_entries");
   return parts.map((part, index) => {
-    if (Buffer.byteLength(part.text, "utf8") > MEMORY_DOCUMENT_LIMITS.entryBytes) fail64("memory_document_too_large");
+    if (Buffer.byteLength(part.text, "utf8") > MEMORY_DOCUMENT_LIMITS.entryBytes) fail66("memory_document_too_large");
     return { id: `part-${index + 1}`, title: part.title.slice(0, 512) || fallbackTitle, text: part.text };
   });
 }
@@ -21331,38 +22055,38 @@ function roleLines(agent, { documents, agents = [], names = null }) {
   } else if (zone !== null) {
     lines.push(`Your write zone in this folder: ${zone.join(", ")}. Other agents own the rest of the folder: read it, but do not change it; if a change is needed there, say so in your answer.`);
   }
-  if (documents && settings.role !== "coordinator") {
-    const which = settings.role === "project-lead" ? "your own or the project's memory" : settings.role === "quarter-lead" ? "your own or the quarter's memory" : "your own memory";
-    lines.push(`To change ${which}, write a memory document in a file you may change (a "# title" line names it, each "## heading" starts one entry) and ask the person to approve it in the desk. After the approval, write it into memory with the desk's tool write_memory_from_document. Memory is never changed without the person's approval of the exact document.`);
+  if (documents) {
+    const which = settings.role === "project-lead" ? `your own memory, the project's (target "project"), and - when the person asks - the memory of an agent of your project (target "agent" with its ID)` : settings.role === "quarter-lead" ? `your own memory, the quarter's (target "quarter"), and - when the person asks - the memory of an agent of your quarter (target "agent" with its ID)` : settings.role === "coordinator" ? `your own memory and the world's (target "project"). You are not in a project's context: the memory of an agent in a project is its project lead's to change - give the lead a task for it, as for other project work; change it yourself (target "agent" with its ID) only when the person asks you directly. A project kept to some PCs (home only, or some machines only) keeps its memory out of your chat: only its own lead changes it` : "your own memory";
+    lines.push(`You may change ${which}. Read a memory with the desk's tool read_memory; change it with change_memory: name entries by their title - "set" adds an entry or replaces its text, "delete" removes it - and say why. The change waits for the person's approval in the chat, unless the person allowed you to change your own memory without asking; memory never changes otherwise. When the person asks you to update your memory, use these tools. For a long rewrite you may instead write a memory document (a "# title" line, each "## heading" one entry) in a file you may change, which the person approves in the desk; then write it with write_memory_from_document.`);
   }
   return lines;
 }
 var KEY2 = "memory-agents-v1";
-var ID37 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/;
+var ID40 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/;
 var TERMINAL2 = /* @__PURE__ */ new Set(["completed", "failed", "interrupted"]);
 var FAILURE_PROBLEMS = Object.freeze(/* @__PURE__ */ new Map([
   ["acp_model_unreachable", "model_unreachable"],
   ["claude_signed_out", "claude_signed_out"]
 ]));
 var TURN_PROBLEMS = new Set(FAILURE_PROBLEMS.values());
-var hash8 = (value) => createHash26("sha256").update(JSON.stringify(value)).digest("hex");
-function fail65(code) {
+var hash8 = (value) => createHash28("sha256").update(JSON.stringify(value)).digest("hex");
+function fail67(code) {
   throw Object.assign(new Error(code), { code });
 }
 function problem(error) {
   return typeof error?.code === "string" && /^memory_[a-z_]{1,64}$/.test(error.code) ? error.code : "memory_operation_unconfirmed";
 }
 function exact37(value, keys) {
-  if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).some((key) => !keys.includes(key))) fail65("memory_invalid_input");
+  if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).some((key) => !keys.includes(key))) fail67("memory_invalid_input");
 }
-function id11(value) {
-  if (typeof value !== "string" || !ID37.test(value)) fail65("memory_invalid_input");
+function id13(value) {
+  if (typeof value !== "string" || !ID40.test(value)) fail67("memory_invalid_input");
   return value;
 }
 function profile2(value) {
   exact37(value, ["provider", "model", "reasoningEffort", "fallbackPolicy"]);
-  [value.provider, value.model, value.reasoningEffort].forEach(id11);
-  if (value.fallbackPolicy !== "deny") fail65("memory_invalid_input");
+  [value.provider, value.model, value.reasoningEffort].forEach(id13);
+  if (value.fallbackPolicy !== "deny") fail67("memory_invalid_input");
   return {
     provider: value.provider,
     model: value.model,
@@ -21382,23 +22106,25 @@ function manifestOf(pair, own = null) {
   return { ...body2, manifestHash: hash8(body2) };
 }
 function agentMemoryScopeId(agentId) {
-  return `agent-memory:${createHash26("sha256").update(id11(agentId)).digest("hex").slice(0, 32)}`;
+  return `agent-memory:${createHash28("sha256").update(id13(agentId)).digest("hex").slice(0, 32)}`;
 }
 function publicOperation(op) {
   if (!op) return op;
-  const { memory, ...rest } = structuredClone(op);
+  const { memory, task, taskSettled, ...rest } = structuredClone(op);
   return memory === void 0 || rest.memorySnapshot !== void 0 ? rest : { ...rest, memorySnapshot: memory };
 }
 function publicAgent(agent) {
   const {
     operations,
-    createHash: createHash35,
+    createHash: createHash37,
     workspaceKey,
     stops,
     settings,
     memoryDelivery,
     profileChangedAtUtc,
     permissionMode,
+    taskTurn,
+    ownMemoryWithoutAsking,
     ...view
   } = agent;
   const last = operations.at(-1);
@@ -21417,7 +22143,7 @@ var TRACE_SECRETS = Object.freeze([
 ]);
 function maskTrace(value) {
   if (typeof value !== "string") return value ?? null;
-  return TRACE_SECRETS.reduce((text10, pattern) => text10.replace(pattern, "[hidden]"), value);
+  return TRACE_SECRETS.reduce((text11, pattern) => text11.replace(pattern, "[hidden]"), value);
 }
 var TRACE_KEYS = Object.freeze([
   "atUtc",
@@ -21459,8 +22185,16 @@ function maskTraceRecord(record) {
   return result2;
 }
 var ProjectMemoryService = class {
-  constructor({ store, provider = null, archive, now = () => /* @__PURE__ */ new Date(), openTasks = async () => /* @__PURE__ */ new Map(), worldProjects = null }) {
-    Object.assign(this, { store, provider, archive, now, openTasks, worldProjects });
+  constructor({
+    store,
+    provider = null,
+    archive,
+    now = () => /* @__PURE__ */ new Date(),
+    openTasks = async () => /* @__PURE__ */ new Map(),
+    worldProjects = null,
+    projectPolicy: projectPolicy2 = null
+  }) {
+    Object.assign(this, { store, provider, archive, now, openTasks, worldProjects, projectPolicy: projectPolicy2 });
   }
   /**
    * A provider flag for one agent: under the provider router
@@ -21488,17 +22222,17 @@ var ProjectMemoryService = class {
         value: doc.value
       })) return result2;
     }
-    fail65("memory_contention");
+    fail67("memory_contention");
   }
   find(doc, agentId) {
-    const agent = doc.agents.find((item) => item.agentId === id11(agentId));
-    if (!agent) fail65("memory_agent_not_found");
+    const agent = doc.agents.find((item) => item.agentId === id13(agentId));
+    if (!agent) fail67("memory_agent_not_found");
     return agent;
   }
   async listAgents(input2 = {}) {
     exact37(input2, ["projectId", "quarterId"]);
-    if (input2.projectId !== void 0) id11(input2.projectId);
-    if (input2.quarterId !== void 0) id11(input2.quarterId);
+    if (input2.projectId !== void 0) id13(input2.projectId);
+    if (input2.quarterId !== void 0) id13(input2.quarterId);
     const doc = await this.catalog();
     const agents = doc.value.agents.filter((agent) => (!input2.projectId || agent.projectId === input2.projectId) && (!input2.quarterId || agent.quarterId === input2.quarterId));
     const views = [];
@@ -21563,16 +22297,16 @@ var ProjectMemoryService = class {
    */
   async setAgentSettings(input2) {
     exact37(input2, ["agentId", "expectedRevision", "role", "writeZone"]);
-    const agentId = id11(input2.agentId);
-    if (!Number.isSafeInteger(input2.expectedRevision) || input2.expectedRevision < 0 || !AGENT_ROLES.includes(input2.role)) fail65("memory_invalid_input");
+    const agentId = id13(input2.agentId);
+    if (!Number.isSafeInteger(input2.expectedRevision) || input2.expectedRevision < 0 || !AGENT_ROLES.includes(input2.role)) fail67("memory_invalid_input");
     const writeZone = input2.writeZone === null ? null : normalizeWriteZone(input2.writeZone);
-    if (input2.role !== "feature" && writeZone !== null) fail65("memory_invalid_input");
+    if (input2.role !== "feature" && writeZone !== null) fail67("memory_invalid_input");
     await this.change((doc) => {
       const agent = this.find(doc, agentId);
-      if (agent.state === "archived") fail65("memory_agent_closed");
+      if (agent.state === "archived") fail67("memory_agent_closed");
       const current = agentSettings(agent);
-      if (current.revision !== input2.expectedRevision) fail65("memory_revision_conflict");
-      if (input2.role !== "feature" && doc.agents.some((other) => other.agentId !== agentId && other.state !== "archived" && agentSettings(other).role === input2.role && (input2.role === "coordinator" || other.projectId === agent.projectId && (input2.role === "project-lead" || other.quarterId === agent.quarterId)))) fail65("memory_role_taken");
+      if (current.revision !== input2.expectedRevision) fail67("memory_revision_conflict");
+      if (input2.role !== "feature" && doc.agents.some((other) => other.agentId !== agentId && other.state !== "archived" && agentSettings(other).role === input2.role && (input2.role === "coordinator" || other.projectId === agent.projectId && (input2.role === "project-lead" || other.quarterId === agent.quarterId)))) fail67("memory_role_taken");
       agent.settings = {
         role: input2.role,
         writeZone,
@@ -21589,14 +22323,14 @@ var ProjectMemoryService = class {
    */
   async setAgentPermissionMode(input2) {
     exact37(input2, ["agentId", "permissionMode"]);
-    const agentId = id11(input2.agentId);
+    const agentId = id13(input2.agentId);
     if (input2.permissionMode !== null && !AGENT_PERMISSION_MODES.includes(input2.permissionMode)) {
-      fail65("memory_invalid_input");
+      fail67("memory_invalid_input");
     }
     let changed = false;
     await this.change((doc) => {
       const agent = this.find(doc, agentId);
-      if (agent.state === "archived") fail65("memory_agent_closed");
+      if (agent.state === "archived") fail67("memory_agent_closed");
       changed = (agent.permissionMode ?? null) !== input2.permissionMode;
       if (input2.permissionMode === null) delete agent.permissionMode;
       else agent.permissionMode = input2.permissionMode;
@@ -21606,7 +22340,367 @@ var ProjectMemoryService = class {
   /** Every agent's own permission mode (null: the provider's), for the trusted host's window. */
   async readPermissionModes() {
     const agents = (await this.catalog()).value.agents;
-    return { agents: agents.map((agent) => ({ agentId: agent.agentId, permissionMode: agent.permissionMode ?? null })) };
+    return { agents: agents.map((agent) => ({
+      agentId: agent.agentId,
+      permissionMode: agent.permissionMode ?? null,
+      ownMemoryWithoutAsking: agent.ownMemoryWithoutAsking === true
+    })) };
+  }
+  // --- task mode (agent-tasks.mjs) --------------------------------------------------
+  //
+  // The person's trusted host starts a task, asks for changes to its plan,
+  // approves or cancels it. Starting, revising and approving mark the agent's
+  // next message as the task's planning or work turn (`taskTurn`, used once by
+  // send): it gets the task's instruction, a planning turn runs read-only, and its
+  // end is read back into the task (receipt).
+  async taskAgent(agentId) {
+    const agent = this.find((await this.catalog()).value, id13(agentId));
+    if (agent.state !== "active") fail67("memory_agent_closed");
+    return agent;
+  }
+  async setTaskTurn(agentId, taskTurn) {
+    await this.change((doc) => {
+      const agent = this.find(doc, agentId);
+      if (taskTurn === null) delete agent.taskTurn;
+      else agent.taskTurn = taskTurn;
+    });
+  }
+  /** A new task for an idle agent: its next message is the planning turn. */
+  async startTask(input2) {
+    exact37(input2, ["agentId", "text"]);
+    const agent = await this.taskAgent(input2.agentId);
+    if (agent.currentOperationId) fail67("memory_agent_busy");
+    const task = await createTask(this.store, {
+      projectId: agent.projectId,
+      quarterId: agent.quarterId,
+      agentId: agent.agentId,
+      text: input2.text,
+      now: this.now()
+    });
+    await this.setTaskTurn(agent.agentId, { taskId: task.taskId, phase: "plan" });
+    return task;
+  }
+  /** The person's remarks (and answers): the next message plans again. */
+  async reviseTask(input2) {
+    exact37(input2, ["agentId", "taskId", "remarks", "answers"]);
+    const agent = await this.taskAgent(input2.agentId);
+    const task = await reviseTask(this.store, {
+      projectId: agent.projectId,
+      taskId: input2.taskId,
+      remarks: input2.remarks,
+      answers: input2.answers,
+      now: this.now()
+    });
+    await this.setTaskTurn(agent.agentId, { taskId: task.taskId, phase: "plan" });
+    return task;
+  }
+  /** The person approved the latest revision: the next message is the work turn. */
+  async approveTask(input2) {
+    exact37(input2, ["agentId", "taskId", "revision", "answers"]);
+    const agent = await this.taskAgent(input2.agentId);
+    const task = await approveTask(this.store, {
+      projectId: agent.projectId,
+      taskId: input2.taskId,
+      revision: input2.revision,
+      answers: input2.answers,
+      now: this.now()
+    });
+    await this.setTaskTurn(agent.agentId, { taskId: task.taskId, phase: "work" });
+    return task;
+  }
+  /** The person cancelled an open task: a turn marked for it is not one any more. */
+  async cancelTask(input2) {
+    exact37(input2, ["agentId", "taskId"]);
+    const agent = this.find((await this.catalog()).value, id13(input2.agentId));
+    const result2 = await cancelTask(this.store, { projectId: agent.projectId, taskId: input2.taskId, now: this.now() });
+    if (agent.taskTurn?.taskId === input2.taskId) await this.setTaskTurn(agent.agentId, null);
+    return result2;
+  }
+  /** Tasks of a project, or of every project without one (newest first; filters as agent-tasks.mjs readTasks). */
+  async readTasks(input2) {
+    exact37(input2, ["projectId", "agentId", "quarterId", "stages", "waitingFor", "limit"]);
+    return input2.projectId === void 0 ? readAllTasks(this.store, input2) : readTasks(this.store, input2);
+  }
+  async readTask(input2) {
+    exact37(input2, ["projectId", "taskId"]);
+    return readTask(this.store, input2);
+  }
+  /**
+   * What a finished task turn left in the agent's trace: the plan it presented
+   * (Claude's ExitPlanMode), its answer's text, and its last todo list.
+   */
+  async taskTurnReport(agent, turnId2) {
+    if (typeof this.provider?.trace !== "function") return { plan: null, text: "", todos: null };
+    const page = await this.provider.trace(agent, { before: null, after: null, maxBytes: 512 * 1024 });
+    const records = page.records.filter((record) => record.turnId === turnId2);
+    const input2 = (tool) => {
+      const record = records.findLast((item) => item.type === "tool_use" && item.tool === tool);
+      try {
+        return record === void 0 ? null : JSON.parse(record.input);
+      } catch {
+        return null;
+      }
+    };
+    const plan = input2("ExitPlanMode")?.plan;
+    const todos = input2("TodoWrite")?.todos;
+    const joint = this.providerFlag(agent, "chunkedText") ? "" : "\n\n";
+    const text11 = records.filter((record) => record.type === "assistant" && typeof record.text === "string").map((record) => record.text).join(joint);
+    return { plan: typeof plan === "string" && plan.trim() ? plan : null, text: text11, todos: Array.isArray(todos) ? todos : null };
+  }
+  /** The end of a task turn goes into its task: a plan, the work's steps, or a stop. Once. */
+  async settleTaskTurn(agent, op) {
+    const { taskId: taskId2, phase } = op.task;
+    const projectId = agent.projectId;
+    try {
+      const report = await this.taskTurnReport(agent, op.turnId);
+      if (phase === "plan" && (op.state === "completed" || report.plan !== null)) {
+        await recordPlan(this.store, {
+          projectId,
+          taskId: taskId2,
+          planText: report.plan ?? report.text,
+          operationId: op.operationId,
+          now: this.now()
+        });
+      } else if (phase === "plan") {
+        await stopTask(this.store, { projectId, taskId: taskId2, state: op.state, operationId: op.operationId, now: this.now() });
+      } else {
+        const listed = op.state === "completed" ? parseTaskResults(report.text) : null;
+        const working = listed?.listed === true && (await readTask(this.store, { projectId, taskId: taskId2 })).stage === "in-progress";
+        const results = working ? await this.taskResults(agent, taskId2, listed.items) : null;
+        await settleWork(this.store, {
+          projectId,
+          taskId: taskId2,
+          state: op.state,
+          todos: report.todos,
+          results,
+          operationId: op.operationId,
+          now: this.now()
+        });
+      }
+    } catch (error) {
+      if (!["task_not_found", "task_stage_conflict"].includes(error?.code)) return;
+    }
+    await this.change((doc) => {
+      const stored = this.find(doc, agent.agentId).operations.find((item) => item.operationId === op.operationId);
+      if (stored) stored.taskSettled = true;
+    });
+  }
+  /**
+   * The files an agent listed as its task's results, registered as its artifacts (the Artifacts tab):
+   * each one read in the project folder and kept with its hash as it is now. The registry is the
+   * Gateway's (application-gateway-read-runtime.mjs); without it the task waits for the next receipt.
+   * A file that cannot be registered (outside the folder, missing, not text, private) stays among the
+   * results with why.
+   */
+  async taskResults(agent, taskId2, listed) {
+    const registry = this.artifactRegistry;
+    if (!registry) fail67("task_results_unavailable");
+    const root = await resolveProjectWorkspace(this.store, agent.projectId).then(
+      (workspace3) => workspace3.workspacePath,
+      () => null
+    );
+    const inside3 = (value) => {
+      const plain = value.replace(/\\/gu, "/").replace(/^\.\//u, "");
+      if (!/^(?:[A-Za-z]:\/|\/)/u.test(plain)) return plain;
+      if (root === null) return null;
+      const relative = path27.relative(root, path27.resolve(plain));
+      return !relative || relative.startsWith("..") || path27.isAbsolute(relative) ? null : relative.replace(/\\/gu, "/");
+    };
+    const results = [];
+    for (const [index, item] of listed.entries()) {
+      const filePath = inside3(item.path);
+      const result2 = { path: filePath ?? item.path, note: item.note, artifactId: null, problem: null };
+      try {
+        if (filePath === null) fail67("outside_project");
+        const page = await registry.read(agent.projectId, filePath);
+        const record = await registry.register({
+          agentId: agent.agentId,
+          artifactId: `${taskId2}.${index + 1}`,
+          path: filePath,
+          sha256: page.contentSha256
+        });
+        result2.artifactId = record.artifactId;
+      } catch (error) {
+        result2.problem = typeof error?.code === "string" ? error.code : "unreadable";
+      }
+      results.push(result2);
+    }
+    return results;
+  }
+  // --- the agent's own memory changes (memory-changes.mjs) ----------------------------
+  //
+  // An agent reads a memory it may see and asks to add, change or remove entries
+  // of one it may change, by its desk tools; the change waits for the person,
+  // who approves or rejects it in the agent's chat (the trusted host). An agent's
+  // change of its own memory is written at once when the person allowed that
+  // (ownMemoryWithoutAsking, set by the trusted host).
+  /**
+   * The memory `target` names for this agent ("own" | "quarter" | "project" | "agent"; `agentOf`
+   * the agent whose memory, for "agent"), if it may `use` it ("read" | "change"): its own memory;
+   * its quarter's and project's to read; a quarter lead changes its quarter's, a project lead
+   * its project's and, when the person asks, its project agents' own; the world lead the world's.
+   */
+  async memoryTargetFor(agent, target2, agentOf4, use) {
+    const role = agentSettings(agent).role;
+    const denied = () => fail67("memory_change_target_denied");
+    if (target2 === "own") {
+      if (!agent.agentScopeId) denied();
+      return { kind: "own", scope: await this.store.readScope({ scopeId: agent.agentScopeId }), agentId: agent.agentId };
+    }
+    if (target2 === "quarter" || target2 === "project") {
+      const lead = target2 === "quarter" ? role === "quarter-lead" : role === "project-lead" || role === "coordinator";
+      if (use === "change" && !lead) denied();
+      const pair = await this.store.readPair({ projectId: agent.projectId, quarterId: agent.quarterId });
+      return { kind: target2, scope: target2 === "quarter" ? pair.quarter : pair.project, agentId: null };
+    }
+    if (target2 === "agent" && ["project-lead", "quarter-lead", "coordinator"].includes(role)) {
+      const other = this.find((await this.catalog()).value, id13(agentOf4));
+      if (other.state === "archived" || !other.agentScopeId) denied();
+      const below = other.projectId === agent.projectId && (role !== "quarter-lead" || other.quarterId === agent.quarterId);
+      if (!below && role !== "coordinator") denied();
+      if (!below && !await this.travelsWithWorld(other.projectId)) fail67("memory_change_target_kept");
+      return { kind: "agent", scope: await this.store.readScope({ scopeId: other.agentScopeId }), agentId: other.agentId };
+    }
+    return denied();
+  }
+  /** Whether a project goes wherever the world goes: no policy keeps it home or to some PCs (world-registry.mjs). */
+  async travelsWithWorld(projectId) {
+    if (typeof this.projectPolicy !== "function") return false;
+    const policy = await this.projectPolicy(projectId).catch(() => void 0);
+    return policy === null || policy?.homeOnly === false && policy?.allowedMachines === null;
+  }
+  /** A memory as the agent's tool reads it: its entries by title, and its revision. */
+  async readMemoryFor(input2) {
+    exact37(input2, ["agentId", "target", "agentOf"]);
+    const agent = this.find((await this.catalog()).value, id13(input2.agentId));
+    if (agent.state !== "active") fail67("memory_agent_closed");
+    const { kind: kind2, scope, agentId } = await this.memoryTargetFor(agent, input2.target, input2.agentOf ?? null, "read");
+    return {
+      kind: kind2,
+      agentId,
+      revision: scope.revision,
+      entries: scope.entries.map((entry) => ({ title: entry.title, text: entry.text }))
+    };
+  }
+  /** Writes a memory's next entries as `actorId` (the store's own grant first, as for an approved document). */
+  async writeMemoryEntries(scope, entries2, actorId, seed) {
+    const key = hash8({ seed, scopeId: scope.scopeId, revision: scope.revision }).slice(0, 32);
+    const commandId = `memory-change-${key}`;
+    await this.store.authorizeWrite({
+      commandId,
+      scopeId: scope.scopeId,
+      expectedRevision: scope.revision,
+      entries: entries2,
+      requestedBy: actorId
+    });
+    return this.store.write({
+      scopeId: scope.scopeId,
+      expectedRevision: scope.revision,
+      entries: entries2,
+      operationId: `memory-change:${key}`,
+      commandId,
+      actorId
+    });
+  }
+  /**
+   * The agent's tool asks to change a memory: pending for the person, or written at once for
+   * its own memory when the person allowed that. Returns the state, the change's ID and what changes.
+   */
+  async proposeMemoryChange(input2) {
+    exact37(input2, ["agentId", "target", "agentOf", "changes", "reason"]);
+    const agent = this.find((await this.catalog()).value, id13(input2.agentId));
+    if (agent.state !== "active") fail67("memory_agent_closed");
+    const target2 = await this.memoryTargetFor(agent, input2.target, input2.agentOf ?? null, "change");
+    const changes = normalizeChanges(input2.changes);
+    const { entries: entries2, diff } = applyChanges(target2.scope.entries, changes);
+    const where = {
+      projectId: agent.projectId,
+      quarterId: agent.quarterId,
+      agentId: agent.agentId,
+      target: { kind: target2.kind, scopeId: target2.scope.scopeId, agentId: target2.agentId },
+      baseRevision: target2.scope.revision,
+      changes,
+      diff,
+      reason: input2.reason ?? null,
+      now: this.now()
+    };
+    if (target2.kind === "own" && agent.ownMemoryWithoutAsking === true) {
+      const receipt = await this.writeMemoryEntries(target2.scope, entries2, agent.agentId, { agentId: agent.agentId, changes });
+      const record2 = await recordChange(this.store, { ...where, state: "written", writtenRevision: receipt.revision });
+      return {
+        state: "written",
+        changeId: record2.changeId,
+        scopeId: target2.scope.scopeId,
+        revision: receipt.revision,
+        previousRevision: target2.scope.revision,
+        diff
+      };
+    }
+    const record = await recordChange(this.store, where);
+    return {
+      state: "pending",
+      changeId: record.changeId,
+      scopeId: target2.scope.scopeId,
+      revision: null,
+      previousRevision: target2.scope.revision,
+      diff
+    };
+  }
+  /**
+   * The person's decision on an agent's pending change (the trusted host): approved, it is written
+   * at once exactly as shown - unless the memory changed since it was asked for (then it is stale and
+   * the agent asks again); rejected, nothing changes.
+   */
+  async decideMemoryChange(input2) {
+    exact37(input2, ["projectId", "changeId", "approve"]);
+    if (typeof input2.approve !== "boolean") fail67("memory_invalid_input");
+    const record = await readChange(this.store, { projectId: id13(input2.projectId), changeId: input2.changeId });
+    if (record.state !== "pending") fail67("memory_change_decided");
+    if (!input2.approve) return settleChange(this.store, {
+      projectId: record.projectId,
+      changeId: record.changeId,
+      state: "rejected",
+      now: this.now()
+    });
+    const scope = await this.store.readScope({ scopeId: record.target.scopeId });
+    if (scope.revision !== record.baseRevision) {
+      await settleChange(this.store, { projectId: record.projectId, changeId: record.changeId, state: "stale", now: this.now() });
+      fail67("memory_change_stale");
+    }
+    const { entries: entries2 } = applyChanges(scope.entries, record.changes);
+    const receipt = await this.writeMemoryEntries(scope, entries2, "project-owner", record.changeId);
+    return settleChange(this.store, {
+      projectId: record.projectId,
+      changeId: record.changeId,
+      state: "approved",
+      writtenRevision: receipt.revision,
+      now: this.now()
+    });
+  }
+  /** Changes of a project (or of every project without one), newest first; by agent and states. */
+  async readMemoryChanges(input2) {
+    exact37(input2, ["projectId", "agentId", "states", "limit"]);
+    return input2.projectId === void 0 ? readAllChanges(this.store, { states: input2.states ?? null, limit: input2.limit ?? 50 }) : readChanges(this.store, {
+      projectId: input2.projectId,
+      agentId: input2.agentId ?? null,
+      states: input2.states ?? null,
+      limit: input2.limit ?? 50
+    });
+  }
+  /** Whether an agent's change of its own memory is written without asking (the person's setting). */
+  async setOwnMemoryAutonomy(input2) {
+    exact37(input2, ["agentId", "allowed"]);
+    if (typeof input2.allowed !== "boolean") fail67("memory_invalid_input");
+    const agentId = id13(input2.agentId);
+    let changed = false;
+    await this.change((doc) => {
+      const agent = this.find(doc, agentId);
+      if (agent.state === "archived") fail67("memory_agent_closed");
+      changed = agent.ownMemoryWithoutAsking === true !== input2.allowed;
+      if (input2.allowed) agent.ownMemoryWithoutAsking = true;
+      else delete agent.ownMemoryWithoutAsking;
+    });
+    return { agentId, allowed: input2.allowed, changed };
   }
   /** Read-modify-compare-and-swap of one store document. */
   async changeDocument(key, update2) {
@@ -21616,10 +22710,10 @@ var ProjectMemoryService = class {
       const result2 = update2(value);
       if (await this.store.compareAndSwapDocument({ key, expectedRevision: current?.revision ?? 0, value })) return result2;
     }
-    fail65("memory_contention");
+    fail67("memory_contention");
   }
   approvalsKey(agentId) {
-    return `${APPROVALS}:${createHash26("sha256").update(id11(agentId)).digest("hex").slice(0, 32)}`;
+    return `${APPROVALS}:${createHash28("sha256").update(id13(agentId)).digest("hex").slice(0, 32)}`;
   }
   /** The memories an agent may fill from a document: its own; its project's or quarter's when it leads them. */
   async documentTargets(agent) {
@@ -21642,10 +22736,19 @@ var ProjectMemoryService = class {
   async previewMemoryDocument(input2) {
     exact37(input2, ["agentId", "path", "target"]);
     const agent = this.find((await this.catalog()).value, input2.agentId);
-    if (agent.state === "archived") fail65("memory_agent_closed");
+    if (agent.state === "archived") fail67("memory_agent_closed");
     const target2 = (await this.documentTargets(agent)).find((item) => item.kind === input2.target);
-    if (!target2) fail65("memory_document_target_denied");
+    if (!target2) fail67("memory_document_target_denied");
     const { document, entries: entries2 } = await this.documentOf(agent, input2.path);
+    const current = new Map(target2.scope.entries.map((entry) => [entry.title, String(entry.text ?? "").trim()]));
+    const titles = new Set(entries2.map((entry) => entry.title));
+    const changes = [
+      ...entries2.map((entry) => ({
+        title: entry.title,
+        change: !current.has(entry.title) ? "added" : current.get(entry.title) === entry.text.trim() ? "same" : "changed"
+      })),
+      ...target2.scope.entries.filter((entry) => !titles.has(entry.title)).map((entry) => ({ title: entry.title, change: "removed" }))
+    ].slice(0, 128);
     return {
       schemaVersion: 1,
       agentId: agent.agentId,
@@ -21654,7 +22757,36 @@ var ProjectMemoryService = class {
       bytes: document.bytes,
       target: { kind: target2.kind, scopeId: target2.scope.scopeId, revision: target2.scope.revision },
       entries: entries2.map((entry) => ({ id: entry.id, title: entry.title, characters: entry.text.length })),
+      changes,
       excerpt: document.text.slice(0, 1200)
+    };
+  }
+  /**
+   * A memory as a document in the project folder, for the person's text editor (the owner's choice
+   * of 01.11): the trusted host writes it and opens it; the person loads it back through the preview
+   * and approval of a memory document. A file there that differs is kept unless `replace`.
+   */
+  async exportMemoryDocument(input2) {
+    exact37(input2, ["agentId", "path", "target", "replace", "title"]);
+    const agent = this.find((await this.catalog()).value, input2.agentId);
+    if (agent.state === "archived") fail67("memory_agent_closed");
+    const target2 = (await this.documentTargets(agent)).find((item) => item.kind === input2.target);
+    if (!target2) fail67("memory_document_target_denied");
+    const workspace3 = await resolveProjectWorkspace(this.store, agent.projectId);
+    const named = typeof input2.title === "string" ? input2.title.replace(/[\r\n]+/gu, " ").trim().slice(0, 200) : "";
+    const title = named || (target2.kind === "project" ? `Memory of project ${agent.projectId}` : target2.kind === "quarter" ? `Memory of quarter ${agent.quarterId}` : `Memory of agent ${agent.agentId}`);
+    const written = await writeMemoryDocument(
+      workspace3.workspacePath,
+      input2.path,
+      documentFromEntries(title, target2.scope.entries),
+      { replace: input2.replace === true }
+    );
+    return {
+      schemaVersion: 1,
+      agentId: agent.agentId,
+      ...written,
+      target: { kind: target2.kind, scopeId: target2.scope.scopeId, revision: target2.scope.revision },
+      entries: target2.scope.entries.length
     };
   }
   /**
@@ -21666,15 +22798,15 @@ var ProjectMemoryService = class {
    */
   async approveMemoryDocument(input2) {
     exact37(input2, ["commandId", "agentId", "path", "target", "expectedSha256", "apply"]);
-    if (typeof input2.apply !== "boolean") fail65("memory_invalid_input");
+    if (typeof input2.apply !== "boolean") fail67("memory_invalid_input");
     const agent = this.find((await this.catalog()).value, input2.agentId);
-    if (agent.state === "archived") fail65("memory_agent_closed");
+    if (agent.state === "archived") fail67("memory_agent_closed");
     const target2 = (await this.documentTargets(agent)).find((item) => item.kind === input2.target);
-    if (!target2) fail65("memory_document_target_denied");
+    if (!target2) fail67("memory_document_target_denied");
     const { document, entries: entries2 } = await this.documentOf(agent, input2.path);
-    if (document.contentSha256 !== input2.expectedSha256) fail65("memory_document_changed");
+    if (document.contentSha256 !== input2.expectedSha256) fail67("memory_document_changed");
     await this.store.authorizeWrite({
-      commandId: id11(input2.commandId),
+      commandId: id13(input2.commandId),
       scopeId: target2.scope.scopeId,
       expectedRevision: target2.scope.revision,
       entries: entries2,
@@ -21706,17 +22838,17 @@ var ProjectMemoryService = class {
   async writeMemoryFromDocument(input2) {
     exact37(input2, ["agentId", "path"]);
     const agent = this.find((await this.catalog()).value, input2.agentId);
-    if (agent.state !== "active") fail65("memory_agent_closed");
+    if (agent.state !== "active") fail67("memory_agent_closed");
     const relative = normalizeDocumentPath(input2.path);
     const current = await this.store.readDocument({ key: this.approvalsKey(agent.agentId) });
     const approval = (current?.value.approvals ?? []).filter((item) => item.path === relative).at(-1);
-    if (!approval || approval.state === "superseded") fail65("memory_document_not_approved");
-    if (approval.state === "written") fail65("memory_authorization_consumed");
+    if (!approval || approval.state === "superseded") fail67("memory_document_not_approved");
+    if (approval.state === "written") fail67("memory_authorization_consumed");
     return this.applyApproval(agent, approval, agent.agentId);
   }
   async applyApproval(agent, approval, actorId) {
     const { document, entries: entries2 } = await this.documentOf(agent, approval.path);
-    if (document.contentSha256 !== approval.contentSha256) fail65("memory_document_changed");
+    if (document.contentSha256 !== approval.contentSha256) fail67("memory_document_changed");
     const receipt = await this.store.write({
       scopeId: approval.scopeId,
       expectedRevision: approval.expectedRevision,
@@ -21840,20 +22972,20 @@ var ProjectMemoryService = class {
   async createAgent(input2) {
     exact37(input2, ["agentId", "projectId", "quarterId", "operationId", "profile"]);
     const normalized = {
-      agentId: id11(input2.agentId),
-      projectId: id11(input2.projectId),
-      quarterId: id11(input2.quarterId),
-      operationId: id11(input2.operationId),
+      agentId: id13(input2.agentId),
+      projectId: id13(input2.projectId),
+      quarterId: id13(input2.quarterId),
+      operationId: id13(input2.operationId),
       profile: profile2(input2.profile)
     };
     const digest7 = hash8(normalized);
     const existing = (await this.catalog()).value.agents.find((a) => a.agentId === normalized.agentId);
     if (existing) {
-      if (existing.createHash !== digest7) fail65("memory_identity_conflict");
+      if (existing.createHash !== digest7) fail67("memory_identity_conflict");
       return publicAgent(existing);
     }
     const pair = await this.store.readPair({ projectId: normalized.projectId, quarterId: normalized.quarterId });
-    if (!this.provider) fail65("memory_provider_unavailable");
+    if (!this.provider) fail67("memory_provider_unavailable");
     await this.provider.preflight(normalized.profile);
     const workspaceKey = this.provider.resolveWorkspace ? (await this.provider.resolveWorkspace(normalized)).workspaceKey : null;
     const agentScopeId = agentMemoryScopeId(normalized.agentId);
@@ -21882,8 +23014,8 @@ var ProjectMemoryService = class {
     };
     const claimed = await this.change((doc) => {
       if (doc.agents.some((a) => a.agentId === agent.agentId)) return false;
-      if (doc.agents.some((a) => a.operationId === agent.operationId)) fail65("memory_identity_conflict");
-      if (doc.agents.length >= 128) fail65("memory_capacity_exceeded");
+      if (doc.agents.some((a) => a.operationId === agent.operationId)) fail67("memory_identity_conflict");
+      if (doc.agents.length >= 128) fail67("memory_capacity_exceeded");
       doc.agents.push(agent);
       return true;
     });
@@ -21891,7 +23023,7 @@ var ProjectMemoryService = class {
     try {
       const binding = await this.provider.create(agent);
       await this.change((doc) => {
-        if (doc.agents.some((a) => a.agentId !== agent.agentId && a.binding && hash8(a.binding) === hash8(binding))) fail65("memory_identity_conflict");
+        if (doc.agents.some((a) => a.agentId !== agent.agentId && a.binding && hash8(a.binding) === hash8(binding))) fail67("memory_identity_conflict");
         Object.assign(this.find(doc, agent.agentId), { binding, state: "active" });
       });
     } catch (error) {
@@ -21903,22 +23035,22 @@ var ProjectMemoryService = class {
   }
   async send(input2) {
     exact37(input2, ["agentId", "operationId", "text"]);
-    const agentId = id11(input2.agentId), operationId = id11(input2.operationId);
-    if (typeof input2.text !== "string" || !input2.text.trim() || Buffer.byteLength(input2.text, "utf8") > 16384 || /data:(?:image|audio|video)\//iu.test(input2.text)) fail65("memory_invalid_input");
+    const agentId = id13(input2.agentId), operationId = id13(input2.operationId);
+    if (typeof input2.text !== "string" || !input2.text.trim() || Buffer.byteLength(input2.text, "utf8") > 16384 || /data:(?:image|audio|video)\//iu.test(input2.text)) fail67("memory_invalid_input");
     const intentHash = hash8({ agentId, operationId, text: input2.text });
     let agent = this.find((await this.catalog()).value, agentId);
     const previous = agent.operations.find((op) => op.operationId === operationId);
     if (previous) {
-      if (previous.intentHash !== intentHash) fail65("memory_identity_conflict");
+      if (previous.intentHash !== intentHash) fail67("memory_identity_conflict");
       return this.receipt({ agentId, operationId });
     }
-    if (agent.state !== "active") fail65("memory_agent_closed");
-    if (!this.provider) fail65("memory_provider_unavailable");
+    if (agent.state !== "active") fail67("memory_agent_closed");
+    if (!this.provider) fail67("memory_provider_unavailable");
     if (agent.currentOperationId) await this.receipt({ agentId, operationId: agent.currentOperationId });
     await this.provider.preflight(agent.profile);
     if (this.provider.resolveWorkspace) {
       const workspace3 = await this.provider.resolveWorkspace(agent);
-      if (workspace3.workspaceKey !== agent.workspaceKey) fail65("memory_workspace_conflict");
+      if (workspace3.workspaceKey !== agent.workspaceKey) fail67("memory_workspace_conflict");
     }
     const context2 = await this.context({ agentId });
     const manifest = context2.requiredManifest;
@@ -21939,6 +23071,13 @@ var ProjectMemoryService = class {
       roleHash: hash8(roles)
     };
     const repeated = deliveryKey !== null && agent.memoryDelivery && Object.keys(delivery).every((key) => agent.memoryDelivery[key] === delivery[key]) && agent.operations.at(-1)?.state === "completed";
+    let taskTurn = agent.taskTurn ?? null;
+    let taskText = null;
+    if (taskTurn !== null) {
+      const task = await readTask(this.store, { projectId: agent.projectId, taskId: taskTurn.taskId }).catch(() => null);
+      const fits = task !== null && (taskTurn.phase === "plan" ? task.stage === "planning" : task.stage === "in-progress");
+      if (fits) taskText = taskTurn.phase === "plan" ? planningPrompt(task) : workPrompt(task);
+    }
     const operation3 = {
       operationId,
       intentHash,
@@ -21946,18 +23085,23 @@ var ProjectMemoryService = class {
       memorySnapshot: repeated ? "unchanged" : "full",
       state: "requested",
       turnId: null,
-      requestedAtUtc: this.now().toISOString()
+      requestedAtUtc: this.now().toISOString(),
+      ...taskText === null ? {} : { task: { taskId: taskTurn.taskId, phase: taskTurn.phase } }
     };
     const claimed = await this.change((doc) => {
       const current = this.find(doc, agentId);
       if (current.operations.some((op) => op.operationId === operationId)) return false;
-      if (doc.agents.some((a) => a.agentId !== agentId && a.operations.some((op) => op.operationId === operationId))) fail65("memory_identity_conflict");
-      if (current.state !== "active") fail65("memory_agent_closed");
-      if (current.currentOperationId) fail65("memory_agent_busy");
-      if (current.workspaceKey && doc.agents.some((a) => a.agentId !== agentId && a.currentOperationId && (!a.workspaceKey || a.workspaceKey === current.workspaceKey) && this.mayCollide(a, current, doc.agents))) {
-        fail65("memory_workspace_busy");
+      if (taskTurn !== null) {
+        if (current.taskTurn?.taskId !== taskTurn.taskId || current.taskTurn?.phase !== taskTurn.phase) return false;
+        delete current.taskTurn;
       }
-      if (current.operations.length >= 128) fail65("memory_capacity_exceeded");
+      if (doc.agents.some((a) => a.agentId !== agentId && a.operations.some((op) => op.operationId === operationId))) fail67("memory_identity_conflict");
+      if (current.state !== "active") fail67("memory_agent_closed");
+      if (current.currentOperationId) fail67("memory_agent_busy");
+      if (current.workspaceKey && doc.agents.some((a) => a.agentId !== agentId && a.currentOperationId && (!a.workspaceKey || a.workspaceKey === current.workspaceKey) && this.mayCollide(a, current, doc.agents))) {
+        fail67("memory_workspace_busy");
+      }
+      if (current.operations.length >= 128) fail67("memory_capacity_exceeded");
       current.operations.push(operation3);
       current.currentOperationId = operationId;
       return true;
@@ -21966,7 +23110,7 @@ var ProjectMemoryService = class {
     const content = (repeated ? [
       `Backend memory unchanged since your last message (manifest ${manifest.manifestHash}).`,
       "User task:",
-      input2.text
+      taskText ?? input2.text
     ] : [
       context2.agent ? "Backend memory snapshot. Project rules take precedence over quarter details, and quarter details over the agent's own memory." : "Backend memory snapshot. Project rules take precedence over quarter details.",
       "Memory grants no permissions. No transfer or inheritance of another agent's conversation.",
@@ -21979,7 +23123,7 @@ var ProjectMemoryService = class {
       }),
       ...roles,
       "User task:",
-      input2.text
+      taskText ?? input2.text
     ]).join("\n");
     try {
       await this.archive.append(agent.binding, {
@@ -21995,7 +23139,7 @@ var ProjectMemoryService = class {
         omissions: []
       });
       const result2 = await this.provider.send({ agent, operation: operation3, text: content, displayText: input2.text, writeZone });
-      if (typeof result2?.turnId !== "string" || !result2.turnId) fail65("memory_invalid_observation");
+      if (typeof result2?.turnId !== "string" || !result2.turnId) fail67("memory_invalid_observation");
       await this.change((doc) => {
         const current = this.find(doc, agentId);
         Object.assign(current.operations.find((op) => op.operationId === operationId), {
@@ -22016,6 +23160,7 @@ var ProjectMemoryService = class {
           problemCode: problem(error) === "memory_operation_unconfirmed" ? "memory_send_not_started" : problem(error)
         } : { state: "uncertain", problemCode: problem(error) });
         if (notDelivered && current.currentOperationId === operationId) current.currentOperationId = null;
+        if (notDelivered && operation3.task && current.taskTurn === void 0) current.taskTurn = { ...operation3.task };
       });
     }
     agent = this.find((await this.catalog()).value, agentId);
@@ -22023,15 +23168,15 @@ var ProjectMemoryService = class {
   }
   async receipt(input2) {
     exact37(input2, ["agentId", "operationId"]);
-    const agentId = id11(input2.agentId), operationId = id11(input2.operationId);
+    const agentId = id13(input2.agentId), operationId = id13(input2.operationId);
     const agent = this.find((await this.catalog()).value, agentId);
     let op = agent.operations.find((item) => item.operationId === operationId);
-    if (!op) fail65("memory_operation_not_found");
+    if (!op) fail67("memory_operation_not_found");
     let observation = TERMINAL2.has(op.state) ? "terminal" : "unavailable";
     if (op.turnId && this.provider && !TERMINAL2.has(op.state)) {
       try {
         const observed = await this.provider.observe({ agent, operation: op });
-        if (observed.turnId !== op.turnId) fail65("memory_invalid_observation");
+        if (observed.turnId !== op.turnId) fail67("memory_invalid_observation");
         observation = "available";
         if (TERMINAL2.has(observed.state) || observed.state === "started") {
           await this.change((doc) => {
@@ -22054,26 +23199,30 @@ var ProjectMemoryService = class {
       }
     }
     op = this.find((await this.catalog()).value, agentId).operations.find((item) => item.operationId === operationId);
+    if (op.task && TERMINAL2.has(op.state) && op.taskSettled !== true) {
+      await this.settleTaskTurn(agent, op);
+      op = this.find((await this.catalog()).value, agentId).operations.find((item) => item.operationId === operationId);
+    }
     return { ...publicOperation(op), observation };
   }
   async closeAgent(input2) {
     exact37(input2, ["agentId", "operationId"]);
-    const agentId = id11(input2.agentId), operationId = id11(input2.operationId);
+    const agentId = id13(input2.agentId), operationId = id13(input2.operationId);
     let agent = this.find((await this.catalog()).value, agentId);
-    if (agent.closeOperationId && agent.closeOperationId !== operationId) fail65("memory_identity_conflict");
+    if (agent.closeOperationId && agent.closeOperationId !== operationId) fail67("memory_identity_conflict");
     if (agent.state === "archived") return publicAgent(agent);
     if (agent.currentOperationId) await this.receipt({ agentId, operationId: agent.currentOperationId });
     await this.change((doc) => {
       const current = this.find(doc, agentId);
-      if (current.closeOperationId && current.closeOperationId !== operationId) fail65("memory_identity_conflict");
-      if (!["active", "closing"].includes(current.state)) fail65("memory_agent_busy");
-      if (current.currentOperationId) fail65("memory_agent_busy");
+      if (current.closeOperationId && current.closeOperationId !== operationId) fail67("memory_identity_conflict");
+      if (!["active", "closing"].includes(current.state)) fail67("memory_agent_busy");
+      if (current.currentOperationId) fail67("memory_agent_busy");
       current.state = "closing";
       current.closeOperationId = operationId;
     });
     agent = this.find((await this.catalog()).value, agentId);
     if (this.provider) await this.provider.capture(agent);
-    else if (agent.operations.length) fail65("memory_provider_unavailable");
+    else if (agent.operations.length) fail67("memory_provider_unavailable");
     await this.archive.read(agent.binding, { limit: 1 });
     await this.change((doc) => {
       Object.assign(this.find(doc, agentId), { state: "archived", archivedAtUtc: this.now().toISOString() });
@@ -22087,15 +23236,15 @@ var ProjectMemoryService = class {
    */
   async reopenAgent(input2) {
     exact37(input2, ["agentId"]);
-    const agentId = id11(input2.agentId);
+    const agentId = id13(input2.agentId);
     const agent = this.find((await this.catalog()).value, agentId);
-    if (agent.state !== "archived") fail65("memory_agent_open");
+    if (agent.state !== "archived") fail67("memory_agent_open");
     await requireOpenProject(this.store, agent.projectId, agent.quarterId);
     await this.change((doc) => {
       const current = this.find(doc, agentId);
-      if (current.state !== "archived") fail65("memory_agent_open");
+      if (current.state !== "archived") fail67("memory_agent_open");
       const role = agentSettings(current).role;
-      if (role !== "feature" && doc.agents.some((other) => other.agentId !== agentId && other.state !== "archived" && agentSettings(other).role === role && (role === "coordinator" || other.projectId === current.projectId && (role === "project-lead" || other.quarterId === current.quarterId)))) fail65("memory_role_taken");
+      if (role !== "feature" && doc.agents.some((other) => other.agentId !== agentId && other.state !== "archived" && agentSettings(other).role === role && (role === "coordinator" || other.projectId === current.projectId && (role === "project-lead" || other.quarterId === current.quarterId)))) fail67("memory_role_taken");
       current.state = "active";
       current.archivedAtUtc = null;
       delete current.closeOperationId;
@@ -22104,21 +23253,21 @@ var ProjectMemoryService = class {
   }
   async interrupt(input2) {
     exact37(input2, ["agentId", "operationId"]);
-    const agentId = id11(input2.agentId), operationId = id11(input2.operationId);
-    if (!this.provider?.interrupt) fail65("memory_provider_unavailable");
+    const agentId = id13(input2.agentId), operationId = id13(input2.operationId);
+    if (!this.provider?.interrupt) fail67("memory_provider_unavailable");
     const agent = this.find((await this.catalog()).value, agentId);
     const previous = agent.stops?.find((stop2) => stop2.operationId === operationId);
     if (previous) return structuredClone(previous);
     const operation3 = agent.operations.find((op) => op.operationId === operationId);
     if (!operation3?.turnId || agent.currentOperationId !== operationId || TERMINAL2.has(operation3.state)) {
-      fail65("memory_identity_conflict");
+      fail67("memory_identity_conflict");
     }
     const stop = { operationId, turnId: operation3.turnId, state: "requested", automaticRetryAllowed: false };
     const claimed = await this.change((doc) => {
       const current = this.find(doc, agentId);
       current.stops ??= [];
       if (current.stops.some((s) => s.operationId === operationId)) return false;
-      if (current.currentOperationId !== operationId) fail65("memory_identity_conflict");
+      if (current.currentOperationId !== operationId) fail67("memory_identity_conflict");
       current.stops.push(stop);
       return true;
     });
@@ -22143,14 +23292,14 @@ var ProjectMemoryService = class {
    */
   async steer(input2) {
     exact37(input2, ["agentId", "operationId", "text", "mode"]);
-    const agentId = id11(input2.agentId), operationId = id11(input2.operationId);
-    if (input2.mode !== "steer" && input2.mode !== "queue") fail65("memory_invalid_input");
-    if (typeof input2.text !== "string" || !input2.text.trim() || Buffer.byteLength(input2.text, "utf8") > 16384 || /data:(?:image|audio|video)\//iu.test(input2.text)) fail65("memory_invalid_input");
+    const agentId = id13(input2.agentId), operationId = id13(input2.operationId);
+    if (input2.mode !== "steer" && input2.mode !== "queue") fail67("memory_invalid_input");
+    if (typeof input2.text !== "string" || !input2.text.trim() || Buffer.byteLength(input2.text, "utf8") > 16384 || /data:(?:image|audio|video)\//iu.test(input2.text)) fail67("memory_invalid_input");
     const started = (op) => ({ agentId, operationId, delivery: "started", turnId: op.turnId ?? null, state: op.state });
     let agent = this.find((await this.catalog()).value, agentId);
     const previous = agent.operations.find((op) => op.operationId === operationId);
     if (previous) return started(await this.send({ agentId, operationId, text: input2.text }));
-    if (agent.state !== "active") fail65("memory_agent_closed");
+    if (agent.state !== "active") fail67("memory_agent_closed");
     const current = agent.currentOperationId ? agent.operations.find((op) => op.operationId === agent.currentOperationId) : null;
     if (current?.turnId && !TERMINAL2.has(current.state) && typeof this.provider?.steer === "function") {
       try {
@@ -22178,7 +23327,7 @@ var ProjectMemoryService = class {
   /** Takes back a message held for the end of the turn; `cancelled: false` when it already went. */
   async unqueue(input2) {
     exact37(input2, ["agentId", "operationId"]);
-    const agentId = id11(input2.agentId), operationId = id11(input2.operationId);
+    const agentId = id13(input2.agentId), operationId = id13(input2.operationId);
     const agent = this.find((await this.catalog()).value, agentId);
     const current = agent.currentOperationId ? agent.operations.find((op) => op.operationId === agent.currentOperationId) : null;
     if (!current?.turnId || typeof this.provider?.unqueue !== "function") return { agentId, operationId, cancelled: false };
@@ -22192,16 +23341,16 @@ var ProjectMemoryService = class {
    */
   async setProfile(input2) {
     exact37(input2, ["agentId", "profile"]);
-    const agentId = id11(input2.agentId);
+    const agentId = id13(input2.agentId);
     const next = profile2(input2.profile);
-    if (!this.provider) fail65("memory_provider_unavailable");
+    if (!this.provider) fail67("memory_provider_unavailable");
     const agent = this.find((await this.catalog()).value, agentId);
-    if (agent.state === "archived" || agent.state === "closing") fail65("memory_agent_closed");
-    if (next.provider !== agent.profile.provider) fail65("memory_profile_conflict");
+    if (agent.state === "archived" || agent.state === "closing") fail67("memory_agent_closed");
+    if (next.provider !== agent.profile.provider) fail67("memory_profile_conflict");
     await this.provider.preflight(next);
     await this.change((doc) => {
       const current = this.find(doc, agentId);
-      if (current.state === "archived" || current.state === "closing") fail65("memory_agent_closed");
+      if (current.state === "archived" || current.state === "closing") fail67("memory_agent_closed");
       current.profile = next;
       current.profileChangedAtUtc = this.now().toISOString();
     });
@@ -22214,15 +23363,15 @@ var ProjectMemoryService = class {
    */
   async trace(input2) {
     exact37(input2, ["agentId", "before", "after", "maxBytes"]);
-    const agentId = id11(input2.agentId);
+    const agentId = id13(input2.agentId);
     const cursor = (value) => {
       if (value === void 0 || value === null) return null;
-      if (typeof value !== "string" || !/^\d{1,6}:\d{1,12}$/u.test(value)) fail65("memory_invalid_input");
+      if (typeof value !== "string" || !/^\d{1,6}:\d{1,12}$/u.test(value)) fail67("memory_invalid_input");
       return value;
     };
-    if (input2.maxBytes !== void 0 && (!Number.isSafeInteger(input2.maxBytes) || input2.maxBytes < 1 || input2.maxBytes > 512 * 1024)) fail65("memory_invalid_input");
+    if (input2.maxBytes !== void 0 && (!Number.isSafeInteger(input2.maxBytes) || input2.maxBytes < 1 || input2.maxBytes > 512 * 1024)) fail67("memory_invalid_input");
     const agent = this.find((await this.catalog()).value, agentId);
-    if (!agent.binding || typeof this.provider?.trace !== "function") fail65("memory_provider_unavailable");
+    if (!agent.binding || typeof this.provider?.trace !== "function") fail67("memory_provider_unavailable");
     const page = await this.provider.trace(agent, {
       before: cursor(input2.before),
       after: cursor(input2.after),
@@ -22247,22 +23396,22 @@ var ProjectMemoryService = class {
   async interactions(input2) {
     exact37(input2, ["agentId", "limit"]);
     if (input2.limit !== void 0 && (!Number.isInteger(input2.limit) || input2.limit < 1 || input2.limit > 32)) {
-      fail65("memory_invalid_input");
+      fail67("memory_invalid_input");
     }
     const agent = this.find((await this.catalog()).value, input2.agentId);
-    if (!agent.binding || !this.provider?.listInteractions) fail65("memory_provider_unavailable");
+    if (!agent.binding || !this.provider?.listInteractions) fail67("memory_provider_unavailable");
     return this.provider.listInteractions(agent, input2.limit === void 0 ? {} : { limit: input2.limit });
   }
   async respond(input2) {
     exact37(input2, ["agentId", "response"]);
     const agent = this.find((await this.catalog()).value, input2.agentId);
-    if (!agent.binding || !this.provider?.respondInteraction) fail65("memory_provider_unavailable");
+    if (!agent.binding || !this.provider?.respondInteraction) fail67("memory_provider_unavailable");
     return this.provider.respondInteraction(agent, input2.response);
   }
   async readArchive(input2) {
     exact37(input2, ["agentId", "cursor", "limit"]);
     const agent = await this.readAgent({ agentId: input2.agentId });
-    if (!agent.binding) fail65("memory_archive_unavailable");
+    if (!agent.binding) fail67("memory_archive_unavailable");
     const { binding, ...page } = await this.archive.read(agent.binding, {
       cursor: input2.cursor ?? null,
       limit: input2.limit ?? 50
@@ -22320,13 +23469,14 @@ async function createProjectMemoryService({
     provider,
     now,
     openTasks: controllerRoot ? createOpenDeskTaskReader(controllerRoot) : void 0,
-    worldProjects: controllerRoot ? () => unmountedWorldProjects(controllerRoot).catch(() => []) : null
+    worldProjects: controllerRoot ? () => unmountedWorldProjects(controllerRoot).catch(() => []) : null,
+    projectPolicy: controllerRoot ? async (projectId) => (await readWorldRegistry(controllerRoot)).projects[projectId]?.policy ?? null : null
   });
 }
 
 // orchestrator/src/application-gateway-runtime.mjs
 import { randomUUID as randomUUID9 } from "node:crypto";
-import { mkdir as mkdir11, readFile as readFile11, rename as rename9, rm as rm6, writeFile as writeFile6 } from "node:fs/promises";
+import { mkdir as mkdir12, readFile as readFile11, rename as rename9, rm as rm6, writeFile as writeFile7 } from "node:fs/promises";
 import { setTimeout as delay } from "node:timers/promises";
 import path28 from "node:path";
 
@@ -22343,7 +23493,7 @@ var APPLICATION_GATEWAY_LIFECYCLE_STATES = Object.freeze([
 ]);
 var STATES3 = new Set(APPLICATION_GATEWAY_LIFECYCLE_STATES);
 var TERMINAL3 = /* @__PURE__ */ new Set(["stopped", "failed", "uncertain"]);
-var ID38 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/;
+var ID41 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/;
 var UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 var SHA25623 = /^[a-f0-9]{64}$/;
 var MAX_BYTES3 = 16 * 1024;
@@ -22354,41 +23504,41 @@ var ApplicationGatewayLifecycleError = class extends Error {
     this.code = code;
   }
 };
-function fail66(code, message) {
+function fail68(code, message) {
   throw new ApplicationGatewayLifecycleError(code, message);
 }
 function object19(value, label2) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    fail66("invalid_type", `${label2} must be an object`);
+    fail68("invalid_type", `${label2} must be an object`);
   }
   return value;
 }
 function exact38(value, keys, label2) {
   if (Object.keys(value).some((key) => !keys.includes(key))) {
-    fail66("unknown_field", `${label2} contains unsupported fields`);
+    fail68("unknown_field", `${label2} contains unsupported fields`);
   }
 }
 function identifier15(value, label2) {
-  if (typeof value !== "string" || !ID38.test(value)) {
-    fail66("invalid_identifier", `${label2} must be a bounded identifier`);
+  if (typeof value !== "string" || !ID41.test(value)) {
+    fail68("invalid_identifier", `${label2} must be a bounded identifier`);
   }
   return value;
 }
 function uuid(value, label2) {
   if (typeof value !== "string" || !UUID.test(value)) {
-    fail66("invalid_identifier", `${label2} must be a lowercase UUID`);
+    fail68("invalid_identifier", `${label2} must be a lowercase UUID`);
   }
   return value;
 }
 function hash9(value, label2) {
   if (typeof value !== "string" || !SHA25623.test(value)) {
-    fail66("invalid_hash", `${label2} must be lowercase SHA-256`);
+    fail68("invalid_hash", `${label2} must be lowercase SHA-256`);
   }
   return value;
 }
 function utc28(value, label2) {
   if (typeof value !== "string" || value.length > 64 || !value.endsWith("Z") || !Number.isFinite(Date.parse(value))) {
-    fail66("invalid_timestamp", `${label2} must be a UTC timestamp ending in Z`);
+    fail68("invalid_timestamp", `${label2} must be a UTC timestamp ending in Z`);
   }
   return value;
 }
@@ -22405,7 +23555,7 @@ function processIdentity(value) {
   object19(value, "process");
   exact38(value, ["processId", "startedAtUtc", "executableSha256"], "process");
   if (!Number.isSafeInteger(value.processId) || value.processId < 1) {
-    fail66("invalid_process", "process.processId must be a positive safe integer");
+    fail68("invalid_process", "process.processId must be a positive safe integer");
   }
   return {
     processId: value.processId,
@@ -22423,10 +23573,10 @@ function buildIdentity({ instanceId, generation, restartOf = null, workspace: bi
     process: processIdentity(process2)
   };
   if (!Number.isSafeInteger(generation) || generation < 1) {
-    fail66("invalid_generation", "identity.generation must be a positive safe integer");
+    fail68("invalid_generation", "identity.generation must be a positive safe integer");
   }
   if (normalized.restartOf === normalized.instanceId) {
-    fail66("invalid_restart", "A gateway instance cannot restart itself");
+    fail68("invalid_restart", "A gateway instance cannot restart itself");
   }
   return {
     ...normalized,
@@ -22435,7 +23585,7 @@ function buildIdentity({ instanceId, generation, restartOf = null, workspace: bi
 }
 function boundedReason(value, label2) {
   if (typeof value !== "string" || !/^[a-z][a-z0-9_]{0,95}$/.test(value)) {
-    fail66("invalid_reason", `${label2} must be a stable reason code`);
+    fail68("invalid_reason", `${label2} must be a stable reason code`);
   }
   return value;
 }
@@ -22451,11 +23601,11 @@ function validateIdentity(value) {
     "identitySha256"
   ], "identity");
   if (value.transportId !== APPLICATION_GATEWAY_TRANSPORT_ID) {
-    fail66("transport_mismatch", "Gateway transport identity is unsupported");
+    fail68("transport_mismatch", "Gateway transport identity is unsupported");
   }
   const rebuilt = buildIdentity(value);
   if (rebuilt.identitySha256 !== value.identitySha256) {
-    fail66("identity_mismatch", "Gateway lifecycle identity is not canonical");
+    fail68("identity_mismatch", "Gateway lifecycle identity is not canonical");
   }
   return rebuilt;
 }
@@ -22477,25 +23627,25 @@ function validateApplicationGatewayLifecycleStatus(value) {
     "terminal"
   ], "gatewayStatus");
   if (value.schemaVersion !== 1 || value.contractVersion !== APPLICATION_GATEWAY_LIFECYCLE_VERSION) {
-    fail66("unsupported_contract", "Gateway lifecycle contract is unsupported");
+    fail68("unsupported_contract", "Gateway lifecycle contract is unsupported");
   }
   const identity2 = validateIdentity(value.identity);
-  if (!STATES3.has(value.lifecycle)) fail66("invalid_state", "Gateway lifecycle state is invalid");
+  if (!STATES3.has(value.lifecycle)) fail68("invalid_state", "Gateway lifecycle state is invalid");
   if (value.health !== value.lifecycle || value.ready !== (value.lifecycle === "ready") || value.terminal !== TERMINAL3.has(value.lifecycle)) {
-    fail66("invalid_state", "Gateway health, readiness or terminal flag is inconsistent");
+    fail68("invalid_state", "Gateway health, readiness or terminal flag is inconsistent");
   }
   const startedAtUtc = utc28(value.startedAtUtc, "startedAtUtc");
   const updatedAtUtc = utc28(value.updatedAtUtc, "updatedAtUtc");
   const heartbeatAtUtc = utc28(value.heartbeatAtUtc, "heartbeatAtUtc");
   if (startedAtUtc !== identity2.process.startedAtUtc || Date.parse(updatedAtUtc) < Date.parse(startedAtUtc) || Date.parse(heartbeatAtUtc) < Date.parse(startedAtUtc) || Date.parse(heartbeatAtUtc) > Date.parse(updatedAtUtc)) {
-    fail66("invalid_timeline", "Gateway lifecycle timeline is inconsistent");
+    fail68("invalid_timeline", "Gateway lifecycle timeline is inconsistent");
   }
   const readyAtUtc = value.readyAtUtc === null ? null : utc28(value.readyAtUtc, "readyAtUtc");
   if (value.lifecycle === "ready" && readyAtUtc === null) {
-    fail66("invalid_state", "Ready state requires readiness time");
+    fail68("invalid_state", "Ready state requires readiness time");
   }
   if (readyAtUtc !== null && (Date.parse(readyAtUtc) < Date.parse(startedAtUtc) || Date.parse(readyAtUtc) > Date.parse(updatedAtUtc))) {
-    fail66("invalid_timeline", "Readiness cannot follow the latest lifecycle update");
+    fail68("invalid_timeline", "Readiness cannot follow the latest lifecycle update");
   }
   object19(value.stop, "stop");
   exact38(value.stop, ["requestId", "requestedAtUtc", "confirmedAtUtc"], "stop");
@@ -22504,26 +23654,26 @@ function validateApplicationGatewayLifecycleStatus(value) {
     identifier15(value.stop.requestId, "stop.requestId");
     utc28(value.stop.requestedAtUtc, "stop.requestedAtUtc");
     if (Date.parse(value.stop.requestedAtUtc) < Date.parse(startedAtUtc) || Date.parse(value.stop.requestedAtUtc) > Date.parse(updatedAtUtc)) {
-      fail66("invalid_timeline", "Stop request is outside the lifecycle timeline");
+      fail68("invalid_timeline", "Stop request is outside the lifecycle timeline");
     }
   } else if (value.stop.requestedAtUtc !== null || value.stop.confirmedAtUtc !== null) {
-    fail66("invalid_stop", "Stop timestamps require a request identity");
+    fail68("invalid_stop", "Stop timestamps require a request identity");
   }
   if (["stop-requested", "stopped"].includes(value.lifecycle) && !stopPresent) {
-    fail66("invalid_stop", "Stop state requires request evidence");
+    fail68("invalid_stop", "Stop state requires request evidence");
   }
   if (stopPresent && !["stop-requested", "stopped", "failed", "uncertain"].includes(
     value.lifecycle
   )) {
-    fail66("invalid_stop", "Stop request evidence is inconsistent with lifecycle");
+    fail68("invalid_stop", "Stop request evidence is inconsistent with lifecycle");
   }
   if (value.lifecycle === "stopped") {
     utc28(value.stop.confirmedAtUtc, "stop.confirmedAtUtc");
     if (Date.parse(value.stop.confirmedAtUtc) < Date.parse(value.stop.requestedAtUtc) || Date.parse(value.stop.confirmedAtUtc) > Date.parse(updatedAtUtc)) {
-      fail66("invalid_timeline", "Stop confirmation is outside the lifecycle timeline");
+      fail68("invalid_timeline", "Stop confirmation is outside the lifecycle timeline");
     }
   } else if (value.stop.confirmedAtUtc !== null) {
-    fail66("invalid_stop", "Only stopped state can confirm Stop");
+    fail68("invalid_stop", "Only stopped state can confirm Stop");
   }
   if (["failed", "uncertain"].includes(value.lifecycle)) {
     object19(value.failure, "failure");
@@ -22531,21 +23681,21 @@ function validateApplicationGatewayLifecycleStatus(value) {
     boundedReason(value.failure.reasonCode, "failure.reasonCode");
     utc28(value.failure.failedAtUtc, "failure.failedAtUtc");
     if (Date.parse(value.failure.failedAtUtc) < Date.parse(startedAtUtc) || Date.parse(value.failure.failedAtUtc) > Date.parse(updatedAtUtc)) {
-      fail66("invalid_timeline", "Failure is outside the lifecycle timeline");
+      fail68("invalid_timeline", "Failure is outside the lifecycle timeline");
     }
   } else if (value.failure !== null) {
-    fail66("invalid_failure", "Failure evidence requires a failure lifecycle");
+    fail68("invalid_failure", "Failure evidence requires a failure lifecycle");
   }
   const result2 = { ...structuredClone(value), identity: identity2 };
   if (Buffer.byteLength(JSON.stringify(result2), "utf8") > MAX_BYTES3) {
-    fail66("status_too_large", "Gateway lifecycle status exceeds 16 KiB");
+    fail68("status_too_large", "Gateway lifecycle status exceeds 16 KiB");
   }
   return result2;
 }
 function nextTime(state2, value, label2) {
   const result2 = utc28(value, label2);
   if (Date.parse(result2) < Date.parse(state2.updatedAtUtc)) {
-    fail66("clock_regressed", `${label2} cannot precede the current state`);
+    fail68("clock_regressed", `${label2} cannot precede the current state`);
   }
   return result2;
 }
@@ -22574,7 +23724,7 @@ var ApplicationGatewayLifecycle = class {
   }
   #transition(lifecycle, atUtc, changes = {}) {
     if (TERMINAL3.has(this.#state.lifecycle)) {
-      fail66("terminal_state", "Terminal gateway instance cannot transition");
+      fail68("terminal_state", "Terminal gateway instance cannot transition");
     }
     const at = nextTime(this.#state, atUtc, `${lifecycle}AtUtc`);
     this.#state = validateApplicationGatewayLifecycleStatus({
@@ -22591,13 +23741,13 @@ var ApplicationGatewayLifecycle = class {
   }
   markReady(atUtc) {
     if (this.#state.lifecycle !== "starting") {
-      fail66("invalid_transition", "Only a starting gateway can become ready");
+      fail68("invalid_transition", "Only a starting gateway can become ready");
     }
     return this.#transition("ready", atUtc, { readyAtUtc: atUtc });
   }
   heartbeat(atUtc) {
     if (!["starting", "ready", "stop-requested"].includes(this.#state.lifecycle)) {
-      fail66("invalid_transition", "Terminal gateway cannot heartbeat");
+      fail68("invalid_transition", "Terminal gateway cannot heartbeat");
     }
     const at = nextTime(this.#state, atUtc, "heartbeatAtUtc");
     this.#state = validateApplicationGatewayLifecycleStatus({
@@ -22610,12 +23760,12 @@ var ApplicationGatewayLifecycle = class {
   requestStop(requestId, atUtc) {
     if (this.#state.lifecycle === "stop-requested") {
       if (this.#state.stop.requestId !== requestId) {
-        fail66("stop_conflict", "Gateway already has a different Stop request");
+        fail68("stop_conflict", "Gateway already has a different Stop request");
       }
       return this.snapshot();
     }
     if (!["starting", "ready"].includes(this.#state.lifecycle)) {
-      fail66("invalid_transition", "Gateway cannot accept Stop in its current state");
+      fail68("invalid_transition", "Gateway cannot accept Stop in its current state");
     }
     identifier15(requestId, "stop.requestId");
     return this.#transition("stop-requested", atUtc, {
@@ -22624,7 +23774,7 @@ var ApplicationGatewayLifecycle = class {
   }
   markStopped(atUtc) {
     if (this.#state.lifecycle !== "stop-requested") {
-      fail66("invalid_transition", "Gateway Stop must be requested before confirmation");
+      fail68("invalid_transition", "Gateway Stop must be requested before confirmation");
     }
     return this.#transition("stopped", atUtc, {
       stop: { ...this.#state.stop, confirmedAtUtc: atUtc }
@@ -22646,7 +23796,7 @@ var ApplicationGatewayLifecycle = class {
 function recoverCrashedApplicationGatewayLifecycle(previousValue, { observedAtUtc, reasonCode: reasonCode2 = "process_terminated" }) {
   const previous = validateApplicationGatewayLifecycleStatus(previousValue);
   if (previous.terminal) {
-    fail66("recovery_not_required", "A terminal gateway does not require crash recovery");
+    fail68("recovery_not_required", "A terminal gateway does not require crash recovery");
   }
   const observed = nextTime(previous, observedAtUtc, "observedAtUtc");
   boundedReason(reasonCode2, "failure.reasonCode");
@@ -22735,7 +23885,7 @@ function assertApplicationGatewayMonitorReady(monitor, {
   return monitor;
 }
 var UUID2 = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
-var ID39 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/;
+var ID42 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/;
 var SHA25624 = /^[a-f0-9]{64}$/;
 var MONITOR_STATES = /* @__PURE__ */ new Set(["ready", "stopped"]);
 var MONITOR_HEALTH = /* @__PURE__ */ new Set([
@@ -22752,7 +23902,7 @@ var ApplicationGatewayRuntimeError = class extends Error {
     this.code = code;
   }
 };
-function fail67(code, message) {
+function fail69(code, message) {
   throw new ApplicationGatewayRuntimeError(code, message);
 }
 function createApplicationGatewayFailureLogRecord(error) {
@@ -22772,36 +23922,36 @@ function createApplicationGatewayFailureLogRecord(error) {
 }
 function object20(value, label2) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    fail67("invalid_runtime_record", `${label2} must be an object`);
+    fail69("invalid_runtime_record", `${label2} must be an object`);
   }
   return value;
 }
 function exact39(value, keys, label2) {
   if (Object.keys(value).some((key) => !keys.includes(key))) {
-    fail67("invalid_runtime_record", `${label2} contains unsupported fields`);
+    fail69("invalid_runtime_record", `${label2} contains unsupported fields`);
   }
 }
 function utc29(value, label2) {
   if (typeof value !== "string" || value.length > 64 || !value.endsWith("Z") || !Number.isFinite(Date.parse(value))) {
-    fail67("invalid_runtime_record", `${label2} must be a UTC timestamp`);
+    fail69("invalid_runtime_record", `${label2} must be a UTC timestamp`);
   }
   return value;
 }
 function uuid2(value, label2) {
   if (typeof value !== "string" || !UUID2.test(value)) {
-    fail67("invalid_runtime_record", `${label2} must be a lowercase UUID`);
+    fail69("invalid_runtime_record", `${label2} must be a lowercase UUID`);
   }
   return value;
 }
 function identifier16(value, label2) {
-  if (typeof value !== "string" || !ID39.test(value)) {
-    fail67("invalid_runtime_record", `${label2} must be a bounded identifier`);
+  if (typeof value !== "string" || !ID42.test(value)) {
+    fail69("invalid_runtime_record", `${label2} must be a bounded identifier`);
   }
   return value;
 }
 function hash10(value, label2) {
   if (typeof value !== "string" || !SHA25624.test(value)) {
-    fail67("invalid_runtime_record", `${label2} must be lowercase SHA-256`);
+    fail69("invalid_runtime_record", `${label2} must be lowercase SHA-256`);
   }
   return value;
 }
@@ -22840,24 +23990,24 @@ function validateApplicationGatewayMonitorStatus(value) {
     "gatewayProcessId"
   ], "monitorStatus");
   if (value.schemaVersion !== 1 || value.contractVersion !== APPLICATION_GATEWAY_RUNTIME_VERSION || !MONITOR_STATES.has(value.state) || !MONITOR_HEALTH.has(value.health)) {
-    fail67("unsupported_runtime_record", "Gateway monitor status is unsupported");
+    fail69("unsupported_runtime_record", "Gateway monitor status is unsupported");
   }
   uuid2(value.monitorId, "monitorId");
   identifier16(value.projectId, "projectId");
   hash10(value.workspaceRootSha256, "workspaceRootSha256");
   if (!Number.isSafeInteger(value.processId) || value.processId < 1) {
-    fail67("invalid_runtime_record", "monitor processId is invalid");
+    fail69("invalid_runtime_record", "monitor processId is invalid");
   }
   const started = utc29(value.startedAtUtc, "startedAtUtc");
   const updated = utc29(value.updatedAtUtc, "updatedAtUtc");
   const heartbeat = utc29(value.heartbeatAtUtc, "heartbeatAtUtc");
   if (Date.parse(updated) < Date.parse(started) || Date.parse(heartbeat) !== Date.parse(updated)) {
-    fail67("invalid_runtime_record", "monitor timeline is invalid");
+    fail69("invalid_runtime_record", "monitor timeline is invalid");
   }
   const hasGateway = value.gatewayInstanceId !== null;
   if (hasGateway) uuid2(value.gatewayInstanceId, "gatewayInstanceId");
   if (hasGateway !== (value.gatewayProcessId !== null) || value.gatewayProcessId !== null && (!Number.isSafeInteger(value.gatewayProcessId) || value.gatewayProcessId < 1)) {
-    fail67("invalid_runtime_record", "monitor gateway identity is incomplete");
+    fail69("invalid_runtime_record", "monitor gateway identity is incomplete");
   }
   return structuredClone(value);
 }
@@ -22873,7 +24023,7 @@ function validateApplicationGatewayStopRequest(value) {
     "requestedAtUtc"
   ], "stopRequest");
   if (value.schemaVersion !== 1 || value.contractVersion !== APPLICATION_GATEWAY_RUNTIME_VERSION) {
-    fail67("unsupported_runtime_record", "Gateway Stop request is unsupported");
+    fail69("unsupported_runtime_record", "Gateway Stop request is unsupported");
   }
   identifier16(value.requestId, "requestId");
   identifier16(value.projectId, "projectId");
@@ -23001,9 +24151,9 @@ async function writeGatewayJsonAtomic(filePath, value, {
   let stage = "mkdir";
   let renameAttempts = 0;
   try {
-    await mkdir11(path28.dirname(filePath), { recursive: true });
+    await mkdir12(path28.dirname(filePath), { recursive: true });
     stage = "write";
-    await writeFile6(temporaryPath, `${applicationCanonicalJson(value)}
+    await writeFile7(temporaryPath, `${applicationCanonicalJson(value)}
 `, {
       encoding: "utf8",
       mode: 384,
@@ -23080,25 +24230,25 @@ var ApplicationGatewayRuntimeFiles = class {
     uuid2(monitorId, "monitorId");
     const value = await readJson3(path28.join(this.paths.runtime, `monitor-log-${monitorId}.v1.json`));
     if (value === null) return null;
-    if (value.schemaVersion !== 1 || value.monitorId !== monitorId || !Array.isArray(value.events) || value.events.length > 32 || !ID39.test(value.projectId ?? "") || !SHA25624.test(value.workspaceRootSha256 ?? "") || !Number.isSafeInteger(value.processId) || value.processId < 1 || value.events.some((event) => !MONITOR_HEALTH.has(event.health) || typeof event.atUtc !== "string" || !Number.isFinite(Date.parse(event.atUtc)) || event.reasonCode !== null && !/^[a-z][a-z0-9_]{0,95}$/u.test(event.reasonCode))) {
-      fail67("invalid_runtime_record", "Gateway monitor log is invalid");
+    if (value.schemaVersion !== 1 || value.monitorId !== monitorId || !Array.isArray(value.events) || value.events.length > 32 || !ID42.test(value.projectId ?? "") || !SHA25624.test(value.workspaceRootSha256 ?? "") || !Number.isSafeInteger(value.processId) || value.processId < 1 || value.events.some((event) => !MONITOR_HEALTH.has(event.health) || typeof event.atUtc !== "string" || !Number.isFinite(Date.parse(event.atUtc)) || event.reasonCode !== null && !/^[a-z][a-z0-9_]{0,95}$/u.test(event.reasonCode))) {
+      fail69("invalid_runtime_record", "Gateway monitor log is invalid");
     }
     return value;
   }
   async recordMonitorTransition(monitorValue, gatewayValue, health, atUtc) {
     const monitor = validateApplicationGatewayMonitorStatus(monitorValue);
-    if (!MONITOR_HEALTH.has(health)) fail67("invalid_runtime_record", "Monitor health is invalid");
+    if (!MONITOR_HEALTH.has(health)) fail69("invalid_runtime_record", "Monitor health is invalid");
     utc29(atUtc, "monitor transition time");
     const gateway = gatewayValue === null ? null : validateApplicationGatewayLifecycleStatus(gatewayValue);
     const ownerValue = await readJson3(this.paths.monitorOwner);
-    if (ownerValue === null) fail67("gateway_monitor_owner_mismatch", "Monitor owner is missing");
+    if (ownerValue === null) fail69("gateway_monitor_owner_mismatch", "Monitor owner is missing");
     const owner2 = validateApplicationGatewayMonitorStatus(ownerValue);
     if (owner2.monitorId !== monitor.monitorId || owner2.processId !== monitor.processId || owner2.projectId !== monitor.projectId || owner2.workspaceRootSha256 !== monitor.workspaceRootSha256) {
-      fail67("gateway_monitor_owner_mismatch", "Monitor owner does not match");
+      fail69("gateway_monitor_owner_mismatch", "Monitor owner does not match");
     }
     const previous = await this.readMonitorLog(monitor.monitorId);
     if (previous !== null && (previous.projectId !== monitor.projectId || previous.workspaceRootSha256 !== monitor.workspaceRootSha256 || previous.processId !== monitor.processId)) {
-      fail67("gateway_monitor_owner_mismatch", "Monitor log identity does not match");
+      fail69("gateway_monitor_owner_mismatch", "Monitor log identity does not match");
     }
     const event = {
       atUtc,
@@ -23114,7 +24264,7 @@ var ApplicationGatewayRuntimeFiles = class {
       return previous;
     }
     if (last && Date.parse(atUtc) < Date.parse(last.atUtc)) {
-      fail67("invalid_runtime_record", "Monitor log time regressed");
+      fail69("invalid_runtime_record", "Monitor log time regressed");
     }
     const record = {
       schemaVersion: 1,
@@ -23132,16 +24282,16 @@ var ApplicationGatewayRuntimeFiles = class {
   }
   async claimMonitor(value) {
     const record = validateApplicationGatewayMonitorStatus(value);
-    await mkdir11(this.paths.runtime, { recursive: true });
+    await mkdir12(this.paths.runtime, { recursive: true });
     try {
-      await writeFile6(this.paths.monitorOwner, `${applicationCanonicalJson(record)}
+      await writeFile7(this.paths.monitorOwner, `${applicationCanonicalJson(record)}
 `, {
         encoding: "utf8",
         mode: 384,
         flag: "wx"
       });
     } catch (error) {
-      if (error.code === "EEXIST") fail67("gateway_monitor_already_owned", "gateway_monitor_already_owned");
+      if (error.code === "EEXIST") fail69("gateway_monitor_already_owned", "gateway_monitor_already_owned");
       throw error;
     }
   }
@@ -23150,7 +24300,7 @@ var ApplicationGatewayRuntimeFiles = class {
     if (value === null) return;
     const owner2 = validateApplicationGatewayMonitorStatus(value);
     if (owner2.monitorId !== expectedMonitorId || owner2.processId !== expectedProcessId) {
-      fail67("gateway_monitor_owner_mismatch", "gateway_monitor_owner_mismatch");
+      fail69("gateway_monitor_owner_mismatch", "gateway_monitor_owner_mismatch");
     }
     await this.clearMonitor(expectedMonitorId);
     await rm6(this.paths.monitorOwner);
@@ -23338,14 +24488,14 @@ var DEFINITIONS2 = Object.freeze([
   }
 ]);
 var AUTHORITY_NAMES = new Set(DEFINITIONS2.map(({ conversationOperation }) => conversationOperation));
-function fail68(message, code = "conflict") {
+function fail70(message, code = "conflict") {
   const error = new Error(message);
   error.code = code;
   throw error;
 }
 function exact40(value, fields, label2) {
   if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).some((field) => !fields.includes(field)) || fields.some((field) => !Object.hasOwn(value, field))) {
-    fail68(`${label2} has invalid fields`);
+    fail70(`${label2} has invalid fields`);
   }
 }
 function sameProvider(left, right) {
@@ -23354,7 +24504,7 @@ function sameProvider(left, right) {
 function authorityPort(value, operationId) {
   if (value === null || value === void 0) return null;
   if (typeof value?.resolve !== "function" || typeof value?.invoke !== "function") {
-    fail68(`Mutation authority for '${operationId}' is invalid`);
+    fail70(`Mutation authority for '${operationId}' is invalid`);
   }
   return value;
 }
@@ -23383,17 +24533,17 @@ function resolvedOperation(value, definition3) {
   );
   validateAdapterOperationRequest(value.adapterRequest, "execution-provider");
   if (value.adapterRequest.operation !== definition3.adapterOperation) {
-    fail68("Resolved adapter operation does not match the Application operation");
+    fail70("Resolved adapter operation does not match the Application operation");
   }
   return value;
 }
 function acceptedProviderResult(value, definition3, resolved, descriptor) {
   const result2 = validateAdapterResult(value);
   if (!sameProvider(result2.adapter, descriptor.identity) || result2.operation.name !== definition3.adapterOperation || result2.operation.operationId !== resolved.adapterRequest.operationId || result2.operation.correlationId !== resolved.adapterRequest.correlationId) {
-    fail68("Provider mutation result belongs to another operation");
+    fail70("Provider mutation result belongs to another operation");
   }
   if (result2.resultType !== "success") {
-    fail68(
+    fail70(
       result2.outcome === "uncertain" ? "Provider mutation outcome requires reconciliation" : "Provider mutation was not accepted",
       result2.outcome === "uncertain" ? "uncertain_outcome" : "source_unavailable"
     );
@@ -23403,7 +24553,7 @@ function acceptedProviderResult(value, definition3, resolved, descriptor) {
 async function invoke2(definition3, authority3, executionProvider, request) {
   const resolved = resolvedOperation(await authority3.resolve(structuredClone(request)), definition3);
   if (resolved.adapterRequest.correlationId !== request.correlationId) {
-    fail68("Resolved provider mutation belongs to another Application correlation");
+    fail70("Resolved provider mutation belongs to another Application correlation");
   }
   let authorization = null;
   if (definition3.conversationOperation === "startTurn") {
@@ -23414,7 +24564,7 @@ async function invoke2(definition3, authority3, executionProvider, request) {
         planningPolicy: resolved.planningPolicy
       });
     } catch {
-      fail68("Provider turn start does not match the confirmed planning policy");
+      fail70("Provider turn start does not match the confirmed planning policy");
     }
   }
   const result2 = await authority3.invoke({
@@ -23444,10 +24594,10 @@ function createApplicationGatewayProviderMutationBridge({
   authorities = {}
 } = {}) {
   if (!authorities || typeof authorities !== "object" || Array.isArray(authorities)) {
-    fail68("Provider mutation authorities are invalid");
+    fail70("Provider mutation authorities are invalid");
   }
   if (Object.keys(authorities).some((name) => !AUTHORITY_NAMES.has(name))) {
-    fail68("Provider mutation authorities contain an unsupported operation");
+    fail70("Provider mutation authorities contain an unsupported operation");
   }
   const handlers = {};
   if (executionProvider === null || executionProvider === void 0) {
@@ -23473,7 +24623,7 @@ function createApplicationGatewayProviderMutationBridge({
     }));
     if (state2.status !== "enabled") continue;
     if (typeof executionProvider[definition3.providerMethod] !== "function") {
-      fail68(`Execution provider lacks '${definition3.providerMethod}'`);
+      fail70(`Execution provider lacks '${definition3.providerMethod}'`);
     }
     handlers[definition3.operationId] = (request) => invoke2(definition3, authority3, executionProvider, request);
   }
@@ -23486,43 +24636,43 @@ function createApplicationGatewayProviderMutationBridge({
 }
 
 // orchestrator/src/codex-app-server-conversation-read-adapter.mjs
-var ID40 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
+var ID43 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
 var MAX_RECORDS = 128;
 var MAX_CONTENT = 256;
 var READ_ATTEMPTS = 4;
 var DROPPED = Symbol("dropped");
 function fitTurnItems(turnItems, budget) {
-  const total = turnItems.reduce((sum, items) => sum + items.length, 0);
+  const total = turnItems.reduce((sum, items2) => sum + items2.length, 0);
   if (total <= budget) return turnItems;
   const allowance = new Array(turnItems.length).fill(0);
   let left = budget;
-  const order = turnItems.map((items, index) => ({ index, size: items.length })).sort((a, b) => a.size - b.size);
+  const order = turnItems.map((items2, index) => ({ index, size: items2.length })).sort((a, b) => a.size - b.size);
   order.forEach(({ index, size }, position) => {
     const share = Math.floor(left / (order.length - position));
     allowance[index] = Math.min(size, Math.max(share, 0));
     left -= allowance[index];
   });
-  return turnItems.map((items, index) => {
+  return turnItems.map((items2, index) => {
     const room = allowance[index];
-    if (items.length <= room) return items;
-    if (room <= 1) return [{ [DROPPED]: true, id: items[0]?.id }];
+    if (items2.length <= room) return items2;
+    if (room <= 1) return [{ [DROPPED]: true, id: items2[0]?.id }];
     const keep = /* @__PURE__ */ new Set();
-    items.forEach((item, at) => {
+    items2.forEach((item, at) => {
       if (item?.type === "userMessage") keep.add(at);
     });
-    const lastAnswer = items.map((item) => item?.type).lastIndexOf("agentMessage");
+    const lastAnswer = items2.map((item) => item?.type).lastIndexOf("agentMessage");
     if (lastAnswer !== -1) keep.add(lastAnswer);
-    for (let at = items.length - 1; at >= 0 && keep.size < room - 1; at -= 1) keep.add(at);
+    for (let at = items2.length - 1; at >= 0 && keep.size < room - 1; at -= 1) keep.add(at);
     const kept = [...keep].sort((a, b) => a - b).slice(-(room - 1));
     const result2 = [];
     let marked = false;
     kept.forEach((at, position) => {
       const previous = position === 0 ? -1 : kept[position - 1];
       if (!marked && at - previous > 1) {
-        result2.push({ [DROPPED]: true, id: items[previous + 1]?.id });
+        result2.push({ [DROPPED]: true, id: items2[previous + 1]?.id });
         marked = true;
       }
-      result2.push(items[at]);
+      result2.push(items2[at]);
     });
     return result2;
   });
@@ -23535,19 +24685,19 @@ var CodexAppServerConversationReadError = class extends Error {
     this.details = details;
   }
 };
-function fail69(code, message, details = {}) {
+function fail71(code, message, details = {}) {
   throw new CodexAppServerConversationReadError(code, message, details);
 }
 function exact41(value, fields, label2) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    fail69("invalid_request", `${label2} must be an object`);
+    fail71("invalid_request", `${label2} must be an object`);
   }
   const unknown = Object.keys(value).filter((field) => !fields.includes(field));
-  if (unknown.length > 0) fail69("invalid_request", `${label2} has unsupported fields`, { unknown });
+  if (unknown.length > 0) fail71("invalid_request", `${label2} has unsupported fields`, { unknown });
 }
 function identifier17(value, label2) {
-  if (typeof value !== "string" || !ID40.test(value)) {
-    fail69("invalid_provider_payload", `${label2} is not a bounded provider identifier`);
+  if (typeof value !== "string" || !ID43.test(value)) {
+    fail71("invalid_provider_payload", `${label2} is not a bounded provider identifier`);
   }
   return value;
 }
@@ -23556,10 +24706,10 @@ function pageOptions(value, fields = []) {
   const cursor = value.cursor ?? null;
   const limit = value.limit ?? 50;
   if (cursor !== null && (typeof cursor !== "string" || cursor.length > 512)) {
-    fail69("invalid_request", "Provider cursor is invalid");
+    fail71("invalid_request", "Provider cursor is invalid");
   }
   if (!Number.isInteger(limit) || limit < 1 || limit > MAX_RECORDS) {
-    fail69("invalid_request", `Provider page limit must be between 1 and ${MAX_RECORDS}`);
+    fail71("invalid_request", `Provider page limit must be between 1 and ${MAX_RECORDS}`);
   }
   return { cursor, limit };
 }
@@ -23580,7 +24730,7 @@ function providerRef3(provider, kind2, externalId) {
 function exactProviderRef(value, provider, kind2, label2) {
   validateExternalReference(value);
   if (value.kind !== kind2 || value.relationship !== "provider-owner" || value.authority.authorityType !== "provider" || value.authority.sourceId !== provider.sourceId || value.authority.contractVersion !== provider.adapterVersion) {
-    fail69("identity_mismatch", `${label2} is not owned by this provider runtime`);
+    fail71("identity_mismatch", `${label2} is not owned by this provider runtime`);
   }
   return identifier17(value.authority.externalId, `${label2} native id`);
 }
@@ -23592,7 +24742,7 @@ function utc30(value, label2) {
   } else if (typeof value === "string" && Number.isFinite(Date.parse(value))) {
     milliseconds = Date.parse(value);
   } else {
-    fail69("invalid_provider_payload", `${label2} is not a supported timestamp`);
+    fail71("invalid_provider_payload", `${label2} is not a supported timestamp`);
   }
   return new Date(milliseconds).toISOString();
 }
@@ -23661,11 +24811,11 @@ function omitted(provider, itemRef, turnRef, observedAtUtc, omissionReason) {
     omissionReason
   });
 }
-function visible(provider, itemRef, turnRef, observedAtUtc, contentClass, text10) {
-  if (typeof text10 !== "string" || text10.length === 0) {
+function visible(provider, itemRef, turnRef, observedAtUtc, contentClass, text11) {
+  if (typeof text11 !== "string" || text11.length === 0) {
     return omitted(provider, itemRef, turnRef, observedAtUtc, "unsupported_content");
   }
-  if (Buffer.byteLength(text10, "utf8") > 65536) {
+  if (Buffer.byteLength(text11, "utf8") > 65536) {
     return omitted(provider, itemRef, turnRef, observedAtUtc, "oversized_content");
   }
   try {
@@ -23674,7 +24824,7 @@ function visible(provider, itemRef, turnRef, observedAtUtc, contentClass, text10
       itemRef,
       turnRef,
       contentClass,
-      text: text10,
+      text: text11,
       observedAtUtc
     });
   } catch (error) {
@@ -23710,20 +24860,20 @@ var OUTPUT_SECRETS = Object.freeze([
   /\bBearer\s+[A-Za-z0-9._~-]{20,}\b/gu,
   /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----[\s\S]*?(?:-----END (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|$)/gu
 ]);
-function preview2(text10, maximumBytes) {
+function preview2(text11, maximumBytes) {
   const value = OUTPUT_SECRETS.reduce(
     (current, pattern) => current.replace(pattern, "[hidden]"),
-    String(text10 ?? "")
+    String(text11 ?? "")
   ).replace(/\s+$/u, "");
   if (Buffer.byteLength(value, "utf8") <= maximumBytes) return value;
   const head = Buffer.from(value, "utf8").subarray(0, maximumBytes).toString("utf8").replace(/�+$/u, "");
   return `${head}
 …`;
 }
-function changeCounts(change2) {
+function changeCounts(change4) {
   const parts = [];
-  if (Number.isSafeInteger(change2?.added)) parts.push(`+${change2.added}`);
-  if (Number.isSafeInteger(change2?.removed)) parts.push(`−${change2.removed}`);
+  if (Number.isSafeInteger(change4?.added)) parts.push(`+${change4.added}`);
+  if (Number.isSafeInteger(change4?.removed)) parts.push(`−${change4.removed}`);
   return parts.join(" ");
 }
 function activitySummary(item) {
@@ -23747,14 +24897,14 @@ function activitySummary(item) {
   }
   if (item?.type === "fileChange") {
     const changes = Array.isArray(item.changes) ? item.changes.slice(0, 64) : [];
-    if (changes.length === 0 || changes.some((change2) => typeof change2?.path !== "string")) {
+    if (changes.length === 0 || changes.some((change4) => typeof change4?.path !== "string")) {
       const count = Array.isArray(item.changes) && item.changes.length <= 256 ? ` (${item.changes.length} ${item.changes.length === 1 ? "change" : "changes"})` : "";
       return { contentClass: "change-summary", text: `File change ${status}${count}.` };
     }
     const tool = typeof item.tool === "string" && item.tool ? item.tool : "Edit";
-    const lines = changes.map((change2) => {
-      const counts = changeCounts(change2);
-      return `${tool} ${change2.path}${counts ? ` (${counts})` : ""}`;
+    const lines = changes.map((change4) => {
+      const counts = changeCounts(change4);
+      return `${tool} ${change4.path}${counts ? ` (${counts})` : ""}`;
     });
     lines[0] += tail;
     if (typeof item.output === "string" && item.output.trim() && status === "failed") {
@@ -23848,8 +24998,8 @@ ${item.summary.trim()}`
     );
   }
   if (item?.type === "userQuestion") {
-    const text10 = questionSummary(item);
-    return text10 === null ? omitted(provider, itemRef, turnRef, observedAtUtc, "unsupported_content") : visible(provider, itemRef, turnRef, observedAtUtc, "interaction-summary", text10);
+    const text11 = questionSummary(item);
+    return text11 === null ? omitted(provider, itemRef, turnRef, observedAtUtc, "unsupported_content") : visible(provider, itemRef, turnRef, observedAtUtc, "interaction-summary", text11);
   }
   if (item?.type === "exitedReviewMode") {
     return visible(
@@ -23918,7 +25068,7 @@ var CodexAppServerConversationReadAdapter = class {
     const validDescriptor = validateAdapterDescriptor(descriptor);
     const assessment = assessProviderConversationReadCapabilities(validDescriptor);
     if (validDescriptor.identity.adapterId !== adapterId || !assessment.compatible) {
-      fail69("capability_mismatch", "A compatible Codex App Server descriptor is required", {
+      fail71("capability_mismatch", "A compatible Codex App Server descriptor is required", {
         failures: assessment.failures
       });
     }
@@ -23931,10 +25081,10 @@ var CodexAppServerConversationReadAdapter = class {
       "readThreadUsage"
     ]) {
       if (typeof client?.[method] !== "function") {
-        fail69("invalid_client", `Codex App Server client lacks ${method}`);
+        fail71("invalid_client", `Codex App Server client lacks ${method}`);
       }
     }
-    if (typeof now !== "function") fail69("invalid_client", "A clock function is required");
+    if (typeof now !== "function") fail71("invalid_client", "A clock function is required");
     this.#client = client;
     this.#descriptor = structuredClone(validDescriptor);
     this.#now = now;
@@ -23966,23 +25116,23 @@ var CodexAppServerConversationReadAdapter = class {
     const { cursor, limit } = pageOptions(options, ["includeHidden"]);
     const includeHidden = options.includeHidden ?? false;
     if (typeof includeHidden !== "boolean") {
-      fail69("invalid_request", "includeHidden must be boolean");
+      fail71("invalid_request", "includeHidden must be boolean");
     }
     const raw = await this.#call(
       "model/list",
       () => this.#client.listModels({ cursor, limit, includeHidden })
     );
     if (!Array.isArray(raw?.data) || raw.data.length > MAX_RECORDS) {
-      fail69("invalid_provider_payload", "App Server returned an invalid model page");
+      fail71("invalid_provider_payload", "App Server returned an invalid model page");
     }
     const records = raw.data.map((model) => {
-      const id12 = identifier17(model?.id ?? model?.model, "model.id");
+      const id14 = identifier17(model?.id ?? model?.model, "model.id");
       const efforts = (model?.supportedReasoningEfforts ?? []).map(
         (item) => typeof item === "string" ? item : item?.reasoningEffort
       ).filter((item) => typeof item === "string");
       return {
-        modelRef: providerRef3(this.#provider, "provider-item", id12),
-        name: String(model?.displayName ?? id12).slice(0, 256),
+        modelRef: providerRef3(this.#provider, "provider-item", id14),
+        name: String(model?.displayName ?? id14).slice(0, 256),
         supportedReasoningEfforts: [...new Set(efforts)],
         defaultReasoningEffort: model?.defaultReasoningEffort ?? null
       };
@@ -23999,7 +25149,7 @@ var CodexAppServerConversationReadAdapter = class {
       () => this.#client.readAccount({ refreshToken: false })
     );
     if (typeof raw?.requiresOpenaiAuth !== "boolean" || raw.account !== null && (typeof raw.account !== "object" || Array.isArray(raw.account))) {
-      fail69("invalid_provider_payload", "App Server returned an invalid account state");
+      fail71("invalid_provider_payload", "App Server returned an invalid account state");
     }
     const status = raw.account !== null ? "authenticated" : raw.requiresOpenaiAuth ? "unauthenticated" : "unknown";
     const observedAtUtc = this.#now().toISOString();
@@ -24024,7 +25174,7 @@ var CodexAppServerConversationReadAdapter = class {
   async listThreads(options = {}) {
     const { cursor, limit } = pageOptions(options, ["archived"]);
     const archived = options.archived ?? false;
-    if (typeof archived !== "boolean") fail69("invalid_request", "archived must be boolean");
+    if (typeof archived !== "boolean") fail71("invalid_request", "archived must be boolean");
     const raw = await this.#call("thread/list", () => this.#client.listThreads({
       cursor,
       limit,
@@ -24033,7 +25183,7 @@ var CodexAppServerConversationReadAdapter = class {
       sortDirection: "desc"
     }));
     if (!Array.isArray(raw?.data) || raw.data.length > MAX_RECORDS) {
-      fail69("invalid_provider_payload", "App Server returned an invalid thread page");
+      fail71("invalid_provider_payload", "App Server returned an invalid thread page");
     }
     return this.#envelope("thread-catalog", {
       records: raw.data.map((thread) => threadMetadata(this.#provider, thread, { archived })),
@@ -24055,7 +25205,7 @@ var CodexAppServerConversationReadAdapter = class {
     const archived = options.archived ?? false;
     const includeContent = options.includeContent ?? true;
     if (typeof archived !== "boolean" || typeof includeContent !== "boolean") {
-      fail69("invalid_request", "archived and includeContent must be boolean");
+      fail71("invalid_request", "archived and includeContent must be boolean");
     }
     const threadId2 = exactProviderRef(
       options.threadRef,
@@ -24068,10 +25218,10 @@ var CodexAppServerConversationReadAdapter = class {
       () => this.#client.readThread(threadId2, false)
     );
     if (rawThread === null || rawThread?.thread === null) {
-      fail69("thread_not_found", "Provider thread was not found");
+      fail71("thread_not_found", "Provider thread was not found");
     }
     if (rawThread?.thread?.id !== threadId2) {
-      fail69("identity_mismatch", "App Server thread read changed native identity");
+      fail71("identity_mismatch", "App Server thread read changed native identity");
     }
     if (!includeContent) {
       const observedAtUtc2 = this.#now().toISOString();
@@ -24103,7 +25253,7 @@ var CodexAppServerConversationReadAdapter = class {
         archived
       }).updatedAtUtc;
       if (initialRevision === null) {
-        fail69("provider_revision_unavailable", "Provider thread revision is unavailable");
+        fail71("provider_revision_unavailable", "Provider thread revision is unavailable");
       }
       rawTurns = await this.#call(
         "thread/turns/list",
@@ -24115,27 +25265,27 @@ var CodexAppServerConversationReadAdapter = class {
         })
       );
       if (!Array.isArray(rawTurns?.data) || rawTurns.data.length > MAX_RECORDS) {
-        fail69("invalid_provider_payload", "App Server returned an invalid turn page");
+        fail71("invalid_provider_payload", "App Server returned an invalid turn page");
       }
       finalThread = await this.#call(
         "thread/read",
         () => this.#client.readThread(threadId2, false)
       );
       if (finalThread === null || finalThread?.thread === null) {
-        fail69("thread_not_found", "Provider thread was not found");
+        fail71("thread_not_found", "Provider thread was not found");
       }
       if (finalThread?.thread?.id !== threadId2) {
-        fail69("identity_mismatch", "App Server thread read changed native identity");
+        fail71("identity_mismatch", "App Server thread read changed native identity");
       }
       const finalRevision = threadMetadata(this.#provider, finalThread.thread, {
         archived
       }).updatedAtUtc;
       if (finalRevision === null) {
-        fail69("provider_revision_unavailable", "Provider thread revision is unavailable");
+        fail71("provider_revision_unavailable", "Provider thread revision is unavailable");
       }
       if (finalRevision === initialRevision) break;
       if (attempt >= READ_ATTEMPTS) {
-        fail69("concurrent_update", "Provider thread changed during the bounded read");
+        fail71("concurrent_update", "Provider thread changed during the bounded read");
       }
       startThread = finalThread;
     }
@@ -24144,13 +25294,13 @@ var CodexAppServerConversationReadAdapter = class {
     const content = [];
     rawTurns.data.forEach((turn) => {
       if (turn.items !== void 0 && !Array.isArray(turn.items)) {
-        fail69("invalid_provider_payload", "App Server returned invalid turn items");
+        fail71("invalid_provider_payload", "App Server returned invalid turn items");
       }
     });
     const fitted = fitTurnItems(rawTurns.data.map((turn) => turn.items ?? []), MAX_CONTENT);
-    fitted.forEach((items, turnIndex) => {
+    fitted.forEach((items2, turnIndex) => {
       const turnRef = turns[turnIndex].turnRef;
-      for (const item of items) {
+      for (const item of items2) {
         const at = itemTime(item, rawTurns.data[turnIndex], observedAtUtc);
         content.push(item?.[DROPPED] === true ? omitted(
           this.#provider,
@@ -24244,23 +25394,24 @@ var CLAUDE_AGENT_TOOLS = Object.freeze([
   "TodoWrite",
   "WebFetch",
   "WebSearch",
-  "AskUserQuestion"
+  "AskUserQuestion",
+  "ExitPlanMode"
 ]);
 var CLAUDE_EFFORTS = Object.freeze(["low", "medium", "high", "xhigh", "max"]);
 var claudeDeskToolName = (name) => `mcp__desk__${name}`;
 var CLAUDE_DESK_TOOL = claudeDeskToolName("write_memory_from_document");
-function fail70(code) {
+function fail72(code) {
   throw Object.assign(new Error(code), { code });
 }
 async function loadClaudeSdk(sdkPath) {
-  if (typeof sdkPath !== "string" || !path29.isAbsolute(sdkPath)) fail70("claude_sdk_path_invalid");
+  if (typeof sdkPath !== "string" || !path29.isAbsolute(sdkPath)) fail72("claude_sdk_path_invalid");
   let sdk;
   try {
     sdk = await import(pathToFileURL(path29.join(sdkPath, "sdk.mjs")).href);
   } catch {
-    fail70("claude_sdk_unavailable");
+    fail72("claude_sdk_unavailable");
   }
-  if (typeof sdk.query !== "function") fail70("claude_sdk_unavailable");
+  if (typeof sdk.query !== "function") fail72("claude_sdk_unavailable");
   return sdk;
 }
 function loadClaudeZod(sdkPath) {
@@ -24292,13 +25443,13 @@ async function readClaudeAccount({ program, env = null, timeoutMs = 2e4, run: ru
   } catch {
     return { state: "failed", reasonCode: error ? "claude_status_failed" : "claude_status_invalid" };
   }
-  const text10 = (value) => typeof value === "string" && /^[A-Za-z0-9._-]{1,64}$/u.test(value) ? value : null;
-  if (status?.loggedIn !== true) return { state: "signed-out", authMethod: text10(status?.authMethod) };
+  const text11 = (value) => typeof value === "string" && /^[A-Za-z0-9._-]{1,64}$/u.test(value) ? value : null;
+  if (status?.loggedIn !== true) return { state: "signed-out", authMethod: text11(status?.authMethod) };
   return {
     state: "signed-in",
-    authMethod: text10(status.authMethod),
-    apiProvider: text10(status.apiProvider),
-    subscriptionType: text10(status.subscriptionType)
+    authMethod: text11(status.authMethod),
+    apiProvider: text11(status.apiProvider),
+    subscriptionType: text11(status.subscriptionType)
   };
 }
 var CLAUDE_PROVIDER_VARIABLES = Object.freeze([
@@ -24313,7 +25464,7 @@ function claudeEnvironment({ base: base2 = process.env, configDir = null, keepPr
   const env = { ...base2 };
   if (keepProviderVariables !== true) for (const name of CLAUDE_PROVIDER_VARIABLES) delete env[name];
   if (configDir !== null) {
-    if (typeof configDir !== "string" || !path29.isAbsolute(configDir)) fail70("claude_config_dir_invalid");
+    if (typeof configDir !== "string" || !path29.isAbsolute(configDir)) fail72("claude_config_dir_invalid");
     env.CLAUDE_CONFIG_DIR = configDir;
   }
   return env;
@@ -24322,7 +25473,7 @@ function claudeEnvironment({ base: base2 = process.env, configDir = null, keepPr
 // orchestrator/src/claude-code-session-journal.mjs
 import { randomUUID as randomUUID10 } from "node:crypto";
 import path30 from "node:path";
-import { lstat as lstat15, mkdir as mkdir12, open as open6, readdir as readdir8, readFile as readFile12, realpath as realpath13, rm as rm7, unlink as unlink3 } from "node:fs/promises";
+import { lstat as lstat15, mkdir as mkdir13, open as open6, readdir as readdir8, readFile as readFile12, realpath as realpath13, rm as rm7, unlink as unlink3 } from "node:fs/promises";
 var CLAUDE_CODE_SESSION_JOURNAL_VERSION = "v0.3.0";
 var CLAUDE_CODE_SESSION_LIMITS = Object.freeze({
   sessions: 1024,
@@ -24347,7 +25498,7 @@ var traceName = (generation) => `trace-${String(generation).padStart(6, "0")}.js
 function traceCursor(value) {
   if (value === null || value === void 0) return null;
   const match = typeof value === "string" ? TRACE_CURSOR2.exec(value) : null;
-  if (match === null) fail71("claude_trace_cursor_invalid");
+  if (match === null) fail73("claude_trace_cursor_invalid");
   return { generation: Number(match[1]), offset: Number(match[2]) };
 }
 function traceLines(buffer, startsMidLine) {
@@ -24370,21 +25521,21 @@ function traceLines(buffer, startsMidLine) {
 }
 var UUID3 = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
 var TERMINAL4 = /* @__PURE__ */ new Set(["completed", "failed", "interrupted"]);
-function fail71(code) {
+function fail73(code) {
   throw Object.assign(new Error(code), { code });
 }
 function claudeSessionId(value) {
-  if (typeof value !== "string" || !UUID3.test(value)) fail71("claude_session_id_invalid");
+  if (typeof value !== "string" || !UUID3.test(value)) fail73("claude_session_id_invalid");
   return value;
 }
 function turnId(value) {
-  if (typeof value !== "string" || !UUID3.test(value)) fail71("claude_turn_id_invalid");
+  if (typeof value !== "string" || !UUID3.test(value)) fail73("claude_turn_id_invalid");
   return value;
 }
 function clipText(value, maximumBytes) {
-  const text10 = String(value ?? "").replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/gu, " ");
-  const bytes = Buffer.from(text10, "utf8");
-  if (bytes.byteLength <= maximumBytes) return { text: text10, clipped: false };
+  const text11 = String(value ?? "").replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/gu, " ");
+  const bytes = Buffer.from(text11, "utf8");
+  if (bytes.byteLength <= maximumBytes) return { text: text11, clipped: false };
   const head = bytes.subarray(0, maximumBytes - 3).toString("utf8").replace(/�+$/u, "");
   return { text: `${head}...`, clipped: true };
 }
@@ -24394,19 +25545,19 @@ async function readBounded(file, maximumBytes) {
     info = await lstat15(file);
   } catch (error) {
     if (error.code === "ENOENT") return null;
-    fail71("claude_journal_unavailable");
+    fail73("claude_journal_unavailable");
   }
-  if (!info.isFile() || info.isSymbolicLink() || info.size > maximumBytes) fail71("claude_journal_invalid");
+  if (!info.isFile() || info.isSymbolicLink() || info.size > maximumBytes) fail73("claude_journal_invalid");
   try {
     return JSON.parse(await readFile12(file, "utf8"));
   } catch {
-    fail71("claude_journal_invalid");
+    fail73("claude_journal_invalid");
   }
 }
 async function writeAtomic2(file, value, maximumBytes) {
   const bytes = Buffer.from(`${JSON.stringify(value)}
 `, "utf8");
-  if (bytes.byteLength > maximumBytes) fail71("claude_journal_full");
+  if (bytes.byteLength > maximumBytes) fail73("claude_journal_full");
   const temporary = `${file}.tmp-${randomUUID10()}`;
   let handle;
   try {
@@ -24419,15 +25570,15 @@ async function writeAtomic2(file, value, maximumBytes) {
   } catch {
     await handle?.close().catch(() => void 0);
     await unlink3(temporary).catch(() => void 0);
-    fail71("claude_journal_unavailable");
+    fail73("claude_journal_unavailable");
   }
 }
 function validSession(value, sessionId) {
-  if (!value || typeof value !== "object" || value.schemaVersion !== 1 || value.sessionId !== sessionId || typeof value.cwd !== "string" || !Array.isArray(value.turnIds) || typeof value.providerStarted !== "boolean") fail71("claude_journal_invalid");
+  if (!value || typeof value !== "object" || value.schemaVersion !== 1 || value.sessionId !== sessionId || typeof value.cwd !== "string" || !Array.isArray(value.turnIds) || typeof value.providerStarted !== "boolean") fail73("claude_journal_invalid");
   return value;
 }
-function validTurn(value, id12) {
-  if (!value || typeof value !== "object" || value.id !== id12 || typeof value.status !== "string" || !Array.isArray(value.items)) fail71("claude_journal_invalid");
+function validTurn(value, id14) {
+  if (!value || typeof value !== "object" || value.id !== id14 || typeof value.status !== "string" || !Array.isArray(value.items)) fail73("claude_journal_invalid");
   return value;
 }
 var ClaudeCodeSessionJournal = class {
@@ -24446,8 +25597,8 @@ var ClaudeCodeSessionJournal = class {
   #sessionFile(sessionId) {
     return path30.join(this.#folder(sessionId), "session.json");
   }
-  #turnFile(sessionId, id12) {
-    return path30.join(this.#folder(sessionId), "turns", `${turnId(id12)}.json`);
+  #turnFile(sessionId, id14) {
+    return path30.join(this.#folder(sessionId), "turns", `${turnId(id14)}.json`);
   }
   async #loadSession(sessionId) {
     if (this.#sessions.has(sessionId)) return this.#sessions.get(sessionId);
@@ -24457,12 +25608,12 @@ var ClaudeCodeSessionJournal = class {
     this.#sessions.set(sessionId, session);
     return session;
   }
-  async #loadTurn(sessionId, id12) {
-    const key = `${sessionId}:${id12}`;
+  async #loadTurn(sessionId, id14) {
+    const key = `${sessionId}:${id14}`;
     if (this.#turns.has(key)) return this.#turns.get(key);
-    const value = await readBounded(this.#turnFile(sessionId, id12), CLAUDE_CODE_SESSION_LIMITS.turnBytes);
-    if (value === null) fail71("claude_journal_invalid");
-    return this.#remember(key, validTurn(value, id12));
+    const value = await readBounded(this.#turnFile(sessionId, id14), CLAUDE_CODE_SESSION_LIMITS.turnBytes);
+    if (value === null) fail73("claude_journal_invalid");
+    return this.#remember(key, validTurn(value, id14));
   }
   #remember(key, turn) {
     this.#turns.delete(key);
@@ -24489,11 +25640,11 @@ var ClaudeCodeSessionJournal = class {
   }
   async create({ sessionId, cwd, atUtc }) {
     claudeSessionId(sessionId);
-    if (typeof cwd !== "string" || !path30.isAbsolute(cwd)) fail71("claude_cwd_invalid");
+    if (typeof cwd !== "string" || !path30.isAbsolute(cwd)) fail73("claude_cwd_invalid");
     return this.#serial(sessionId, async () => {
-      if (await this.#loadSession(sessionId) !== null) fail71("claude_session_exists");
-      if ((await this.#names()).length >= CLAUDE_CODE_SESSION_LIMITS.sessions) fail71("claude_journal_full");
-      await mkdir12(path30.join(this.#folder(sessionId), "turns"), { recursive: true });
+      if (await this.#loadSession(sessionId) !== null) fail73("claude_session_exists");
+      if ((await this.#names()).length >= CLAUDE_CODE_SESSION_LIMITS.sessions) fail73("claude_journal_full");
+      await mkdir13(path30.join(this.#folder(sessionId), "turns"), { recursive: true });
       const session = {
         schemaVersion: 1,
         contractVersion: CLAUDE_CODE_SESSION_JOURNAL_VERSION,
@@ -24516,26 +25667,26 @@ var ClaudeCodeSessionJournal = class {
     const session = await this.#loadSession(sessionId);
     return session === null ? null : structuredClone(session);
   }
-  async readTurn(sessionId, id12) {
+  async readTurn(sessionId, id14) {
     const session = await this.#loadSession(claudeSessionId(sessionId));
-    if (session === null || !session.turnIds.includes(id12)) return null;
-    return structuredClone(await this.#loadTurn(sessionId, id12));
+    if (session === null || !session.turnIds.includes(id14)) return null;
+    return structuredClone(await this.#loadTurn(sessionId, id14));
   }
   /** Kept turns `start` to `end` (exclusive), oldest first. */
   async readTurns(sessionId, start = 0, end = void 0) {
     const session = await this.#loadSession(claudeSessionId(sessionId));
-    if (session === null) fail71("thread_not_found");
+    if (session === null) fail73("thread_not_found");
     const turns = [];
-    for (const id12 of session.turnIds.slice(start, end)) turns.push(structuredClone(await this.#loadTurn(sessionId, id12)));
+    for (const id14 of session.turnIds.slice(start, end)) turns.push(structuredClone(await this.#loadTurn(sessionId, id14)));
     return turns;
   }
-  async updateSession(sessionId, change2) {
+  async updateSession(sessionId, change4) {
     claudeSessionId(sessionId);
     return this.#serial(sessionId, async () => {
       const current = await this.#loadSession(sessionId);
-      if (current === null) fail71("thread_not_found");
+      if (current === null) fail73("thread_not_found");
       const next = structuredClone(current);
-      const result2 = await change2(next);
+      const result2 = await change4(next);
       await this.#storeSession(validSession(next, sessionId));
       return result2;
     });
@@ -24546,10 +25697,10 @@ var ClaudeCodeSessionJournal = class {
     turnId(turn.id);
     return this.#serial(sessionId, async () => {
       const current = await this.#loadSession(sessionId);
-      if (current === null) fail71("thread_not_found");
+      if (current === null) fail73("thread_not_found");
       const next = structuredClone(current);
-      if (next.turnIds.includes(turn.id)) fail71("claude_turn_exists");
-      await mkdir12(path30.dirname(this.#turnFile(sessionId, turn.id)), { recursive: true }).catch(() => fail71("claude_journal_unavailable"));
+      if (next.turnIds.includes(turn.id)) fail73("claude_turn_exists");
+      await mkdir13(path30.dirname(this.#turnFile(sessionId, turn.id)), { recursive: true }).catch(() => fail73("claude_journal_unavailable"));
       await writeAtomic2(this.#turnFile(sessionId, turn.id), turn, CLAUDE_CODE_SESSION_LIMITS.turnBytes);
       this.#remember(`${sessionId}:${turn.id}`, structuredClone(turn));
       next.turnIds.push(turn.id);
@@ -24557,25 +25708,25 @@ var ClaudeCodeSessionJournal = class {
       next.droppedTurns += dropped.length;
       next.updatedAtUtc = atUtc;
       await this.#storeSession(next);
-      for (const id12 of dropped) {
-        this.#turns.delete(`${sessionId}:${id12}`);
-        await rm7(this.#turnFile(sessionId, id12), { force: true }).catch(() => void 0);
+      for (const id14 of dropped) {
+        this.#turns.delete(`${sessionId}:${id14}`);
+        await rm7(this.#turnFile(sessionId, id14), { force: true }).catch(() => void 0);
       }
       return structuredClone(next);
     });
   }
   /** Applies `change(turn, session)` to copies and stores both; returns what `change` returned. */
-  async updateTurn(sessionId, id12, change2, atUtc) {
+  async updateTurn(sessionId, id14, change4, atUtc) {
     claudeSessionId(sessionId);
     return this.#serial(sessionId, async () => {
       const session = await this.#loadSession(sessionId);
-      if (session === null || !session.turnIds.includes(id12)) fail71("claude_turn_not_found");
-      const turn = structuredClone(await this.#loadTurn(sessionId, id12));
+      if (session === null || !session.turnIds.includes(id14)) fail73("claude_turn_not_found");
+      const turn = structuredClone(await this.#loadTurn(sessionId, id14));
       const nextSession = structuredClone(session);
-      const result2 = await change2(turn, nextSession);
-      validTurn(turn, id12);
-      await writeAtomic2(this.#turnFile(sessionId, id12), turn, CLAUDE_CODE_SESSION_LIMITS.turnBytes);
-      this.#remember(`${sessionId}:${id12}`, turn);
+      const result2 = await change4(turn, nextSession);
+      validTurn(turn, id14);
+      await writeAtomic2(this.#turnFile(sessionId, id14), turn, CLAUDE_CODE_SESSION_LIMITS.turnBytes);
+      this.#remember(`${sessionId}:${id14}`, turn);
       nextSession.updatedAtUtc = atUtc;
       await this.#storeSession(validSession(nextSession, sessionId));
       return result2;
@@ -24590,7 +25741,7 @@ var ClaudeCodeSessionJournal = class {
       entries2 = await readdir8(this.#folder(sessionId));
     } catch (error) {
       if (error.code === "ENOENT") return [];
-      fail71("claude_journal_unavailable");
+      fail73("claude_journal_unavailable");
     }
     return entries2.map((name) => TRACE_FILE.exec(name)).filter(Boolean).map((match) => Number(match[1])).sort((left, right) => left - right);
   }
@@ -24604,7 +25755,7 @@ var ClaudeCodeSessionJournal = class {
     claudeSessionId(sessionId);
     const line = Buffer.from(`${JSON.stringify(record)}
 `, "utf8");
-    if (line.byteLength > CLAUDE_CODE_TRACE_LIMITS.recordBytes) fail71("claude_trace_record_too_large");
+    if (line.byteLength > CLAUDE_CODE_TRACE_LIMITS.recordBytes) fail73("claude_trace_record_too_large");
     const previous = this.#traceQueues.get(sessionId) ?? Promise.resolve();
     const next = previous.catch(() => void 0).then(async () => {
       let state2 = this.#traceState.get(sessionId);
@@ -24651,7 +25802,7 @@ var ClaudeCodeSessionJournal = class {
    */
   async readTrace(sessionId, { before = null, after = null, maxBytes = CLAUDE_CODE_TRACE_LIMITS.pageBytes } = {}) {
     claudeSessionId(sessionId);
-    if (before !== null && after !== null) fail71("claude_trace_cursor_invalid");
+    if (before !== null && after !== null) fail73("claude_trace_cursor_invalid");
     const budget = Math.min(
       Math.max(Number.isSafeInteger(maxBytes) ? maxBytes : 0, CLAUDE_CODE_TRACE_LIMITS.recordBytes),
       CLAUDE_CODE_TRACE_LIMITS.pageBytes
@@ -24774,16 +25925,16 @@ async function createClaudeCodeSessionJournal({
   folder = "claude-sessions"
 }) {
   if (!Number.isSafeInteger(keptTurns) || keptTurns < 1 || keptTurns > CLAUDE_CODE_SESSION_LIMITS.keptTurns) {
-    fail71("claude_journal_invalid");
+    fail73("claude_journal_invalid");
   }
-  if (typeof folder !== "string" || !/^[a-z0-9][a-z0-9-]{0,63}$/u.test(folder)) fail71("claude_journal_invalid");
+  if (typeof folder !== "string" || !/^[a-z0-9][a-z0-9-]{0,63}$/u.test(folder)) fail73("claude_journal_invalid");
   const root = await realpath13(controllerRoot);
   const directory = path30.join(root, ".project-local", "orchestration", folder);
-  await mkdir12(directory, { recursive: true });
+  await mkdir13(directory, { recursive: true });
   const canonical3 = await realpath13(directory);
   const relative = path30.relative(root, canonical3);
   if (path30.isAbsolute(relative) || relative === ".." || relative.startsWith(`..${path30.sep}`)) {
-    fail71("claude_journal_unavailable");
+    fail73("claude_journal_unavailable");
   }
   return new ClaudeCodeSessionJournal(canonical3, keptTurns);
 }
@@ -24810,18 +25961,19 @@ var TRACE_LIMITS = Object.freeze({
 });
 var QUESTION_TOOL = "AskUserQuestion";
 var PLAN_TOOL = "TodoWrite";
+var EXIT_PLAN_TOOL = "ExitPlanMode";
 var TERMINAL5 = /* @__PURE__ */ new Set(["completed", "failed", "interrupted"]);
-var ID41 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
+var ID44 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
 var ACCOUNT_TTL_MS = 6e4;
 var STOP_GRACE_MS = 1e4;
 var SIGNED_OUT = /Failed to authenticate|OAuth (?:session|token)[^\n]{0,40}(?:expired|revoked|invalid)|not logged in|Please run \/login|authentication_error|invalid_grant/iu;
 var IDLE_GRACE_MS = 15e3;
 var USAGE_INTERVAL_MS = 6e4;
 var USAGE_TIMEOUT_MS = 1e4;
-function fail72(code, message = code) {
+function fail74(code, message = code) {
   throw Object.assign(new Error(message), { code });
 }
-function clip(value, maximumBytes) {
+function clip2(value, maximumBytes) {
   return clipText(value, maximumBytes).text;
 }
 function capability(operation3, { visibility = "headless", recovery = ["none"] } = {}) {
@@ -24873,17 +26025,17 @@ function createClaudeCodeProviderDescriptor({ sourceId: sourceId2, runtimeInstan
   });
 }
 function normalizeClaudeModels(models) {
-  if (!Array.isArray(models) || models.length < 1 || models.length > 32) fail72("claude_models_invalid");
+  if (!Array.isArray(models) || models.length < 1 || models.length > 32) fail74("claude_models_invalid");
   return models.map((model) => {
-    if (!model || typeof model !== "object" || typeof model.id !== "string" || !ID41.test(model.id)) {
-      fail72("claude_models_invalid");
+    if (!model || typeof model !== "object" || typeof model.id !== "string" || !ID44.test(model.id)) {
+      fail74("claude_models_invalid");
     }
     const efforts = model.efforts ?? ["default", ...CLAUDE_EFFORTS];
     if (!Array.isArray(efforts) || efforts.length < 1 || efforts.some((effort) => effort !== "default" && !CLAUDE_EFFORTS.includes(effort))) {
-      fail72("claude_models_invalid");
+      fail74("claude_models_invalid");
     }
     const defaultEffort = model.defaultEffort ?? efforts[0];
-    if (!efforts.includes(defaultEffort)) fail72("claude_models_invalid");
+    if (!efforts.includes(defaultEffort)) fail74("claude_models_invalid");
     return {
       id: model.id,
       displayName: typeof model.displayName === "string" ? model.displayName.slice(0, 256) : model.id,
@@ -24894,11 +26046,11 @@ function normalizeClaudeModels(models) {
 }
 function textOf(input2) {
   if (!Array.isArray(input2) || input2.length < 1 || input2.some((part) => part?.type !== "text" || typeof part.text !== "string")) {
-    fail72("invalid_request", "Only text input is supported");
+    fail74("invalid_request", "Only text input is supported");
   }
-  const text10 = input2.map((part) => part.text).join("\n");
-  if (!text10.trim()) fail72("invalid_request", "Input text is empty");
-  return text10;
+  const text11 = input2.map((part) => part.text).join("\n");
+  if (!text11.trim()) fail74("invalid_request", "Input text is empty");
+  return text11;
 }
 function resultText(content) {
   if (typeof content === "string") return content;
@@ -24915,8 +26067,8 @@ function planText(todos) {
   }).filter((line) => line.length > 4);
   return lines.length ? lines.join("\n") : null;
 }
-var lineCount = (text10) => typeof text10 === "string" && text10 !== "" ? text10.split(/\r?\n/u).length : 0;
-var text5 = (value, maximumBytes) => typeof value === "string" && value !== "" ? clip(value, maximumBytes) : null;
+var lineCount = (text11) => typeof text11 === "string" && text11 !== "" ? text11.split(/\r?\n/u).length : 0;
+var text6 = (value, maximumBytes) => typeof value === "string" && value !== "" ? clip2(value, maximumBytes) : null;
 function inputChangeStats(name, input2) {
   if (name === "Edit") return { added: lineCount(input2.new_string), removed: lineCount(input2.old_string) };
   if (name === "MultiEdit" && Array.isArray(input2.edits)) {
@@ -24934,19 +26086,19 @@ function toolDetail(name, input2) {
     const from = Number.isSafeInteger(input2.offset) ? input2.offset : null;
     const span = Number.isSafeInteger(input2.limit) ? input2.limit : null;
     const range = from !== null && span !== null ? ` (lines ${from}–${from + span - 1})` : from !== null ? ` (from line ${from})` : "";
-    return text5(input2.file_path, 1024) === null ? null : `${clip(input2.file_path, 1024)}${range}`;
+    return text6(input2.file_path, 1024) === null ? null : `${clip2(input2.file_path, 1024)}${range}`;
   }
   if (name === "Grep") {
-    const where = [text5(input2.path, 512), text5(input2.glob, 256)].filter(Boolean).join(" · ");
-    return text5(input2.pattern, 512) === null ? null : `"${clip(input2.pattern, 512)}"${where ? ` in ${where}` : ""}`;
+    const where = [text6(input2.path, 512), text6(input2.glob, 256)].filter(Boolean).join(" · ");
+    return text6(input2.pattern, 512) === null ? null : `"${clip2(input2.pattern, 512)}"${where ? ` in ${where}` : ""}`;
   }
   if (name === "Glob") {
-    return text5(input2.pattern, 512) === null ? null : `${clip(input2.pattern, 512)}${text5(input2.path, 512) ? ` in ${clip(input2.path, 512)}` : ""}`;
+    return text6(input2.pattern, 512) === null ? null : `${clip2(input2.pattern, 512)}${text6(input2.path, 512) ? ` in ${clip2(input2.path, 512)}` : ""}`;
   }
-  if (name === "WebFetch") return text5(input2.url, 1024);
-  if (name === "WebSearch") return text5(input2.query, 512) === null ? null : `"${clip(input2.query, 512)}"`;
+  if (name === "WebFetch") return text6(input2.url, 1024);
+  if (name === "WebSearch") return text6(input2.query, 512) === null ? null : `"${clip2(input2.query, 512)}"`;
   const keys = Object.keys(input2);
-  return keys.length === 0 ? null : clip(JSON.stringify(input2), 512);
+  return keys.length === 0 ? null : clip2(JSON.stringify(input2), 512);
 }
 function toolItem(part) {
   const input2 = part.input && typeof part.input === "object" ? part.input : {};
@@ -24955,8 +26107,8 @@ function toolItem(part) {
       id: part.id,
       type: "commandExecution",
       tool: part.name,
-      command: clip(input2.command ?? "", 8192),
-      description: text5(input2.description, 512),
+      command: clip2(input2.command ?? "", 8192),
+      description: text6(input2.description, 512),
       aggregatedOutput: null,
       exitCode: null,
       status: "inProgress"
@@ -24969,18 +26121,18 @@ function toolItem(part) {
       id: part.id,
       type: "fileChange",
       tool: part.name,
-      changes: typeof target2 === "string" ? [{ path: clip(target2, 1024), kind: part.name === "Write" ? "write" : "update", added, removed }] : [],
+      changes: typeof target2 === "string" ? [{ path: clip2(target2, 1024), kind: part.name === "Write" ? "write" : "update", added, removed }] : [],
       status: "inProgress"
     };
   }
   if (part.name === PLAN_TOOL) {
     const plan = planText(input2.todos);
-    if (plan !== null) return { id: part.id, type: "plan", tool: part.name, text: clip(plan, 8192), status: "inProgress" };
+    if (plan !== null) return { id: part.id, type: "plan", tool: part.name, text: clip2(plan, 8192), status: "inProgress" };
   }
   return {
     id: part.id,
     type: "mcpToolCall",
-    tool: clip(part.name, 256),
+    tool: clip2(part.name, 256),
     detail: toolDetail(part.name, input2),
     status: "inProgress"
   };
@@ -24992,8 +26144,8 @@ function questionItem(part) {
     type: "userQuestion",
     tool: QUESTION_TOOL,
     questions: asked.map((question, index) => ({
-      header: text5(question?.header, 256),
-      question: clip(question?.question || "", 4096) || `Question ${index + 1}`
+      header: text6(question?.header, 256),
+      question: clip2(question?.question || "", 4096) || `Question ${index + 1}`
     })),
     answers: null,
     status: "inProgress"
@@ -25043,7 +26195,7 @@ function turnView(turn) {
 }
 function pageOf(values, { cursor = null, limit = 32 } = {}) {
   const start = cursor === null || cursor === void 0 ? 0 : Number(cursor);
-  if (!Number.isSafeInteger(start) || start < 0 || start > values.length) fail72("invalid_request", "Invalid cursor");
+  if (!Number.isSafeInteger(start) || start < 0 || start > values.length) fail74("invalid_request", "Invalid cursor");
   const size = Number.isSafeInteger(limit) && limit > 0 ? Math.min(limit, 128) : 32;
   const end = Math.min(values.length, start + size);
   return { data: values.slice(start, end), nextCursor: end < values.length ? String(end) : null };
@@ -25093,8 +26245,8 @@ var ClaudeCodeSessionHost = class extends EventEmitter {
     usageIntervalMs = USAGE_INTERVAL_MS
   } = {}) {
     super();
-    if (typeof sdk?.query !== "function" || !journal || typeof readAccount !== "function" || typeof now !== "function") fail72("claude_host_invalid");
-    if (!Array.isArray(tools) || tools.some((tool) => typeof tool !== "string")) fail72("claude_host_invalid");
+    if (typeof sdk?.query !== "function" || !journal || typeof readAccount !== "function" || typeof now !== "function") fail74("claude_host_invalid");
+    if (!Array.isArray(tools) || tools.some((tool) => typeof tool !== "string")) fail74("claude_host_invalid");
     this.#sdk = sdk;
     this.#journal = journal;
     this.#now = now;
@@ -25151,7 +26303,7 @@ var ClaudeCodeSessionHost = class extends EventEmitter {
   }
   // --- connection ---------------------------------------------------------------------
   async connect() {
-    if (this.#closed) fail72("provider_disconnected");
+    if (this.#closed) fail74("provider_disconnected");
     if (this.#recoverOnConnect) await this.#journal.recover(this.#at());
   }
   async close() {
@@ -25163,8 +26315,8 @@ var ClaudeCodeSessionHost = class extends EventEmitter {
     this.emit("close");
   }
   registerServerRequestHandler(method, handler) {
-    if (typeof method !== "string" || typeof handler !== "function") fail72("invalid_request");
-    if (this.#handlers.has(method)) fail72("conflict", `A handler for ${method} is already registered`);
+    if (typeof method !== "string" || typeof handler !== "function") fail74("invalid_request");
+    if (this.#handlers.has(method)) fail74("conflict", `A handler for ${method} is already registered`);
     this.#handlers.set(method, handler);
     return () => {
       if (this.#handlers.get(method) === handler) this.#handlers.delete(method);
@@ -25207,20 +26359,20 @@ var ClaudeCodeSessionHost = class extends EventEmitter {
   }
   async listThreadTurns(threadId2, options = {}) {
     const session = await this.#journal.readSession(claudeSessionId(threadId2));
-    if (session === null) fail72("thread_not_found");
+    if (session === null) fail74("thread_not_found");
     const ids = options.sortDirection === "desc" ? [...session.turnIds].reverse() : session.turnIds;
     const page = pageOf(ids, options);
     const turns = [];
-    for (const id12 of page.data) {
-      const turn = await this.#journal.readTurn(threadId2, id12);
-      if (turn === null) fail72("concurrent_update");
+    for (const id14 of page.data) {
+      const turn = await this.#journal.readTurn(threadId2, id14);
+      if (turn === null) fail74("concurrent_update");
       turns.push(turnView(turn));
     }
     return { data: turns, nextCursor: page.nextCursor };
   }
   async readThreadUsage(threadId2) {
     const session = await this.#journal.readSession(claudeSessionId(threadId2));
-    if (session === null) fail72("thread_not_found");
+    if (session === null) fail74("thread_not_found");
     const usage = session.usage;
     if (usage === null || !(usage.contextWindow > 0)) return { threadUsage: null };
     return { threadUsage: { groups: [{
@@ -25241,7 +26393,7 @@ var ClaudeCodeSessionHost = class extends EventEmitter {
   // --- writes -------------------------------------------------------------------------
   /** A new session: nothing runs until the first turn, which starts it under this id. */
   async createSession({ cwd }) {
-    if (this.#closed) fail72("provider_disconnected");
+    if (this.#closed) fail74("provider_disconnected");
     const sessionId = randomUUID11();
     await this.#journal.create({ sessionId, cwd, atUtc: this.#at() });
     return sessionId;
@@ -25253,23 +26405,23 @@ var ClaudeCodeSessionHost = class extends EventEmitter {
    * allowed tools, a system note) that stage 2 supplies.
    */
   async startTurn(threadId2, input2, options = {}) {
-    if (this.#closed) fail72("provider_disconnected");
+    if (this.#closed) fail74("provider_disconnected");
     claudeSessionId(threadId2);
-    const text10 = textOf(input2);
+    const text11 = textOf(input2);
     const model = options.model ?? null;
-    if (model !== null && !this.#models.some((entry) => entry.id === model)) fail72("memory_profile_conflict");
+    if (model !== null && !this.#models.some((entry) => entry.id === model)) fail74("memory_profile_conflict");
     const effort = options.effort ?? "default";
-    if (effort !== "default" && !CLAUDE_EFFORTS.includes(effort)) fail72("memory_profile_conflict");
+    if (effort !== "default" && !CLAUDE_EFFORTS.includes(effort)) fail74("memory_profile_conflict");
     const permissionMode = options.permissionMode ?? this.#permissionMode;
-    if (!CLAUDE_PERMISSION_MODES.includes(permissionMode)) fail72("invalid_request", "permissionMode");
-    if (this.#running.has(threadId2)) fail72("claude_session_busy");
+    if (!CLAUDE_PERMISSION_MODES.includes(permissionMode)) fail74("invalid_request", "permissionMode");
+    if (this.#running.has(threadId2)) fail74("claude_session_busy");
     const turnId2 = randomUUID11();
     const startedAt = this.#at();
-    const displayText = typeof options.displayText === "string" && options.displayText.trim() !== "" ? clip(options.displayText, CLAUDE_CODE_SESSION_LIMITS.textBytes) : null;
+    const displayText = typeof options.displayText === "string" && options.displayText.trim() !== "" ? clip2(options.displayText, CLAUDE_CODE_SESSION_LIMITS.textBytes) : null;
     const userItem = {
       id: `${turnId2}:user`,
       type: "userMessage",
-      content: [{ type: "text", text: text10 }],
+      content: [{ type: "text", text: text11 }],
       ...displayText === null ? {} : { displayText },
       clientId: typeof options.clientUserMessageId === "string" ? options.clientUserMessageId : null,
       atUtc: startedAt
@@ -25308,9 +26460,10 @@ var ClaudeCodeSessionHost = class extends EventEmitter {
       effort,
       clientId: userItem.clientId,
       displayText,
-      text: clip(text10, TRACE_LIMITS.textBytes)
+      text: clip2(text11, TRACE_LIMITS.textBytes)
     });
-    run3.begin(session, text10, { ...options, model, effort, permissionMode });
+    run3.planning = options.planning === true;
+    run3.begin(session, text11, { ...options, model, effort, permissionMode });
     return { turn: { id: turnId2, status: "inProgress" } };
   }
   /**
@@ -25323,9 +26476,9 @@ var ClaudeCodeSessionHost = class extends EventEmitter {
    * new turn instead.
    */
   async steerTurn(threadId2, turnId2, input2, { mode = "steer", clientUserMessageId = null, displayText = null } = {}) {
-    if (this.#closed) fail72("provider_disconnected");
+    if (this.#closed) fail74("provider_disconnected");
     const run3 = this.#running.get(claudeSessionId(threadId2));
-    if (mode !== "steer" && mode !== "queue") fail72("invalid_request", "mode");
+    if (mode !== "steer" && mode !== "queue") fail74("invalid_request", "mode");
     const clientId = typeof clientUserMessageId === "string" ? clientUserMessageId : null;
     if (run3 && run3.turnId === turnId2 && clientId !== null) {
       if (run3.held.some((held) => held.clientId === clientId)) return { delivery: "queued", clientId };
@@ -25333,14 +26486,14 @@ var ClaudeCodeSessionHost = class extends EventEmitter {
     }
     if (run3 && run3.turnId === turnId2 && !run3.accepting) {
       await run3.finished;
-      fail72("turn_not_active");
+      fail74("turn_not_active");
     }
-    if (!run3 || run3.turnId !== turnId2) fail72("turn_not_active");
-    const text10 = textOf(input2);
+    if (!run3 || run3.turnId !== turnId2) fail74("turn_not_active");
+    const text11 = textOf(input2);
     const message = {
       clientId,
-      text: text10,
-      displayText: typeof displayText === "string" && displayText.trim() !== "" ? clip(displayText, CLAUDE_CODE_SESSION_LIMITS.textBytes) : null,
+      text: text11,
+      displayText: typeof displayText === "string" && displayText.trim() !== "" ? clip2(displayText, CLAUDE_CODE_SESSION_LIMITS.textBytes) : null,
       queuedAtUtc: this.#at()
     };
     if (mode === "queue") {
@@ -25349,7 +26502,7 @@ var ClaudeCodeSessionHost = class extends EventEmitter {
         type: "user_queued",
         clientId: message.clientId,
         displayText: message.displayText,
-        text: clip(text10, TRACE_LIMITS.textBytes)
+        text: clip2(text11, TRACE_LIMITS.textBytes)
       });
       return { delivery: "queued", clientId: message.clientId };
     }
@@ -25381,9 +26534,9 @@ var ClaudeCodeSessionHost = class extends EventEmitter {
   async #deliver(run3, message, delivery) {
     run3.extraInputs += 1;
     if (message.clientId !== null) run3.delivered.add(message.clientId);
-    const id12 = `${run3.turnId}:user:${run3.extraInputs}`;
+    const id14 = `${run3.turnId}:user:${run3.extraInputs}`;
     await this.#addItem(run3, {
-      id: id12,
+      id: id14,
       type: "userMessage",
       content: [{ type: "text", text: message.text }],
       ...message.displayText === null ? {} : { displayText: message.displayText },
@@ -25395,7 +26548,7 @@ var ClaudeCodeSessionHost = class extends EventEmitter {
       delivery,
       clientId: message.clientId,
       displayText: message.displayText,
-      text: clip(message.text, TRACE_LIMITS.textBytes)
+      text: clip2(message.text, TRACE_LIMITS.textBytes)
     });
     run3.push({
       type: "user",
@@ -25407,7 +26560,7 @@ var ClaudeCodeSessionHost = class extends EventEmitter {
   }
   async interruptTurn(threadId2, turnId2) {
     const run3 = this.#running.get(claudeSessionId(threadId2));
-    if (!run3 || run3.turnId !== turnId2) fail72("turn_not_active");
+    if (!run3 || run3.turnId !== turnId2) fail74("turn_not_active");
     await run3.stop();
     return {};
   }
@@ -25463,8 +26616,8 @@ var ClaudeCodeSessionHost = class extends EventEmitter {
           resolve(null);
         }
       },
-      begin(session, text10, options) {
-        host.#execute(run3, session, text10, options).then(finishedResolve, finishedResolve);
+      begin(session, text11, options) {
+        host.#execute(run3, session, text11, options).then(finishedResolve, finishedResolve);
       },
       async stop() {
         if (run3.stopping) return;
@@ -25564,7 +26717,7 @@ var ClaudeCodeSessionHost = class extends EventEmitter {
       return false;
     }
   }
-  async #execute(run3, session, text10, options) {
+  async #execute(run3, session, text11, options) {
     const { threadId: threadId2, turnId: turnId2 } = run3;
     let result2 = null;
     let failure3 = null;
@@ -25572,7 +26725,7 @@ var ClaudeCodeSessionHost = class extends EventEmitter {
     try {
       const resume = await this.#sessionExists(session);
       async function* prompt() {
-        yield { type: "user", message: { role: "user", content: text10 }, parent_tool_use_id: null, session_id: threadId2 };
+        yield { type: "user", message: { role: "user", content: text11 }, parent_tool_use_id: null, session_id: threadId2 };
         for (; ; ) {
           const next = await run3.nextInput();
           if (next === null) return;
@@ -25603,7 +26756,7 @@ var ClaudeCodeSessionHost = class extends EventEmitter {
         turnId: turnId2,
         phase: "turn",
         reasonCode: "claude_process_failed",
-        message: clip(error?.message ?? error, 400)
+        message: clip2(error?.message ?? error, 400)
       });
       run3.abortController.abort();
     } finally {
@@ -25657,12 +26810,12 @@ var ClaudeCodeSessionHost = class extends EventEmitter {
         threadId: threadId2,
         turnId: run3.turnId,
         phase: "stderr",
-        message: clip(String(line).trimEnd(), 400)
+        message: clip2(String(line).trimEnd(), 400)
       })
     };
   }
-  async #record(run3, change2) {
-    await this.#journal.updateTurn(run3.threadId, run3.turnId, change2, this.#at());
+  async #record(run3, change4) {
+    await this.#journal.updateTurn(run3.threadId, run3.turnId, change4, this.#at());
   }
   /** One record of the session's trace; a trace that cannot be written never stops the turn. */
   async #trace(run3, record) {
@@ -25680,8 +26833,8 @@ var ClaudeCodeSessionHost = class extends EventEmitter {
   }
   /** The session's trace, a page at a time (journal readTrace). */
   async readTrace(threadId2, options = {}) {
-    if (typeof this.#journal.readTrace !== "function") fail72("claude_trace_unavailable");
-    if (await this.#journal.readSession(claudeSessionId(threadId2)) === null) fail72("thread_not_found");
+    if (typeof this.#journal.readTrace !== "function") fail74("claude_trace_unavailable");
+    if (await this.#journal.readSession(claudeSessionId(threadId2)) === null) fail74("thread_not_found");
     return this.#journal.readTrace(threadId2, options);
   }
   async #addItem(run3, item, completed) {
@@ -25697,12 +26850,12 @@ var ClaudeCodeSessionHost = class extends EventEmitter {
     this.emit("item/started", event);
     if (completed) this.emit("item/completed", structuredClone(event));
   }
-  async #completeItem(run3, itemId, change2) {
+  async #completeItem(run3, itemId, change4) {
     let completed = null;
     await this.#record(run3, (turn) => {
       const item = turn.items.find((entry) => entry.id === itemId);
       if (!item) return;
-      change2(item);
+      change4(item);
       completed = structuredClone(item);
     });
     if (completed !== null) this.emit("item/completed", { threadId: run3.threadId, turnId: run3.turnId, item: completed });
@@ -25729,7 +26882,7 @@ var ClaudeCodeSessionHost = class extends EventEmitter {
       await this.#trace(run3, {
         type: "session",
         model,
-        cwd: typeof message.cwd === "string" ? clip(message.cwd, 1024) : null,
+        cwd: typeof message.cwd === "string" ? clip2(message.cwd, 1024) : null,
         claudeCodeVersion: typeof message.claude_code_version === "string" ? message.claude_code_version.slice(0, 64) : null
       });
       this.#readUsage(run3);
@@ -25760,7 +26913,7 @@ var ClaudeCodeSessionHost = class extends EventEmitter {
     }
     if (message?.type === "assistant" && Array.isArray(message.message?.content)) {
       this.#stillWorking(run3);
-      const base2 = typeof message.uuid === "string" && ID41.test(message.uuid) ? message.uuid : randomUUID11();
+      const base2 = typeof message.uuid === "string" && ID44.test(message.uuid) ? message.uuid : randomUUID11();
       const model = typeof message.message.model === "string" ? message.message.model.slice(0, 160) : null;
       if (model !== null && (model !== run3.observedModel || !run3.modelsSeen.has(model))) {
         run3.observedModel = model;
@@ -25775,24 +26928,24 @@ var ClaudeCodeSessionHost = class extends EventEmitter {
           await this.#addItem(run3, {
             id: `${base2}:${index}`,
             type: "agentMessage",
-            text: clip(part.text.trim(), CLAUDE_CODE_SESSION_LIMITS.textBytes)
+            text: clip2(part.text.trim(), CLAUDE_CODE_SESSION_LIMITS.textBytes)
           }, true);
-          await this.#trace(run3, { type: "assistant", model, text: clip(part.text, TRACE_LIMITS.textBytes) });
+          await this.#trace(run3, { type: "assistant", model, text: clip2(part.text, TRACE_LIMITS.textBytes) });
         } else if (part?.type === "thinking") {
           await this.#addItem(run3, {
             id: `${base2}:${index}`,
             type: "reasoning",
-            summary: typeof part.thinking === "string" ? clip(part.thinking.trim(), 8192) : null
+            summary: typeof part.thinking === "string" ? clip2(part.thinking.trim(), 8192) : null
           }, true);
           if (typeof part.thinking === "string" && part.thinking.trim()) {
-            await this.#trace(run3, { type: "thinking", text: clip(part.thinking, TRACE_LIMITS.textBytes) });
+            await this.#trace(run3, { type: "thinking", text: clip2(part.thinking, TRACE_LIMITS.textBytes) });
           }
-        } else if (part?.type === "tool_use" && typeof part.id === "string" && ID41.test(part.id)) {
+        } else if (part?.type === "tool_use" && typeof part.id === "string" && ID44.test(part.id)) {
           await this.#trace(run3, {
             type: "tool_use",
             toolUseId: part.id,
-            tool: clip(part.name ?? "", 256),
-            input: clip(JSON.stringify(part.input ?? {}), TRACE_LIMITS.inputBytes)
+            tool: clip2(part.name ?? "", 256),
+            input: clip2(JSON.stringify(part.input ?? {}), TRACE_LIMITS.inputBytes)
           });
           const item = part.name === QUESTION_TOOL ? questionItem(part) : toolItem(part);
           run3.tools.set(part.id, item.type);
@@ -25805,7 +26958,7 @@ var ClaudeCodeSessionHost = class extends EventEmitter {
       for (const part of message.message.content) {
         if (part?.type !== "tool_result" || !run3.tools.has(part.tool_use_id)) continue;
         const failed = part.is_error === true;
-        const output2 = clip(resultText(part.content), CLAUDE_CODE_SESSION_LIMITS.outputBytes);
+        const output2 = clip2(resultText(part.content), CLAUDE_CODE_SESSION_LIMITS.outputBytes);
         run3.tools.delete(part.tool_use_id);
         const patch = failed ? null : patchOf(message.tool_use_result);
         const answers = run3.answers.get(part.tool_use_id) ?? null;
@@ -25823,8 +26976,8 @@ var ClaudeCodeSessionHost = class extends EventEmitter {
           type: "tool_result",
           toolUseId: part.tool_use_id,
           isError: failed,
-          output: clip(resultText(part.content), TRACE_LIMITS.outputBytes),
-          ...patch?.diff ? { diff: clip(patch.diff, TRACE_LIMITS.diffBytes) } : {}
+          output: clip2(resultText(part.content), TRACE_LIMITS.outputBytes),
+          ...patch?.diff ? { diff: clip2(patch.diff, TRACE_LIMITS.diffBytes) } : {}
         });
       }
     }
@@ -25912,11 +27065,11 @@ var ClaudeCodeSessionHost = class extends EventEmitter {
   // --- the person's decisions ----------------------------------------------------------
   #request(run3, session, toolName, input2, details) {
     const base2 = { threadId: run3.threadId, turnId: run3.turnId, itemId: details.toolUseID };
-    const reason = typeof details.title === "string" && details.title.trim() ? clip(details.title, 4096) : typeof details.decisionReason === "string" ? clip(details.decisionReason, 4096) : null;
+    const reason = typeof details.title === "string" && details.title.trim() ? clip2(details.title, 4096) : typeof details.decisionReason === "string" ? clip2(details.decisionReason, 4096) : null;
     if (SHELL_TOOLS.has(toolName)) {
       return { method: "item/commandExecution/requestApproval", params: {
         ...base2,
-        command: clip(input2?.command ?? "", 8192),
+        command: clip2(input2?.command ?? "", 8192),
         cwd: session.cwd,
         reason,
         availableDecisions: ["accept", "cancel", "decline"]
@@ -25926,21 +27079,21 @@ var ClaudeCodeSessionHost = class extends EventEmitter {
       const target2 = input2?.[FILE_TOOLS.get(toolName)];
       return { method: "item/fileChange/requestApproval", params: {
         ...base2,
-        reason: reason ?? clip(`${toolName} ${typeof target2 === "string" ? target2 : ""}`.trim(), 4096),
+        reason: reason ?? clip2(`${toolName} ${typeof target2 === "string" ? target2 : ""}`.trim(), 4096),
         grantRoot: null
       } };
     }
     if (toolName === QUESTION_TOOL && Array.isArray(input2?.questions) && input2.questions.length > 0) {
       const questions = input2.questions.slice(0, 16).map((question, index) => ({
         id: `q${index + 1}`,
-        header: clip(question?.header || `Question ${index + 1}`, 256),
-        question: clip(question?.question || "", 4096) || `Question ${index + 1}`,
+        header: clip2(question?.header || `Question ${index + 1}`, 256),
+        question: clip2(question?.question || "", 4096) || `Question ${index + 1}`,
         isOther: true,
         // Several options may be chosen; the answers go back joined with ", ".
         multiSelect: question?.multiSelect === true,
         options: Array.isArray(question?.options) && question.options.length > 0 ? question.options.slice(0, 16).map((option) => ({
-          label: clip(option?.label || "-", 1024),
-          description: clip(option?.description ?? "", 2048)
+          label: clip2(option?.label || "-", 1024),
+          description: clip2(option?.description ?? "", 2048)
         })) : null
       }));
       return { method: "item/tool/requestUserInput", params: { ...base2, isBlocking: true, questions } };
@@ -25948,8 +27101,8 @@ var ClaudeCodeSessionHost = class extends EventEmitter {
     return { method: "item/permissions/requestApproval", params: {
       ...base2,
       cwd: session.cwd,
-      reason: reason ?? clip(toolName, 256),
-      permissions: { tool: clip(toolName, 256), input: clip(JSON.stringify(input2 ?? {}), 4096) }
+      reason: reason ?? clip2(toolName, 256),
+      permissions: { tool: clip2(toolName, 256), input: clip2(JSON.stringify(input2 ?? {}), 4096) }
     } };
   }
   #decision(method, params, payload, toolName, input2) {
@@ -25973,8 +27126,11 @@ var ClaudeCodeSessionHost = class extends EventEmitter {
     return granted ? { behavior: "allow", updatedInput: input2 } : { behavior: "deny", message: `The person did not allow ${toolName}.` };
   }
   async #ask(run3, session, toolName, input2, details = {}) {
-    if (typeof details.toolUseID !== "string" || !ID41.test(details.toolUseID)) {
+    if (typeof details.toolUseID !== "string" || !ID44.test(details.toolUseID)) {
       return { behavior: "deny", message: "The request has no usable identity; the action was not taken." };
+    }
+    if (toolName === EXIT_PLAN_TOOL) {
+      return { behavior: "deny", message: run3.planning === true ? "The plan is recorded and shown to the person for approval. Do not start the work: end your turn now with one short sentence." : "There is no plan to present in this turn; carry on." };
     }
     const { method, params } = this.#request(run3, session, toolName, input2, details);
     const handler = this.#handlers.get(method);
@@ -26006,13 +27162,13 @@ var ClaudeCodeSessionHost = class extends EventEmitter {
       await this.#trace(run3, {
         type: "permission",
         toolUseId: details.toolUseID,
-        tool: clip(toolName, 256),
+        tool: clip2(toolName, 256),
         decision: decision2.behavior === "allow" ? "allow" : decision2.interrupt === true ? "cancel" : "deny",
         by: "person"
       });
     }
     if (method === "item/tool/requestUserInput" && decision2.behavior === "allow") {
-      run3.answers.set(details.toolUseID, params.questions.map((question) => clip(payload.answers[question.id].answers.map(String).join(", "), 4096)));
+      run3.answers.set(details.toolUseID, params.questions.map((question) => clip2(payload.answers[question.id].answers.map(String).join(", "), 4096)));
     }
     return decision2;
   }
@@ -26089,18 +27245,18 @@ async function readClaudeProviderConfig(repoRoot) {
 }
 
 // orchestrator/src/codex-conversation-archive.mjs
-import { createHash as createHash27 } from "node:crypto";
+import { createHash as createHash29 } from "node:crypto";
 var PRIVATE_TEXT = [
   /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/u
 ];
-function fail73(code = "archive_invalid_provider_page") {
+function fail75(code = "archive_invalid_provider_page") {
   throw new ConversationArchiveError(code);
 }
 function keyHash(value) {
-  return createHash27("sha256").update(JSON.stringify(value), "utf8").digest("hex");
+  return createHash29("sha256").update(JSON.stringify(value), "utf8").digest("hex");
 }
 function providerId(value) {
-  if (typeof value !== "string" || !value.trim() || value.length > 512 || /[\u0000-\u001f\u007f]/u.test(value)) fail73();
+  if (typeof value !== "string" || !value.trim() || value.length > 512 || /[\u0000-\u001f\u007f]/u.test(value)) fail75();
   return value;
 }
 function state(value) {
@@ -26120,19 +27276,19 @@ function state(value) {
 function timestamp4(value) {
   if (value === null || value === void 0) return null;
   const date = new Date(typeof value === "number" && value < 1e10 ? value * 1e3 : value);
-  if (!Number.isFinite(date.getTime())) fail73();
+  if (!Number.isFinite(date.getTime())) fail75();
   return date.toISOString();
 }
-function safeContent(text10) {
-  if (typeof text10 !== "string" || text10.length === 0) return "content_not_provided";
-  if (/data:(?:image|audio|video)\//iu.test(text10)) return "inline_media";
-  if (Buffer.byteLength(text10, "utf8") > 262144) return "oversized_content";
+function safeContent(text11) {
+  if (typeof text11 !== "string" || text11.length === 0) return "content_not_provided";
+  if (/data:(?:image|audio|video)\//iu.test(text11)) return "inline_media";
+  if (Buffer.byteLength(text11, "utf8") > 262144) return "oversized_content";
   try {
-    validateApplicationPayloadPrivacy(text10, { zone: "result-output" });
+    validateApplicationPayloadPrivacy(text11, { zone: "result-output" });
   } catch {
     return "private_content";
   }
-  if (PRIVATE_TEXT.some((pattern) => pattern.test(text10)) || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u.test(text10)) return "private_content";
+  if (PRIVATE_TEXT.some((pattern) => pattern.test(text11)) || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u.test(text11)) return "private_content";
   return null;
 }
 var CodexConversationArchive = class {
@@ -26152,7 +27308,7 @@ var CodexConversationArchive = class {
   // providerId: the provider of the bound conversation; the Claude Code session
   // host emits the same notifications as the Codex client.
   constructor({ archive, binding, client, providerId: providerId2 = "codex" }) {
-    if (binding.providerId !== providerId2) fail73("archive_identity_conflict");
+    if (binding.providerId !== providerId2) fail75("archive_identity_conflict");
     this.archive = archive;
     this.binding = structuredClone(binding);
     this.client = client;
@@ -26180,10 +27336,10 @@ var CodexConversationArchive = class {
   }
   async flush() {
     await this.#pending;
-    if (this.#failed) fail73("archive_capture_unavailable");
+    if (this.#failed) fail75("archive_capture_unavailable");
   }
   async synchronize({ limit = 32, maxPages = 64 } = {}) {
-    if (!Number.isInteger(limit) || limit < 1 || limit > 32 || !Number.isInteger(maxPages) || maxPages < 1 || maxPages > 256) fail73();
+    if (!Number.isInteger(limit) || limit < 1 || limit > 32 || !Number.isInteger(maxPages) || maxPages < 1 || maxPages > 256) fail75();
     if (this.#synchronization !== null) return this.#synchronization;
     this.#synchronization = (async () => {
       const checkpoint = await this.archive.readImportCheckpoint(this.binding);
@@ -26244,9 +27400,9 @@ var CodexConversationArchive = class {
         if (event?.threadId !== this.binding.threadId) return;
         try {
           const turn = method === "item/completed" ? { id: event.turnId, status: "completed" } : event.turn;
-          const items = method === "item/completed" ? [event.item] : turn?.items ?? [];
-          if (!Array.isArray(items) || items.length > 512) fail73();
-          for (const item of items) this.#enqueue(() => this.recordItem(turn, item));
+          const items2 = method === "item/completed" ? [event.item] : turn?.items ?? [];
+          if (!Array.isArray(items2) || items2.length > 512) fail75();
+          for (const item of items2) this.#enqueue(() => this.recordItem(turn, item));
           if (method !== "item/completed") this.#enqueue(() => this.archive.append(this.binding, {
             recordId: `turn:${keyHash(providerId(turn?.id))}`,
             kind: "delivery",
@@ -26274,16 +27430,16 @@ var CodexConversationArchive = class {
     await this.#synchronization?.catch(() => void 0);
     await this.#pending;
   }
-  async recordOutgoing({ requestId, text: text10 }) {
+  async recordOutgoing({ requestId, text: text11 }) {
     await this.flush();
-    if (this.#providerUnavailable) fail73("archive_provider_unavailable");
+    if (this.#providerUnavailable) fail75("archive_provider_unavailable");
     providerId(requestId);
     return this.archive.append(this.binding, {
       recordId: `request:${keyHash(requestId)}`,
       kind: "submission",
       role: "user",
       state: "requested",
-      text: text10,
+      text: text11,
       providerTurnId: null,
       providerItemId: null,
       requestId,
@@ -26312,7 +27468,7 @@ var CodexConversationArchive = class {
     turnId: turnId2 = null,
     itemId = null,
     state: interactionState,
-    text: text10,
+    text: text11,
     occurredAtUtc
   }) {
     await this.flush();
@@ -26320,13 +27476,13 @@ var CodexConversationArchive = class {
     providerId(phase);
     if (turnId2 !== null) providerId(turnId2);
     if (itemId !== null) providerId(itemId);
-    const omission = safeContent(text10);
+    const omission = safeContent(text11);
     return this.archive.append(this.binding, {
       recordId: `interaction:${keyHash({ interactionId, phase })}`,
       kind: "interaction",
       role: null,
       state: state(interactionState),
-      text: omission === null ? text10 : null,
+      text: omission === null ? text11 : null,
       providerTurnId: turnId2,
       providerItemId: itemId,
       requestId: interactionId,
@@ -26336,11 +27492,11 @@ var CodexConversationArchive = class {
   }
   recordItem(turn, item) {
     if (turn.threadId !== void 0 && turn.threadId !== this.binding.threadId || item.threadId !== void 0 && item.threadId !== this.binding.threadId) {
-      fail73("archive_identity_conflict");
+      fail75("archive_identity_conflict");
     }
     const turnId2 = providerId(turn.id);
     const itemId = providerId(item.id);
-    let kind2 = "omission", role = null, text10 = null, requestId = null;
+    let kind2 = "omission", role = null, text11 = null, requestId = null;
     const omissions = [];
     if (item.type === "userMessage") {
       kind2 = "message";
@@ -26348,19 +27504,19 @@ var CodexConversationArchive = class {
       requestId = item.clientId == null ? null : providerId(item.clientId);
       if (Array.isArray(item.content)) {
         const parts = item.content.filter((part) => part?.type === "text" && typeof part.text === "string");
-        text10 = parts.map((part) => part.text).join("\n");
+        text11 = parts.map((part) => part.text).join("\n");
         if (parts.length !== item.content.length) omissions.push("unsupported_content");
       }
     } else if (item.type === "agentMessage") {
       kind2 = "message";
       role = "assistant";
-      text10 = item.text;
+      text11 = item.text;
     } else if (item.type === "commandExecution") {
       kind2 = "activity";
       role = "tool";
       const command = typeof item.command === "string" ? item.command : null;
       const output2 = typeof item.aggregatedOutput === "string" ? item.aggregatedOutput : null;
-      text10 = [
+      text11 = [
         command === null ? null : `Command:
 ${command}`,
         output2 === null ? null : `Output:
@@ -26372,9 +27528,9 @@ ${output2}`,
       omissions.push(item.type === "reasoning" ? "hidden_reasoning" : "unsupported_content");
     }
     if (kind2 !== "omission") {
-      const reason = safeContent(text10);
+      const reason = safeContent(text11);
       if (reason !== null) {
-        text10 = null;
+        text11 = null;
         omissions.push(reason);
       }
     }
@@ -26383,7 +27539,7 @@ ${output2}`,
       kind: kind2,
       role,
       state: state(item.status ?? turn.status),
-      text: text10 ?? null,
+      text: text11 ?? null,
       providerTurnId: turnId2,
       providerItemId: itemId,
       requestId,
@@ -26392,11 +27548,11 @@ ${output2}`,
     });
   }
   async importPage({ cursor = null, limit = 10 } = {}) {
-    if (cursor !== null && (typeof cursor !== "string" || cursor.length > 512) || !Number.isInteger(limit) || limit < 1 || limit > 32) fail73();
+    if (cursor !== null && (typeof cursor !== "string" || cursor.length > 512) || !Number.isInteger(limit) || limit < 1 || limit > 32) fail75();
     let page;
     try {
       const result2 = await this.client.readThread(this.binding.threadId, false);
-      if (result2?.thread?.id !== this.binding.threadId) fail73("archive_identity_conflict");
+      if (result2?.thread?.id !== this.binding.threadId) fail75("archive_identity_conflict");
       page = await this.client.listThreadTurns(this.binding.threadId, {
         cursor: cursor ?? void 0,
         limit,
@@ -26405,12 +27561,12 @@ ${output2}`,
       });
     } catch (error) {
       if (error instanceof ConversationArchiveError) throw error;
-      fail73("archive_provider_unavailable");
+      fail75("archive_provider_unavailable");
     }
-    if (!Array.isArray(page?.data) || page.data.length > limit || page.nextCursor != null && (typeof page.nextCursor !== "string" || page.nextCursor.length > 512)) fail73();
+    if (!Array.isArray(page?.data) || page.data.length > limit || page.nextCursor != null && (typeof page.nextCursor !== "string" || page.nextCursor.length > 512)) fail75();
     let captured = 0;
     for (const turn of page.data) {
-      if (!Array.isArray(turn.items) || turn.items.length > 512) fail73();
+      if (!Array.isArray(turn.items) || turn.items.length > 512) fail75();
       for (const item of turn.items) {
         const receipt = await this.recordItem(turn, item);
         if (!receipt.replay) captured++;
@@ -26424,7 +27580,7 @@ ${output2}`,
     };
   }
   async importNextPage({ limit = 10, restart = false } = {}) {
-    if (typeof restart !== "boolean" || !Number.isInteger(limit) || limit < 1 || limit > 32) fail73();
+    if (typeof restart !== "boolean" || !Number.isInteger(limit) || limit < 1 || limit > 32) fail75();
     const previous = await this.archive.readImportCheckpoint(this.binding);
     if (previous.exhausted && !restart) return {
       conversationId: this.conversationId,
@@ -26435,12 +27591,12 @@ ${output2}`,
     };
     const cursor = restart ? null : previous.cursor;
     const page = await this.importPage({ cursor, limit });
-    if (page.nextCursor !== null && page.nextCursor === cursor) fail73("archive_import_cursor_stalled");
+    if (page.nextCursor !== null && page.nextCursor === cursor) fail75("archive_import_cursor_stalled");
     const swapped = await this.archive.checkpointImport(this.binding, {
       expectedRevision: previous.revision,
       nextCursor: page.nextCursor
     });
-    if (!swapped) fail73("archive_import_conflict");
+    if (!swapped) fail75("archive_import_conflict");
     return {
       conversationId: this.conversationId,
       capturedRecords: page.capturedRecords,
@@ -26487,7 +27643,7 @@ var DATA_FILE = /\.(?:txt|json|ya?ml|toml|ini|cfg|conf|key|env)$|^[^.]+$/u;
 var WILDCARD = /[*?[]/u;
 function secretName(name) {
   if (SECRET_FILES.has(name)) return "a login or key file";
-  if (SECRET_SUFFIXES.some((suffix) => name.endsWith(suffix))) return "a key file";
+  if (SECRET_SUFFIXES.some((suffix3) => name.endsWith(suffix3))) return "a key file";
   if (ENV_FILE.test(name)) return "an environment file with keys";
   if (KEPT_WORD.test(name) && DATA_FILE.test(name)) return "a file named for a key or password";
   return null;
@@ -26496,18 +27652,18 @@ function wildcardSecret(segment) {
   const first = segment.search(WILDCARD);
   if (first === -1) return null;
   const prefix = segment.slice(0, first);
-  const suffix = segment.slice(Math.max(segment.lastIndexOf("*"), segment.lastIndexOf("?"), segment.lastIndexOf("]")) + 1);
+  const suffix3 = segment.slice(Math.max(segment.lastIndexOf("*"), segment.lastIndexOf("?"), segment.lastIndexOf("]")) + 1);
   const names = [...SECRET_FILES, ".env", ...SECRET_FOLDERS, INSTANCE_LOCAL];
   if (prefix.length >= 2 && names.some((name) => name.startsWith(prefix))) return "a pattern that names secret files";
-  if (SECRET_SUFFIXES.some((known) => suffix.endsWith(known)) || suffix.length >= 8 && [...SECRET_FILES].some((name) => name.endsWith(suffix))) return "a pattern that names secret files";
+  if (SECRET_SUFFIXES.some((known) => suffix3.endsWith(known)) || suffix3.length >= 8 && [...SECRET_FILES].some((name) => name.endsWith(suffix3))) return "a pattern that names secret files";
   return null;
 }
-var segmentsOf = (text10) => text10.split(/[\\/]+/u).filter(Boolean).map((segment) => segment.toLowerCase());
+var segmentsOf = (text11) => text11.split(/[\\/]+/u).filter(Boolean).map((segment) => segment.toLowerCase());
 function secretPathReason(file, { root = null, platform = process.platform } = {}) {
   if (typeof file !== "string" || file.trim() === "") return null;
   const api = platform === "win32" ? path32.win32 : path32.posix;
-  const text10 = file.trim();
-  const segments = segmentsOf(root === null || text10.startsWith("~") ? text10 : api.resolve(root, text10));
+  const text11 = file.trim();
+  const segments = segmentsOf(root === null || text11.startsWith("~") ? text11 : api.resolve(root, text11));
   const own = root === null ? null : `${segmentsOf(api.resolve(root)).join("/")}/`;
   for (const [index, segment] of segments.entries()) {
     if (SECRET_FOLDERS.has(segment)) return `inside ${segment}`;
@@ -26641,7 +27797,7 @@ function claudeSecretHook({ root, platform = process.platform }) {
 }
 
 // orchestrator/src/project-memory-claude.mjs
-function fail74(code) {
+function fail76(code) {
   throw Object.assign(new Error(code), { code });
 }
 async function createProjectMemoryClaude({
@@ -26656,6 +27812,7 @@ async function createProjectMemoryClaude({
   descriptor = null,
   onInteractionChanged,
   documents = null,
+  memory = null,
   taskTools = null,
   taskGate = null,
   commits = null,
@@ -26664,7 +27821,7 @@ async function createProjectMemoryClaude({
   webFetchHosts = null
 } = {}) {
   if (!host || typeof resolveWorkspace !== "function" || typeof assertVisible !== "function") {
-    fail74("memory_provider_unavailable");
+    fail76("memory_provider_unavailable");
   }
   const captures = /* @__PURE__ */ new Map();
   const interactions = /* @__PURE__ */ new Map();
@@ -26702,22 +27859,22 @@ async function createProjectMemoryClaude({
   };
   const bound3 = (agent) => {
     const binding = agent.binding;
-    if (!binding || binding.providerId !== CLAUDE_CODE_PROVIDER_ID || binding.sourceId !== providerSourceId || binding.projectId !== sourceId2) fail74("memory_identity_conflict");
+    if (!binding || binding.providerId !== CLAUDE_CODE_PROVIDER_ID || binding.sourceId !== providerSourceId || binding.projectId !== sourceId2) fail76("memory_identity_conflict");
     return binding.threadId;
   };
   const preflight = async (profile3) => {
     if (profile3.provider !== CLAUDE_CODE_PROVIDER_ID || profile3.fallbackPolicy !== "deny") {
-      fail74("memory_provider_unavailable");
+      fail76("memory_provider_unavailable");
     }
     if (!host.models.some((model) => model.id === profile3.model && model.efforts.includes(profile3.reasoningEffort)) || profile3.reasoningEffort !== "default" && !CLAUDE_EFFORTS.includes(profile3.reasoningEffort)) {
-      fail74("memory_profile_conflict");
+      fail76("memory_profile_conflict");
     }
     await assertVisible();
     const account = await host.readAccount();
-    if (account.account === null) fail74("memory_provider_unavailable");
+    if (account.account === null) fail76("memory_provider_unavailable");
   };
   const interactionFor = async (agent) => {
-    if (!descriptor) fail74("memory_provider_unavailable");
+    if (!descriptor) fail76("memory_provider_unavailable");
     if (!interactions.has(agent.agentId)) {
       const capture = captureFor(agent);
       interactions.set(agent.agentId, createApplicationProviderInteractionBridge({
@@ -26756,8 +27913,66 @@ async function createProjectMemoryClaude({
       }
     }
   });
+  const memoryTools = memory !== null && host.supportsDeskTools === true;
+  const TARGETS = ["own", "quarter", "project", "agent"];
+  const memoryRefusals = {
+    memory_change_target_denied: "this memory is not yours to change",
+    memory_change_target_kept: "the agent's project is kept to some PCs: its memory does not come into the world lead's chat; its own project lead changes it",
+    memory_change_no_entry: "there is no entry with that title to delete",
+    memory_change_empty: "nothing would change: the entries are already like that",
+    memory_change_too_large: "an entry is too long",
+    memory_change_invalid_input: "the changes are not in the expected form",
+    memory_limit_exceeded: "the memory would be too large"
+  };
+  const refused = (error) => memoryRefusals[error?.code] ?? `the desk refused (${error?.code ?? "unknown"})`;
+  const readMemoryTool = (agent) => ({
+    name: "read_memory",
+    description: "Reads a memory: your own (target own), your quarter's (quarter), your project's (project), or - for a lead - the memory of an agent below you (target agent, with agentOf its ID): a quarter lead's quarter's agents, a project lead's project's, the world lead's any agent but of a project kept to some PCs. Each entry is a title and a text.",
+    inputSchema: (z) => ({ target: z.enum(TARGETS), agentOf: z.string().optional() }),
+    async handler(args) {
+      try {
+        const read = await memory.read(agent, { target: args?.target, agentOf: args?.agentOf ?? null });
+        if (read.entries.length === 0) return `The ${read.kind} memory is empty (revision ${read.revision}).`;
+        return [
+          `The ${read.kind} memory, revision ${read.revision}:`,
+          ...read.entries.map((entry) => `## ${entry.title}
+${entry.text}`)
+        ].join("\n\n");
+      } catch (error) {
+        return `Not read: ${refused(error)}.`;
+      }
+    }
+  });
+  const changeMemoryTool = (agent) => ({
+    name: "change_memory",
+    description: "Asks to change a memory you may change: your own (target own); a quarter lead its quarter's (quarter); a project lead its project's (project); the world lead the world's (project); and, when the person asks, a lead the memory of an agent below it (agent, with agentOf its ID). Name entries by title: action set adds an entry or replaces its text, action delete removes it. Say why in reason. The change waits for the person's approval in the chat (your own memory may be written at once if the person allowed it); the answer says which.",
+    inputSchema: (z) => ({
+      target: z.enum(TARGETS),
+      agentOf: z.string().optional(),
+      changes: z.array(z.object({ action: z.enum(["set", "delete"]), title: z.string(), text: z.string().optional() })),
+      reason: z.string().optional()
+    }),
+    async handler(args) {
+      try {
+        const result2 = await memory.change(agent, {
+          target: args?.target,
+          agentOf: args?.agentOf ?? null,
+          changes: args?.changes,
+          reason: args?.reason ?? null
+        });
+        const lines = result2.diff.map((line) => `${{ added: "+", changed: "~", removed: "-" }[line.change]} ${line.title}`);
+        return result2.state === "written" ? [`Written into your own memory, now revision ${result2.revision} (change ${result2.changeId}):`, ...lines].join("\n") : [
+          `Asked: change ${result2.changeId} waits for the person's approval in the chat; nothing is written yet:`,
+          ...lines
+        ].join("\n");
+      } catch (error) {
+        return `Nothing changed: ${refused(error)}.`;
+      }
+    }
+  });
   const deskToolsFor = (agent) => [
     ...memoryDocuments ? [memoryDocumentTool(agent)] : [],
+    ...memoryTools ? [readMemoryTool(agent), changeMemoryTool(agent)] : [],
     ...typeof taskTools === "function" && host.supportsDeskTools === true ? taskTools(agent) : []
   ];
   return {
@@ -26779,13 +27994,13 @@ async function createProjectMemoryClaude({
       const threadId2 = await host.createSession({ cwd: workspace3.workspacePath });
       return { projectId: sourceId2, sourceId: providerSourceId, providerId: CLAUDE_CODE_PROVIDER_ID, threadId: threadId2 };
     },
-    async send({ agent, operation: operation3, text: text10, displayText = null, writeZone }) {
+    async send({ agent, operation: operation3, text: text11, displayText = null, writeZone }) {
       await preflight(agent.profile);
       const workspace3 = await resolveWorkspace(agent);
-      if (workspace3.workspaceKey !== agent.workspaceKey) fail74("memory_workspace_conflict");
+      if (workspace3.workspaceKey !== agent.workspaceKey) fail76("memory_workspace_conflict");
       const threadId2 = bound3(agent);
       const session = await host.readThread(threadId2);
-      if (session === null) fail74("memory_identity_conflict");
+      if (session === null) fail76("memory_identity_conflict");
       const capture = captureFor(agent);
       if (descriptor) await interactionFor(agent);
       await capture.flush();
@@ -26799,9 +28014,10 @@ async function createProjectMemoryClaude({
       };
       const intentSha256 = applicationCanonicalSha256({ agentId: agent.agentId, ...operation3 });
       const acquired = await lease.acquire({ owner: owner2, intentSha256 });
-      if (!acquired.mutationAllowed) fail74("memory_uncertain_outcome");
+      if (!acquired.mutationAllowed) fail76("memory_uncertain_outcome");
       const zone = writeZone !== void 0 ? writeZone : effectiveWriteZone(agent);
-      const permissionMode = agent.permissionMode ?? host.permissionMode ?? "acceptEdits";
+      const planning = operation3.task?.phase === "plan";
+      const permissionMode = planning ? "plan" : agent.permissionMode ?? host.permissionMode ?? "acceptEdits";
       const hooks = [
         // Secrets first: every agent, every permission mode; a fetch from an unknown address asks the person
         // (agent-secret-paths.mjs).
@@ -26812,11 +28028,12 @@ async function createProjectMemoryClaude({
       ];
       const before = commits === null ? null : await commits.snapshot(workspace3.workspacePath).catch(() => null);
       try {
-        const result2 = await host.startTurn(threadId2, [{ type: "text", text: text10 }], {
+        const result2 = await host.startTurn(threadId2, [{ type: "text", text: text11 }], {
           model: agent.profile.model,
           effort: agent.profile.reasoningEffort,
           permissionMode,
           clientUserMessageId: operation3.operationId,
+          ...planning ? { planning: true } : {},
           // The chat shows what the person typed; Claude Code gets the memory in front of it.
           ...typeof displayText === "string" ? { displayText } : {},
           deskTools: deskToolsFor(agent),
@@ -26824,7 +28041,7 @@ async function createProjectMemoryClaude({
           query: { hooks: { PreToolUse: [{ hooks }] } }
         });
         const turnId2 = result2?.turn?.id;
-        if (typeof turnId2 !== "string" || !turnId2) fail74("memory_invalid_observation");
+        if (typeof turnId2 !== "string" || !turnId2) fail76("memory_invalid_observation");
         if (before !== null) {
           pendingCommits.set(turnId2, {
             folder: workspace3.workspacePath,
@@ -26846,7 +28063,7 @@ async function createProjectMemoryClaude({
         });
         return { turnId: turnId2, state: "started" };
       } catch (error) {
-        const refused = [
+        const refused2 = [
           "claude_session_busy",
           "memory_profile_conflict",
           "provider_disconnected",
@@ -26861,16 +28078,16 @@ async function createProjectMemoryClaude({
           owner: owner2,
           intentSha256,
           leaseId: acquired.record.leaseId,
-          ...refused ? { outcome: "not-applied", receiptSha256: applicationCanonicalSha256({ threadId: threadId2, refused: error.code }) } : { outcome: "uncertain" }
+          ...refused2 ? { outcome: "not-applied", receiptSha256: applicationCanonicalSha256({ threadId: threadId2, refused: error.code }) } : { outcome: "uncertain" }
         }).catch(() => {
         });
-        if (refused && error && typeof error === "object") error.notDelivered = true;
+        if (refused2 && error && typeof error === "object") error.notDelivered = true;
         throw error;
       }
     },
     async observe({ agent, operation: operation3 }) {
       const turn = await host.readTurn(bound3(agent), operation3.turnId);
-      if (turn === null) fail74("memory_invalid_observation");
+      if (turn === null) fail76("memory_invalid_observation");
       return {
         turnId: turn.id,
         state: claudeTurnState(turn),
@@ -26884,13 +28101,13 @@ async function createProjectMemoryClaude({
      * typed - the turn already has the memory. `turn_not_active` when the turn
      * is over: the service then sends it as a new message.
      */
-    async steer({ agent, operation: operation3, text: text10, mode, clientId }) {
+    async steer({ agent, operation: operation3, text: text11, mode, clientId }) {
       await assertVisible();
       await preflight(agent.profile);
       return host.steerTurn(
         bound3(agent),
         operation3.turnId,
-        [{ type: "text", text: text10 }],
+        [{ type: "text", text: text11 }],
         { mode, clientUserMessageId: clientId }
       );
     },
@@ -26916,7 +28133,7 @@ async function createProjectMemoryClaude({
       // subscribe a session. Unknown observation remains unavailable, not zero.
       async interactionSummary(agent) {
         const bridge = await interactions.get(agent.agentId);
-        if (!bridge) fail74("memory_provider_unavailable");
+        if (!bridge) fail76("memory_provider_unavailable");
         return bridge.summary();
       },
       async listInteractions(agent, input2) {
@@ -26940,12 +28157,12 @@ async function createProjectMemoryClaude({
 
 // orchestrator/src/desk-agent-task-tools.mjs
 import { execFile as execFile2, spawn as spawn3 } from "node:child_process";
-import { lstat as lstat21, mkdir as mkdir17, readFile as readFile19, realpath as realpath14, writeFile as writeFile10 } from "node:fs/promises";
+import { lstat as lstat21, mkdir as mkdir18, readFile as readFile19, realpath as realpath14, writeFile as writeFile11 } from "node:fs/promises";
 import path38 from "node:path";
 
 // orchestrator/src/desk-agent-sources.mjs
-import { createHash as createHash29, randomUUID as randomUUID12 } from "node:crypto";
-import { lstat as lstat20, mkdir as mkdir15, readFile as readFile17, rename as rename11, rm as rm9, writeFile as writeFile8 } from "node:fs/promises";
+import { createHash as createHash31, randomUUID as randomUUID12 } from "node:crypto";
+import { lstat as lstat20, mkdir as mkdir16, readFile as readFile17, rename as rename11, rm as rm9, writeFile as writeFile9 } from "node:fs/promises";
 import path36 from "node:path";
 
 // orchestrator/src/desk-agent-source-validation.mjs
@@ -27003,12 +28220,12 @@ if (process.argv[1] && path33.basename(process.argv[1]) === "desk-agent-source-v
 }
 
 // orchestrator/src/desk-task-controller.mjs
-import { lstat as lstat19, mkdir as mkdir14, readFile as readFile16, stat as stat3 } from "node:fs/promises";
+import { lstat as lstat19, mkdir as mkdir15, readFile as readFile16, stat as stat3 } from "node:fs/promises";
 import path35 from "node:path";
 
 // orchestrator/src/desk-task-common.mjs
-import { createHash as createHash28 } from "node:crypto";
-import { appendFile, copyFile, lstat as lstat18, mkdir as mkdir13, readFile as readFile15, rename as rename10, rm as rm8, stat as stat2, writeFile as writeFile7 } from "node:fs/promises";
+import { createHash as createHash30 } from "node:crypto";
+import { appendFile, copyFile, lstat as lstat18, mkdir as mkdir14, readFile as readFile15, rename as rename10, rm as rm8, stat as stat2, writeFile as writeFile8 } from "node:fs/promises";
 import os2 from "node:os";
 import path34 from "node:path";
 var CRLF = "\r\n";
@@ -27027,9 +28244,9 @@ function psCustomObject(value) {
   return value;
 }
 var AUTOMATION_NULL = Object.freeze({ [Symbol.for("agents-factory.desk-task.automation-null")]: true });
-function functionOutput(items) {
-  if (items.length === 0) return AUTOMATION_NULL;
-  return items.length === 1 ? items[0] : [...items];
+function functionOutput(items2) {
+  if (items2.length === 0) return AUTOMATION_NULL;
+  return items2.length === 1 ? items2[0] : [...items2];
 }
 function psArray(value) {
   if (value === AUTOMATION_NULL || value === void 0) return [];
@@ -27109,11 +28326,11 @@ function nlsSortKey(value) {
     });
     units += entry.units.length;
   }
-  const trim = (list2) => {
+  const trim3 = (list2) => {
     while (list2.length && list2[list2.length - 1] === 2) list2.pop();
     return list2;
   };
-  return Buffer.from([...primary, 1, ...trim(diacritics), 1, ...trim(cases), 1, 1, ...special, 0]);
+  return Buffer.from([...primary, 1, ...trim3(diacritics), 1, ...trim3(cases), 1, 1, ...special, 0]);
 }
 function nlsCompare(left, right) {
   return Buffer.compare(nlsSortKey(String(left)), nlsSortKey(String(right)));
@@ -27126,8 +28343,8 @@ function psEquals(left, right) {
 function psIn(value, list2) {
   return list2.some((item) => psEquals(value, item));
 }
-function psSort(items, key = (item) => item) {
-  return [...items].sort((left, right) => nlsCompare(key(left), key(right)));
+function psSort(items2, key = (item) => item) {
+  return [...items2].sort((left, right) => nlsCompare(key(left), key(right)));
 }
 function formatNumber(value) {
   if (!Number.isFinite(value)) return value > 0 ? "Infinity" : value < 0 ? "-Infinity" : "NaN";
@@ -27278,46 +28495,46 @@ async function readJson5(file) {
 }
 function netMatch(pattern, value, { ignoreCase = true } = {}) {
   const expression = new RegExp(pattern, `u${ignoreCase ? "i" : ""}`);
-  const text10 = String(value);
-  if (expression.test(text10)) return true;
-  return /\$$/u.test(pattern) && text10.endsWith("\n") && expression.test(text10.slice(0, -1));
+  const text11 = String(value);
+  if (expression.test(text11)) return true;
+  return /\$$/u.test(pattern) && text11.endsWith("\n") && expression.test(text11.slice(0, -1));
 }
 var INLINE_MEDIA = new RegExp(`data${NET_SPACE}*:${NET_SPACE}*(image|audio|video)/[^,${NET_SPACE.slice(1, -1)}]+(?:;[^,${NET_SPACE.slice(1, -1)}]+)*,`, "iu");
 var CONTROL_ABSOLUTE = new RegExp(`(^|[${NET_SPACE.slice(1, -1)}"'(<\\[])${NET_SPACE}*(?:file:/+|[a-z]:[\\\\/]|\\\\\\\\[^\\\\/${NET_SPACE.slice(1, -1)}]+[\\\\/])`, "iu");
 var ORCHESTRATED_ABSOLUTE = new RegExp(`(^|[${NET_SPACE.slice(1, -1)}"'(])(?:[a-z]:[\\\\/]|\\\\\\\\[^\\\\/${NET_SPACE.slice(1, -1)}]+[\\\\/])`, "iu");
-function hasInlineMedia(text10) {
-  return Boolean(text10) && INLINE_MEDIA.test(String(text10));
+function hasInlineMedia(text11) {
+  return Boolean(text11) && INLINE_MEDIA.test(String(text11));
 }
-function assertControlTextSafety(text10, description = "content") {
-  if (truthy(text10) && hasInlineMedia(text10)) {
+function assertControlTextSafety(text11, description = "content") {
+  if (truthy(text11) && hasInlineMedia(text11)) {
     refuse2(`Inline media is forbidden in ${description}. Use a project-relative artifact path.`);
   }
 }
-function assertControlDurableText(text10, description = "durable content") {
-  assertControlTextSafety(text10, description);
-  if (truthy(text10) && CONTROL_ABSOLUTE.test(String(text10))) {
+function assertControlDurableText(text11, description = "durable content") {
+  assertControlTextSafety(text11, description);
+  if (truthy(text11) && CONTROL_ABSOLUTE.test(String(text11))) {
     refuse2(`Machine-local absolute paths are forbidden in ${description}. Use a project-relative reference.`);
   }
 }
 function assertControlRelativeReference(value, description) {
   if (isNullOrWhiteSpace(value)) refuse2(`${description} must not be empty.`);
-  const text10 = String(value);
-  if (isPathRooted(text10)) refuse2(`${description} must be project-relative: '${text10}'.`);
-  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//u.test(text10)) refuse2(`${description} must be project-relative, not a URI: '${text10}'.`);
-  if (/(^|[\\/])\.\.([\\/]|$)/u.test(text10)) refuse2(`${description} may not traverse above the project: '${text10}'.`);
-  assertControlTextSafety(text10, description);
+  const text11 = String(value);
+  if (isPathRooted(text11)) refuse2(`${description} must be project-relative: '${text11}'.`);
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//u.test(text11)) refuse2(`${description} must be project-relative, not a URI: '${text11}'.`);
+  if (/(^|[\\/])\.\.([\\/]|$)/u.test(text11)) refuse2(`${description} may not traverse above the project: '${text11}'.`);
+  assertControlTextSafety(text11, description);
 }
-function assertOrchestratedDurableText(text10, description) {
-  if (truthy(text10) && hasInlineMedia(text10)) {
+function assertOrchestratedDurableText(text11, description) {
+  if (truthy(text11) && hasInlineMedia(text11)) {
     refuse2(`Inline media is forbidden in ${description}. Use a project-relative path.`);
   }
-  if (truthy(text10) && ORCHESTRATED_ABSOLUTE.test(String(text10))) {
+  if (truthy(text11) && ORCHESTRATED_ABSOLUTE.test(String(text11))) {
     refuse2(`Machine-local absolute paths are forbidden in ${description}. Use a project-relative reference.`);
   }
 }
 function isPathRooted(value) {
-  const text10 = String(value);
-  return /^[\\/]/u.test(text10) || /^[a-zA-Z]:/u.test(text10) || path34.isAbsolute(text10);
+  const text11 = String(value);
+  return /^[\\/]/u.test(text11) || /^[a-zA-Z]:/u.test(text11) || path34.isAbsolute(text11);
 }
 function fullPath(value) {
   return path34.resolve(String(value));
@@ -27351,14 +28568,14 @@ async function isFile(file) {
 async function isDirectory(file) {
   return Boolean((await stat2(file).catch(() => null))?.isDirectory());
 }
-var sha256Bytes = (bytes) => createHash28("sha256").update(bytes).digest("hex");
-var sha256Text = (text10) => sha256Bytes(Buffer.from(text10, "utf8"));
+var sha256Bytes = (bytes) => createHash30("sha256").update(bytes).digest("hex");
+var sha256Text = (text11) => sha256Bytes(Buffer.from(text11, "utf8"));
 async function sha256File(file) {
   return sha256Bytes(await readFile15(file));
 }
-async function writeTextUtf8NoBom(file, text10) {
-  await mkdir13(path34.dirname(file), { recursive: true });
-  await writeFile7(file, Buffer.from(text10, "utf8"));
+async function writeTextUtf8NoBom(file, text11) {
+  await mkdir14(path34.dirname(file), { recursive: true });
+  await writeFile8(file, Buffer.from(text11, "utf8"));
 }
 async function writeLinesUtf8NoBom(file, lines) {
   await writeTextUtf8NoBom(file, lines.map((line) => `${line}${CRLF}`).join(""));
@@ -27386,10 +28603,10 @@ function trimReportString(value, maximum = MAX_REPORT_STRING) {
   if (value === null || value === void 0) return null;
   if (maximum <= 0 || value.length <= maximum) return value;
   const prefix = Math.min(Math.floor(maximum * 0.7), value.length);
-  const suffix = Math.min(maximum - prefix, value.length - prefix);
+  const suffix3 = Math.min(maximum - prefix, value.length - prefix);
   return `${value.slice(0, prefix)}
-...<truncated ${value.length - (prefix + suffix)} chars>...
-${value.slice(value.length - suffix)}`;
+...<truncated ${value.length - (prefix + suffix3)} chars>...
+${value.slice(value.length - suffix3)}`;
 }
 function serializableData(value, depth = 10) {
   if (value === null || value === void 0 || value === AUTOMATION_NULL) return null;
@@ -27398,9 +28615,9 @@ function serializableData(value, depth = 10) {
   if (typeof value === "string") return trimReportString(value);
   if (typeof value !== "object") return value;
   if (Array.isArray(value)) {
-    const items = value.slice(0, 128).map((item) => serializableData(item, depth - 1));
-    if (value.length >= 128) items.push("<truncated_items>");
-    return items;
+    const items2 = value.slice(0, 128).map((item) => serializableData(item, depth - 1));
+    if (value.length >= 128) items2.push("<truncated_items>");
+    return items2;
   }
   const keys = Object.keys(value);
   if (value[PS_CUSTOM_OBJECT]) {
@@ -27454,7 +28671,7 @@ async function startToolRun({ root, toolName, parameters, output: output2 }) {
   const repoRoot = fullPath(root);
   const logs = path34.join(repoRoot, "logs");
   const old = path34.join(logs, "old");
-  await mkdir13(old, { recursive: true });
+  await mkdir14(old, { recursive: true });
   const timestamp5 = compactStamp2(/* @__PURE__ */ new Date());
   const fileResults = [];
   for (const fileName of [`${toolName}.log`, `${toolName}.report.json`]) {
@@ -27684,8 +28901,8 @@ async function assertJsonSchema(value, schemaPath, description = "JSON document"
   validateNode(value, schema, schema, "$", errors);
   if (errors.length > 0) {
     const bounded = errors.slice(0, 12);
-    const suffix = errors.length > bounded.length ? ` (+${errors.length - bounded.length} more)` : "";
-    refuse2(`${description} does not satisfy '${path34.basename(schemaPath)}': ${bounded.join(" ")}${suffix}`);
+    const suffix3 = errors.length > bounded.length ? ` (+${errors.length - bounded.length} more)` : "";
+    refuse2(`${description} does not satisfy '${path34.basename(schemaPath)}': ${bounded.join(" ")}${suffix3}`);
   }
 }
 
@@ -27766,7 +28983,7 @@ async function resolveControlSourceWorkspace(controlRoot, sourceId2) {
   };
 }
 function taskStrings(value, name, { relativePaths = false } = {}) {
-  const items = [];
+  const items2 = [];
   for (const entry of psArray(value)) {
     if (entry === null) continue;
     let item = psString(entry);
@@ -27776,9 +28993,9 @@ function taskStrings(value, name, { relativePaths = false } = {}) {
       assertControlRelativeReference(item, `task field '${name}'`);
       item = item.replaceAll("\\", "/");
     }
-    items.push(item);
+    items2.push(item);
   }
-  return functionOutput(items);
+  return functionOutput(items2);
 }
 function propertyValue(object24, name, fallback = null) {
   const value = hasProperty(object24, name) ? property(object24, name) : fallback;
@@ -27806,9 +29023,9 @@ function supportedTaskContracts(contract) {
 var isDateTime2 = (value) => /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d{1,7})?)?)?(Z|[+-]\d{2}:\d{2})?$/u.test(value) && !Number.isNaN(Date.parse(value));
 function markdownList(lines, title, values) {
   lines.push(`## ${title}`, "");
-  const items = psArray(values);
-  if (items.length === 0) lines.push("- None specified.");
-  else for (const value of items) lines.push(`- ${psString(value)}`);
+  const items2 = psArray(values);
+  if (items2.length === 0) lines.push("- None specified.");
+  else for (const value of items2) lines.push(`- ${psString(value)}`);
   lines.push("");
 }
 function taskMarkdownLines(task) {
@@ -27880,7 +29097,7 @@ function taskMarkdownLines(task) {
   return lines;
 }
 async function writeTaskPackage(directory, task) {
-  await mkdir14(directory, { recursive: true });
+  await mkdir15(directory, { recursive: true });
   const taskJsonPath = path35.join(directory, "task.json");
   await writePsJson(taskJsonPath, task);
   await writeLinesUtf8NoBom(path35.join(directory, "task.md"), taskMarkdownLines(task));
@@ -27945,12 +29162,12 @@ async function dispatchChildTask(parameters, { output: output2, clock: clock2 = 
       const artifactPath = psString(propertyValue(artifact, "path"));
       if (!psIn(kind2, ["file", "image", "audio", "video", "directory", "log"])) refuse2(`Unsupported artifact kind '${kind2}'.`);
       assertControlRelativeReference(artifactPath, "artifact path");
-      const sha25617 = psString(propertyValue(artifact, "sha256"));
-      if (sha25617 && !netMatch("^[a-fA-F0-9]{64}$", sha25617)) refuse2("Artifact sha256 must contain 64 hexadecimal characters.");
+      const sha25619 = psString(propertyValue(artifact, "sha256"));
+      if (sha25619 && !netMatch("^[a-fA-F0-9]{64}$", sha25619)) refuse2("Artifact sha256 must contain 64 hexadecimal characters.");
       artifactReferences.push(psCustomObject({
         kind: kind2,
         path: artifactPath.replaceAll("\\", "/"),
-        sha256: sha25617 ? sha25617.toLowerCase() : null
+        sha256: sha25619 ? sha25619.toLowerCase() : null
       }));
     }
     const priority = psString(hasProperty(definition3, "priority") ? propertyValue(definition3, "priority") : "normal");
@@ -28096,7 +29313,7 @@ async function dispatchChildTask(parameters, { output: output2, clock: clock2 = 
       const temporary = `${controlTaskDirectory}.tmp-${guidN()}`;
       try {
         taskHash = await writeTaskPackage(temporary, task);
-        await mkdir14(path35.dirname(controlTaskDirectory), { recursive: true });
+        await mkdir15(path35.dirname(controlTaskDirectory), { recursive: true });
         if (await exists3(controlTaskDirectory)) refuse2(`Cannot create a file when that file already exists: ${controlTaskDirectory}`);
         await moveItem(temporary, controlTaskDirectory);
       } finally {
@@ -28113,11 +29330,11 @@ async function dispatchChildTask(parameters, { output: output2, clock: clock2 = 
     } else {
       const temporary = `${childTaskDirectory}.tmp-${guidN()}`;
       try {
-        await mkdir14(temporary, { recursive: true });
+        await mkdir15(temporary, { recursive: true });
         for (const name of ["task.json", "task.md", "task.sha256"]) {
           await copyItem(path35.join(controlTaskDirectory, name), path35.join(temporary, name));
         }
-        await mkdir14(path35.dirname(childTaskDirectory), { recursive: true });
+        await mkdir15(path35.dirname(childTaskDirectory), { recursive: true });
         if (await exists3(childTaskDirectory)) refuse2(`Cannot create a file when that file already exists: ${childTaskDirectory}`);
         await moveItem(temporary, childTaskDirectory);
       } finally {
@@ -28170,7 +29387,7 @@ async function resolveInsideRoot(root, relativePath) {
   return candidate;
 }
 async function writeUtf8Atomic(file, textValue) {
-  await mkdir14(path35.dirname(file), { recursive: true });
+  await mkdir15(path35.dirname(file), { recursive: true });
   const temporary = `${file}.${process.pid}.${guidN()}.tmp`;
   try {
     await writeTextUtf8NoBom(temporary, textValue);
@@ -28264,7 +29481,7 @@ async function installChildCoordinationKit(parameters, { output: output2 }) {
         const original = await resolveInsideRoot(workspaceRoot, relative);
         if (!await isFile(original)) continue;
         const saved = await resolveInsideRoot(backupRoot, relative);
-        await mkdir14(path35.dirname(saved), { recursive: true });
+        await mkdir15(path35.dirname(saved), { recursive: true });
         await copyItem(original, saved);
         const originalHash = await sha256File(original);
         if (await sha256File(saved) !== originalHash) refuse2(`Child kit backup verification failed: ${relative}`);
@@ -28290,7 +29507,7 @@ async function installChildCoordinationKit(parameters, { output: output2 }) {
         continue;
       }
       if (apply) {
-        await mkdir14(path35.dirname(copy.destination), { recursive: true });
+        await mkdir15(path35.dirname(copy.destination), { recursive: true });
         const temporary = `${copy.destination}.${process.pid}.tmp`;
         try {
           await copyItem(copy.source, temporary);
@@ -28432,13 +29649,13 @@ async function runDeskControllerTool(script, args, { clock: clock2 } = {}) {
 
 // orchestrator/src/desk-agent-sources.mjs
 var DESK_AGENT_FOLDER = path36.join(".project-local", "desk-agents");
-function fail75(code) {
+function fail77(code) {
   throw Object.assign(new Error(code), { code });
 }
-var sha25613 = (value) => createHash29("sha256").update(value).digest("hex");
+var sha25615 = (value) => createHash31("sha256").update(value).digest("hex");
 function deskAgentSourceId(agentId) {
-  if (typeof agentId !== "string" || !agentId) fail75("desk_source_agent_invalid");
-  return /^[a-z0-9][a-z0-9-]{0,47}$/u.test(agentId) ? `desk-${agentId}` : `desk-${sha25613(agentId).slice(0, 16)}`;
+  if (typeof agentId !== "string" || !agentId) fail77("desk_source_agent_invalid");
+  return /^[a-z0-9][a-z0-9-]{0,47}$/u.test(agentId) ? `desk-${agentId}` : `desk-${sha25615(agentId).slice(0, 16)}`;
 }
 function sourceEntry(sourceId2, agentId) {
   return {
@@ -28460,20 +29677,20 @@ function sourceEntry(sourceId2, agentId) {
 var canonical2 = (value) => JSON.stringify(value, Object.keys(value).sort());
 var samePath = (left, right) => typeof left === "string" && typeof right === "string" && (process.platform === "win32" ? path36.resolve(left).toLowerCase() === path36.resolve(right).toLowerCase() : path36.resolve(left) === path36.resolve(right));
 async function readJson6(file, fallback = void 0) {
-  let text10;
+  let text11;
   try {
-    text10 = await readFile17(file, "utf8");
+    text11 = await readFile17(file, "utf8");
   } catch (error) {
     if (error.code === "ENOENT" && fallback !== void 0) return structuredClone(fallback);
     throw error;
   }
-  return JSON.parse(text10);
+  return JSON.parse(text11);
 }
 async function writeJsonAtomic(file, value) {
-  await mkdir15(path36.dirname(file), { recursive: true });
+  await mkdir16(path36.dirname(file), { recursive: true });
   const temporary = `${file}.${process.pid}.${randomUUID12()}.tmp`;
   try {
-    await writeFile8(temporary, `${JSON.stringify(value, null, 2)}
+    await writeFile9(temporary, `${JSON.stringify(value, null, 2)}
 `, "utf8");
     await renameOver(temporary, file);
   } finally {
@@ -28489,22 +29706,22 @@ async function registerDeskAgentSource({
   installKit = installDeskAgentKit,
   now = () => /* @__PURE__ */ new Date()
 } = {}) {
-  if (typeof controllerRoot !== "string" || !path36.isAbsolute(controllerRoot)) fail75("desk_source_root_invalid");
+  if (typeof controllerRoot !== "string" || !path36.isAbsolute(controllerRoot)) fail77("desk_source_root_invalid");
   const root = path36.resolve(controllerRoot);
   const agent = await service.readAgent({ agentId });
-  if (agent.state !== "active") fail75("memory_agent_closed");
+  if (agent.state !== "active") fail77("memory_agent_closed");
   const project = await resolveProjectWorkspace(service.store, agent.projectId);
   const sourceId2 = deskAgentSourceId(agentId);
   const folder = path36.join(root, DESK_AGENT_FOLDER, sourceId2);
   const desired = sourceEntry(sourceId2, agentId);
   const desiredBinding = { workspacePath: folder, sourcePath: project.workspacePath };
   const stateRoot = path36.join(root, ".project-local", "orchestration");
-  await mkdir15(stateRoot, { recursive: true });
+  await mkdir16(stateRoot, { recursive: true });
   const lock = path36.join(stateRoot, "desk-source-registration.lock");
   try {
-    await mkdir15(lock);
+    await mkdir16(lock);
   } catch (error) {
-    if (error.code === "EEXIST") fail75("desk_source_registration_busy");
+    if (error.code === "EEXIST") fail77("desk_source_registration_busy");
     throw error;
   }
   try {
@@ -28513,19 +29730,19 @@ async function registerDeskAgentSource({
     const registry = await readJson6(registryPath2);
     const bindings = await readJson6(bindingsPath, { schemaVersion: 2, sources: {} });
     if (registry.schemaVersion !== 2 || !Array.isArray(registry.sources) || ![1, 2].includes(bindings.schemaVersion) || !bindings.sources || typeof bindings.sources !== "object") {
-      fail75("controller_registry_incompatible");
+      fail77("controller_registry_incompatible");
     }
     const existing = registry.sources.filter((item) => item?.id === sourceId2);
-    if (existing.length > 1) fail75("duplicate_source_id");
-    if (existing[0] && canonical2(existing[0]) !== canonical2(desired)) fail75("desk_source_conflict");
+    if (existing.length > 1) fail77("duplicate_source_id");
+    if (existing[0] && canonical2(existing[0]) !== canonical2(desired)) fail77("desk_source_conflict");
     const bound3 = bindings.sources[sourceId2] ?? null;
     if (bound3 && !(samePath(bound3.workspacePath, folder) && samePath(bound3.sourcePath, project.workspacePath))) {
-      fail75("desk_source_binding_conflict");
+      fail77("desk_source_binding_conflict");
     }
     for (const [otherId, binding] of Object.entries(bindings.sources)) {
-      if (otherId !== sourceId2 && samePath(binding?.workspacePath ?? binding?.path, folder)) fail75("desk_source_folder_conflict");
+      if (otherId !== sourceId2 && samePath(binding?.workspacePath ?? binding?.path, folder)) fail77("desk_source_folder_conflict");
     }
-    await mkdir15(path36.join(folder, ".orchestrator"), { recursive: true });
+    await mkdir16(path36.join(folder, ".orchestrator"), { recursive: true });
     const versionPath = path36.join(folder, "project-version.json");
     if (!await lstat20(versionPath).catch(() => null)) {
       await writeJsonAtomic(versionPath, {
@@ -28541,7 +29758,7 @@ async function registerDeskAgentSource({
     if (existingRecord === null) {
       await writeJsonAtomic(recordPath, { ...record, registeredAtUtc: now().toISOString() });
     } else if (Object.entries(record).some(([key, value]) => existingRecord[key] !== value)) {
-      fail75("desk_source_record_conflict");
+      fail77("desk_source_record_conflict");
     }
     if (!bound3) {
       await writeJsonAtomic(bindingsPath, {
@@ -28590,7 +29807,7 @@ async function readDeskAgentSource({ controllerRoot, agentId }) {
 }
 
 // orchestrator/src/desk-task-kit.mjs
-import { appendFile as appendFile2, mkdir as mkdir16, open as open7, readFile as readFile18, stat as stat4, writeFile as writeFile9 } from "node:fs/promises";
+import { appendFile as appendFile2, mkdir as mkdir17, open as open7, readFile as readFile18, stat as stat4, writeFile as writeFile10 } from "node:fs/promises";
 import path37 from "node:path";
 import { gunzipSync, gzipSync as gzipSync2 } from "node:zlib";
 var TASK_ID_PATTERN = "^[a-z0-9][a-z0-9.-]{2,95}$";
@@ -28672,7 +29889,7 @@ function bind(parameters, { mandatory = [], sets = [], patterns = {}, ranges = {
     }
   }
 }
-var text6 = (parameters, name, fallback = "") => bound2(parameters, name) ? psString(parameters[name]) : fallback;
+var text7 = (parameters, name, fallback = "") => bound2(parameters, name) ? psString(parameters[name]) : fallback;
 function psInt(value) {
   if (value === null || value === void 0) return 0;
   if (typeof value === "boolean") return value ? 1 : 0;
@@ -28767,13 +29984,13 @@ async function readOrchestratedTask(root, taskId2) {
 function planIdentity(plan) {
   const shape = [];
   for (const step of plan) {
-    const id12 = psString(property(step, "id"));
+    const id14 = psString(property(step, "id"));
     const title = psString(property(step, "title"));
-    if (!netMatch(IDENTITY_PATTERN, id12) || isNullOrWhiteSpace(title)) {
+    if (!netMatch(IDENTITY_PATTERN, id14) || isNullOrWhiteSpace(title)) {
       refuse2("A plan step requires a valid id and non-empty title.");
     }
     assertOrchestratedDurableText(title, "plan step title");
-    shape.push({ id: id12, title });
+    shape.push({ id: id14, title });
   }
   return { sha256: sha256Text(psJson(shape, { compress: true })), shape };
 }
@@ -28851,12 +30068,12 @@ async function writeJsonAtomic2(file, value) {
 async function compressEvents(eventPath, archiveDirectory, maximumBytes, clock2) {
   const info = await stat4(eventPath).catch(() => null);
   if (!info?.isFile() || info.size < maximumBytes) return null;
-  await mkdir16(archiveDirectory, { recursive: true });
+  await mkdir17(archiveDirectory, { recursive: true });
   const archivePath = path37.join(archiveDirectory, `events-${compactStamp2(clock2())}-${guidN()}.jsonl.gz`);
   const manifestPath = `${archivePath}.manifest.json`;
   const source = await readFile18(eventPath);
   const sourceHash = sha256Bytes(source);
-  await writeFile9(archivePath, gzipSync2(source));
+  await writeFile10(archivePath, gzipSync2(source));
   const roundTrip = gunzipSync(await readFile18(archivePath));
   if (sha256Bytes(roundTrip) !== sourceHash || roundTrip.length !== source.length) {
     await removeQuietly(archivePath);
@@ -28878,9 +30095,9 @@ async function acceptTask(parameters, { output: output2, clock: clock2 = () => /
   bind(parameters, { mandatory: ["TaskId"], sets: ["Decision"] });
   const root = await findWorkspaceRoot(parameters.WorkspaceRoot);
   const taskId2 = psString(parameters.TaskId);
-  const decision2 = text6(parameters, "Decision", "accepted");
-  const reason = text6(parameters, "Reason");
-  const agentId = text6(parameters, "AgentId", "codex");
+  const decision2 = text7(parameters, "Decision", "accepted");
+  const reason = text7(parameters, "Reason");
+  const agentId = text7(parameters, "AgentId", "codex");
   return withToolRun({
     root,
     toolName: "accept_orchestrated_task",
@@ -28912,7 +30129,7 @@ async function acceptTask(parameters, { output: output2, clock: clock2 = () => /
       }
       action = "already-acknowledged";
     } else {
-      await mkdir16(ackDirectory, { recursive: true });
+      await mkdir17(ackDirectory, { recursive: true });
       await writePsJson(ackPath, ack);
     }
     output2.host(`task_ack_action: ${action}`);
@@ -28968,23 +30185,23 @@ async function updateTaskProgress(parameters, { output: output2, clock: clock2 =
   const heartbeatOnly = psBool(parameters.HeartbeatOnly);
   const heartbeatIntervalSeconds = bound2(parameters, "HeartbeatIntervalSeconds") ? Number(parameters.HeartbeatIntervalSeconds) : 60;
   const maxEventBytes = bound2(parameters, "MaxEventBytes") ? Number(parameters.MaxEventBytes) : 1048576;
-  let taskState = text6(parameters, "TaskState");
-  let phase = text6(parameters, "Phase");
-  const currentAction = text6(parameters, "CurrentAction");
-  const stepId = text6(parameters, "StepId");
-  const stepTitle = text6(parameters, "StepTitle");
-  const stepState = text6(parameters, "StepState");
-  let agentId = text6(parameters, "AgentId");
-  const parentAgentId = text6(parameters, "ParentAgentId");
-  const agentKind = text6(parameters, "AgentKind", "primary");
-  const agentRole = text6(parameters, "AgentRole", "child-project-agent");
-  const provider = text6(parameters, "Provider", "claude");
-  let agentState = text6(parameters, "AgentState");
-  const lastCompleted = text6(parameters, "LastCompleted");
-  const nextAction = text6(parameters, "NextAction");
+  let taskState = text7(parameters, "TaskState");
+  let phase = text7(parameters, "Phase");
+  const currentAction = text7(parameters, "CurrentAction");
+  const stepId = text7(parameters, "StepId");
+  const stepTitle = text7(parameters, "StepTitle");
+  const stepState = text7(parameters, "StepState");
+  let agentId = text7(parameters, "AgentId");
+  const parentAgentId = text7(parameters, "ParentAgentId");
+  const agentKind = text7(parameters, "AgentKind", "primary");
+  const agentRole = text7(parameters, "AgentRole", "child-project-agent");
+  const provider = text7(parameters, "Provider", "claude");
+  let agentState = text7(parameters, "AgentState");
+  const lastCompleted = text7(parameters, "LastCompleted");
+  const nextAction = text7(parameters, "NextAction");
   const canInterrupt = bound2(parameters, "CanInterrupt") ? psBool(parameters.CanInterrupt) : true;
-  let lifecycleStage = text6(parameters, "LifecycleStage");
-  const ruleCheckpoint = text6(parameters, "RuleCheckpoint");
+  let lifecycleStage = text7(parameters, "LifecycleStage");
+  const ruleCheckpoint = text7(parameters, "RuleCheckpoint");
   return withToolRun({ root, toolName: "update_orchestrated_task_progress", output: output2, parameters: {
     TaskId: taskId2,
     TaskState: taskState,
@@ -29011,7 +30228,7 @@ async function updateTaskProgress(parameters, { output: output2, clock: clock2 =
     const progressPath = path37.join(progressDirectory, "progress.json");
     const eventPath = path37.join(progressDirectory, "events.jsonl");
     const archiveDirectory = path37.join(progressDirectory, "archive");
-    await mkdir16(progressDirectory, { recursive: true });
+    await mkdir17(progressDirectory, { recursive: true });
     return withProgressLock(path37.join(progressDirectory, ".update.lock"), async () => {
       const existing = await isFile(progressPath) ? await readJson5(progressPath) : null;
       const strictWorkflow = psEquals(property(taskInfo.task, "contractVersion"), "v0.3.0");
@@ -29228,7 +30445,7 @@ async function updateTaskProgress(parameters, { output: output2, clock: clock2 =
       let archivedStopCommandPath = null;
       if (archiveStopCommand && stopCommandPath) {
         const stopArchive = path37.join(root, ".orchestrator", "control", "archive");
-        await mkdir16(stopArchive, { recursive: true });
+        await mkdir17(stopArchive, { recursive: true });
         archivedStopCommandPath = path37.join(
           stopArchive,
           `${path37.basename(stopCommandPath, path37.extname(stopCommandPath))}-${compactStamp2(clock2())}.json`
@@ -29286,8 +30503,8 @@ async function confirmTaskPlan(parameters, { output: output2, clock: clock2 = ()
   bind(parameters, { mandatory: ["TaskId"] });
   const root = await findWorkspaceRoot(parameters.WorkspaceRoot);
   const taskId2 = psString(parameters.TaskId);
-  const confirmedBy = text6(parameters, "ConfirmedBy", "project-owner");
-  const note = text6(parameters, "ConfirmationNote");
+  const confirmedBy = text7(parameters, "ConfirmedBy", "project-owner");
+  const note = text7(parameters, "ConfirmationNote");
   return withToolRun({
     root,
     toolName: "confirm_orchestrated_task_plan",
@@ -29355,7 +30572,7 @@ async function confirmTaskPlan(parameters, { output: output2, clock: clock2 = ()
       }
       action = "already-confirmed";
     } else {
-      await mkdir16(approvalDirectory, { recursive: true });
+      await mkdir17(approvalDirectory, { recursive: true });
       const temporary = `${approvalPath}.tmp-${guidN()}`;
       try {
         await writePsJson(temporary, approval);
@@ -29548,7 +30765,7 @@ async function submitReport(parameters, { output: output2, clock: clock2 = () =>
         refuse2(`A different immutable report already exists for task '${taskId2}'.`);
       }
     } else {
-      await mkdir16(outbox, { recursive: true });
+      await mkdir17(outbox, { recursive: true });
       const temporaryReport = `${destinationReportPath}.tmp-${guidN()}`;
       const temporaryMetadata = `${metadataPath}.tmp-${guidN()}`;
       const temporaryProgress = `${destinationProgressPath}.tmp-${guidN()}`;
@@ -29685,11 +30902,11 @@ async function signalOrchestrator(parameters, { output: output2, clock: clock2 =
       action = "already-published";
       signalSha256 = existingSha;
     } else {
-      await mkdir16(signalDirectory, { recursive: true });
+      await mkdir17(signalDirectory, { recursive: true });
       const temporarySignal = `${signalPath}.tmp-${guidN()}`;
       const temporaryHash = `${hashPath}.tmp-${guidN()}`;
       try {
-        await writeFile9(temporarySignal, bytes);
+        await writeFile10(temporarySignal, bytes);
         await writeTextUtf8NoBom(temporaryHash, `${signalSha256}  wake.json
 `);
         await moveItem(temporarySignal, signalPath);
@@ -29746,7 +30963,7 @@ async function projectRevision(projectFolder, { env = process.env } = {}) {
 function said(output2, lines = 24) {
   return String(output2 ?? "").replace(/\r/gu, "").split("\n").filter((line) => line.trim() && !/^\s*(\+|At |CategoryInfo|FullyQualifiedErrorId|#< CLIXML|<Objs )/u.test(line)).slice(-lines).join("\n").slice(-4e3);
 }
-function text7(value, label2, maximum = MAX_TEXT) {
+function text8(value, label2, maximum = MAX_TEXT) {
   if (typeof value !== "string" || !value.trim() || Buffer.byteLength(value, "utf8") > maximum || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u.test(value)) {
     throw Object.assign(new Error(`${label2} is missing or too long`), { code: "desk_task_input_invalid" });
   }
@@ -29757,7 +30974,7 @@ function list(value, label2) {
   if (!Array.isArray(value) || value.length > 32) {
     throw Object.assign(new Error(`${label2} must be a short list`), { code: "desk_task_input_invalid" });
   }
-  return value.map((item) => text7(item, label2, 1024));
+  return value.map((item) => text8(item, label2, 1024));
 }
 function taskId(value) {
   if (typeof value !== "string" || !TASK_ID.test(value)) {
@@ -29811,17 +31028,17 @@ ${said(result2.output)}`;
         reason: z.string().optional()
       }),
       handler: guarded(agent, async (source, args) => {
-        const id12 = taskId(args.taskId);
-        const decision2 = text7(args.decision, "decision", 16);
-        const reason = args.reason ? text7(args.reason, "reason", 2048) : null;
+        const id14 = taskId(args.taskId);
+        const decision2 = text8(args.decision, "decision", 16);
+        const reason = args.reason ? text8(args.reason, "reason", 2048) : null;
         const answer = await call(source, "accept_task", {
-          TaskId: id12,
+          TaskId: id14,
           Decision: decision2,
           AgentId: primary(source),
           ...reason === null ? {} : { Reason: reason }
         });
         if (answer.startsWith("Done.") && decision2 !== "accepted" && typeof onTaskDeclined === "function") {
-          Promise.resolve().then(() => onTaskDeclined({ agentId: agent.agentId, taskId: id12, decision: decision2, reason })).catch(() => void 0);
+          Promise.resolve().then(() => onTaskDeclined({ agentId: agent.agentId, taskId: id14, decision: decision2, reason })).catch(() => void 0);
         }
         return answer;
       })
@@ -29863,10 +31080,10 @@ ${said(result2.output)}`;
         if (args.stepId !== void 0 && (args.stepTitle === void 0 || args.stepState === void 0)) {
           return "Nothing done: stepId needs stepTitle and stepState in the same call.";
         }
-        const flag = (name, value, maximum = 2048) => value === void 0 ? {} : { [name]: text7(value, name, maximum) };
+        const flag = (name, value, maximum = 2048) => value === void 0 ? {} : { [name]: text8(value, name, maximum) };
         const many = (name, value) => {
-          const items = list(value, name);
-          return items.length ? { [name]: items } : {};
+          const items2 = list(value, name);
+          return items2.length ? { [name]: items2 } : {};
         };
         return call(source, "update_task_progress", {
           TaskId: taskId(args.taskId),
@@ -29893,7 +31110,7 @@ ${said(result2.output)}`;
       handler: guarded(agent, async (source, args) => call(source, "confirm_task_plan", {
         TaskId: taskId(args.taskId),
         ConfirmedBy: "project-owner",
-        ...args.confirmationNote ? { ConfirmationNote: text7(args.confirmationNote, "confirmationNote", 2048) } : {}
+        ...args.confirmationNote ? { ConfirmationNote: text8(args.confirmationNote, "confirmationNote", 2048) } : {}
       }))
     },
     {
@@ -29906,20 +31123,20 @@ ${said(result2.output)}`;
         report: z.string()
       }),
       handler: guarded(agent, async (source, args) => {
-        const id12 = taskId(args.taskId);
-        const draft = path38.join(source.folder, ".orchestrator", "reports", "drafts", id12, "report.md");
-        await mkdir17(path38.dirname(draft), { recursive: true });
-        await writeFile10(draft, text7(args.report, "report", 1024 * 1024), "utf8");
+        const id14 = taskId(args.taskId);
+        const draft = path38.join(source.folder, ".orchestrator", "reports", "drafts", id14, "report.md");
+        await mkdir18(path38.dirname(draft), { recursive: true });
+        await writeFile11(draft, text8(args.report, "report", 1024 * 1024), "utf8");
         const answer = await call(source, "submit_report", {
-          TaskId: id12,
-          Status: text7(args.status, "status", 16),
+          TaskId: id14,
+          Status: text8(args.status, "status", 16),
           // From git, not from the agent's words: a model can only guess a revision.
-          SourceRevision: text7(await revisionOf(source.projectFolder), "sourceRevision", 256),
+          SourceRevision: text8(await revisionOf(source.projectFolder), "sourceRevision", 256),
           ReportPath: draft,
-          Summary: text7(args.summary, "summary", 2048)
+          Summary: text8(args.summary, "summary", 2048)
         });
         if (answer.startsWith("Done.") && typeof onReportSubmitted === "function") {
-          Promise.resolve().then(() => onReportSubmitted({ agentId: agent.agentId, taskId: id12 })).catch(() => void 0);
+          Promise.resolve().then(() => onReportSubmitted({ agentId: agent.agentId, taskId: id14 })).catch(() => void 0);
         }
         return answer;
       })
@@ -29928,12 +31145,12 @@ ${said(result2.output)}`;
 }
 
 // orchestrator/src/desk-coordinator-tools.mjs
-import { mkdir as mkdir19, writeFile as writeFile12 } from "node:fs/promises";
+import { mkdir as mkdir20, writeFile as writeFile13 } from "node:fs/promises";
 import path40 from "node:path";
 
 // orchestrator/src/desk-tasks.mjs
-import { createHash as createHash30, randomUUID as randomUUID13 } from "node:crypto";
-import { lstat as lstat22, mkdir as mkdir18, readFile as readFile20, rename as rename12, rm as rm10, writeFile as writeFile11 } from "node:fs/promises";
+import { createHash as createHash32, randomUUID as randomUUID13 } from "node:crypto";
+import { lstat as lstat22, mkdir as mkdir19, readFile as readFile20, rename as rename12, rm as rm10, writeFile as writeFile12 } from "node:fs/promises";
 import path39 from "node:path";
 
 // orchestrator/src/control-report-collector.mjs
@@ -29961,20 +31178,20 @@ function validateReportOperation(value) {
 // orchestrator/src/desk-tasks.mjs
 var DESK_CONTINUATION_POLICIES = Object.freeze(["stop-after-report", "require-user-decision"]);
 var TASK_ID2 = /^[a-z0-9][a-z0-9.-]{2,95}$/u;
-function fail76(code) {
+function fail78(code) {
   throw Object.assign(new Error(code), { code });
 }
-var sha25614 = (bytes) => createHash30("sha256").update(bytes).digest("hex");
+var sha25616 = (bytes) => createHash32("sha256").update(bytes).digest("hex");
 async function readBounded2(file, maximum = 1024 * 1024) {
   const info = await lstat22(file).catch(() => null);
   if (!info?.isFile() || info.isSymbolicLink() || info.size > maximum) return null;
   return readFile20(file);
 }
 async function writeJsonAtomic3(file, value) {
-  await mkdir18(path39.dirname(file), { recursive: true });
+  await mkdir19(path39.dirname(file), { recursive: true });
   const temporary = `${file}.${process.pid}.${randomUUID13()}.tmp`;
   try {
-    await writeFile11(temporary, `${JSON.stringify(value, null, 2)}
+    await writeFile12(temporary, `${JSON.stringify(value, null, 2)}
 `, "utf8");
     await renameOver(temporary, file);
   } finally {
@@ -29982,27 +31199,27 @@ async function writeJsonAtomic3(file, value) {
   }
 }
 function deskTaskId(value) {
-  if (typeof value !== "string" || !TASK_ID2.test(value)) fail76("desk_task_id_invalid");
+  if (typeof value !== "string" || !TASK_ID2.test(value)) fail78("desk_task_id_invalid");
   return value;
 }
 async function readDispatchedDeskTask({ controllerRoot, taskId: taskId2 }) {
   const root = path39.resolve(controllerRoot);
   const directory = path39.join(root, "coordination", "tasks", "dispatched", deskTaskId(taskId2));
   const bytes = await readBounded2(path39.join(directory, "task.json"));
-  if (bytes === null) fail76("desk_task_not_dispatched");
+  if (bytes === null) fail78("desk_task_not_dispatched");
   const task = JSON.parse(bytes.toString("utf8"));
-  if (task.taskId !== taskId2 || typeof task.targetId !== "string") fail76("desk_task_invalid");
+  if (task.taskId !== taskId2 || typeof task.targetId !== "string") fail78("desk_task_invalid");
   const registry = JSON.parse(await readFile20(path39.join(root, "config", "source-registry.json"), "utf8"));
   const entry = (registry.sources ?? []).find((source2) => source2.id === task.targetId);
-  if (!entry?.deskAgentId) fail76("desk_task_target_not_desk_agent");
+  if (!entry?.deskAgentId) fail78("desk_task_target_not_desk_agent");
   const source = await readDeskAgentSource({ controllerRoot: root, agentId: entry.deskAgentId });
-  if (source === null || source.sourceId !== task.targetId) fail76("desk_task_target_not_desk_agent");
+  if (source === null || source.sourceId !== task.targetId) fail78("desk_task_target_not_desk_agent");
   const delivered = await readBounded2(path39.join(source.folder, ".orchestrator", "tasks", "inbox", taskId2, "task.json"));
-  if (delivered === null || sha25614(delivered) !== sha25614(bytes)) fail76("desk_task_inbox_mismatch");
+  if (delivered === null || sha25616(delivered) !== sha25616(bytes)) fail78("desk_task_inbox_mismatch");
   const markdown = await readBounded2(path39.join(directory, "task.md"));
   return {
     task,
-    taskSha256: sha25614(bytes),
+    taskSha256: sha25616(bytes),
     markdown: markdown === null ? "" : markdown.toString("utf8"),
     agentId: entry.deskAgentId,
     sourceId: task.targetId,
@@ -30039,10 +31256,10 @@ async function startDeskTask({
   const root = path39.resolve(controllerRoot);
   const dispatched = await readDispatchedDeskTask({ controllerRoot: root, taskId: taskId2 });
   const operation3 = validateReportOperation(reportOperation);
-  if (!DESK_REPORT_OPERATIONS.includes(operation3)) fail76("desk_task_operation_unsupported");
-  if (!DESK_CONTINUATION_POLICIES.includes(continuationPolicy)) fail76("desk_task_continuation_invalid");
+  if (!DESK_REPORT_OPERATIONS.includes(operation3)) fail78("desk_task_operation_unsupported");
+  if (!DESK_CONTINUATION_POLICIES.includes(continuationPolicy)) fail78("desk_task_continuation_invalid");
   const coordinator = await service.readAgent({ agentId: coordinatorAgentId });
-  if (coordinator.settings?.role !== "coordinator") fail76("desk_task_not_coordinator");
+  if (coordinator.settings?.role !== "coordinator") fail78("desk_task_not_coordinator");
   const record = {
     schemaVersion: 1,
     taskId: taskId2,
@@ -30059,7 +31276,7 @@ async function startDeskTask({
     await writeJsonAtomic3(recordPath, { ...record, startedAtUtc: now().toISOString(), returnState: "waiting" });
   } else {
     const stored = JSON.parse(existing.toString("utf8"));
-    if (Object.entries(record).some(([key, value]) => stored[key] !== value)) fail76("desk_task_return_conflict");
+    if (Object.entries(record).some(([key, value]) => stored[key] !== value)) fail78("desk_task_return_conflict");
   }
   const sent = await service.send({
     agentId: dispatched.agentId,
@@ -30072,12 +31289,12 @@ async function readDeskTaskReturn({ controllerRoot, taskId: taskId2 }) {
   const bytes = await readBounded2(path39.join(path39.resolve(controllerRoot), DESK_TASK_RETURNS_DIRECTORY, `${deskTaskId(taskId2)}.json`));
   return bytes === null ? null : JSON.parse(bytes.toString("utf8"));
 }
-async function updateDeskTaskReturn({ controllerRoot, taskId: taskId2, change: change2 }) {
+async function updateDeskTaskReturn({ controllerRoot, taskId: taskId2, change: change4 }) {
   const file = path39.join(path39.resolve(controllerRoot), DESK_TASK_RETURNS_DIRECTORY, `${deskTaskId(taskId2)}.json`);
   const bytes = await readBounded2(file);
-  if (bytes === null) fail76("desk_task_return_missing");
+  if (bytes === null) fail78("desk_task_return_missing");
   const record = JSON.parse(bytes.toString("utf8"));
-  change2(record);
+  change4(record);
   await writeJsonAtomic3(file, record);
   return record;
 }
@@ -30176,8 +31393,8 @@ function createDeskCoordinatorTools({ controllerRoot, service, run: run3 = runDe
           }
         });
         const file = path40.join(root, ".project-local", "desk-coordinator", "definitions", `${taskId2}.json`);
-        await mkdir19(path40.dirname(file), { recursive: true });
-        await writeFile12(file, `${JSON.stringify(definition3, null, 2)}
+        await mkdir20(path40.dirname(file), { recursive: true });
+        await writeFile13(file, `${JSON.stringify(definition3, null, 2)}
 `, "utf8");
         const result2 = await run3(
           path40.join(root, "tools", "dispatch_child_task.ps1"),
@@ -30358,9 +31575,9 @@ function createDeskTaskReturns({
   }
   async function deliver(record) {
     const report = await readReport(record);
-    const text10 = deskTaskReturnText(record, report, record.operationResult ?? null, record.operationFailure ?? null);
+    const text11 = deskTaskReturnText(record, report, record.operationResult ?? null, record.operationFailure ?? null);
     try {
-      const operation3 = await service.send({ agentId: record.coordinatorAgentId, operationId: `task-return:${record.taskId}`, text: text10 });
+      const operation3 = await service.send({ agentId: record.coordinatorAgentId, operationId: `task-return:${record.taskId}`, text: text11 });
       await updateDeskTaskReturn({ controllerRoot: root, taskId: record.taskId, change: (next) => {
         Object.assign(next, {
           returnState: "delivered",
@@ -30489,7 +31706,7 @@ function deskTaskGateHook({ controllerRoot, agentId, openTasks = createOpenDeskT
 
 // orchestrator/src/claude-usage.mjs
 import path43 from "node:path";
-import { mkdir as mkdir20, rm as rm11, writeFile as writeFile13 } from "node:fs/promises";
+import { mkdir as mkdir21, rm as rm11, writeFile as writeFile14 } from "node:fs/promises";
 var CLAUDE_USAGE_VERSION = "v0.1.0";
 var CLAUDE_USAGE_PATH = path43.join(".project-local", "application-gateway", "claude-usage.v1.json");
 var WINDOWS = Object.freeze([
@@ -30506,11 +31723,11 @@ function normalizeClaudeUsage(answer, observedAtUtc) {
   if (!answer || typeof answer !== "object") return null;
   const limits = answer.rate_limits && typeof answer.rate_limits === "object" ? answer.rate_limits : null;
   const windows = [];
-  for (const [id12, words] of WINDOWS) {
-    const window = limits?.[id12];
+  for (const [id14, words] of WINDOWS) {
+    const window = limits?.[id14];
     if (!window || typeof window !== "object") continue;
     windows.push({
-      id: id12,
+      id: id14,
       label: words,
       utilization: percent(window.utilization),
       resetsAtUtc: time(window.resets_at),
@@ -30539,8 +31756,8 @@ function normalizeClaudeUsage(answer, observedAtUtc) {
 }
 function applyRateLimitEvent(snapshot, info, observedAtUtc) {
   if (!info || typeof info !== "object" || !RATE_LIMIT_STATUS.has(info.status)) return snapshot;
-  const id12 = typeof info.rateLimitType === "string" ? label(info.rateLimitType) : null;
-  if (id12 === null || id12 === "") return snapshot;
+  const id14 = typeof info.rateLimitType === "string" ? label(info.rateLimitType) : null;
+  if (id14 === null || id14 === "") return snapshot;
   const next = snapshot === null ? {
     schemaVersion: 1,
     contractVersion: CLAUDE_USAGE_VERSION,
@@ -30550,23 +31767,23 @@ function applyRateLimitEvent(snapshot, info, observedAtUtc) {
     windows: []
   } : structuredClone(snapshot);
   const resetsAtUtc = Number.isFinite(info.resetsAt) ? new Date(info.resetsAt * 1e3).toISOString() : null;
-  const known = next.windows.find((window) => window.id === id12);
-  const words = WINDOWS.find(([windowId]) => windowId === id12)?.[1] ?? id12;
+  const known = next.windows.find((window) => window.id === id14);
+  const words = WINDOWS.find(([windowId]) => windowId === id14)?.[1] ?? id14;
   if (known) {
     known.status = info.status;
     if (resetsAtUtc !== null) known.resetsAtUtc = resetsAtUtc;
   } else {
-    next.windows.push({ id: id12, label: words, utilization: null, resetsAtUtc, status: info.status });
+    next.windows.push({ id: id14, label: words, utilization: null, resetsAtUtc, status: info.status });
   }
   next.statusObservedAtUtc = time(observedAtUtc);
   return next;
 }
 async function writeClaudeUsage(repoRoot, snapshot) {
   const file = path43.join(repoRoot, CLAUDE_USAGE_PATH);
-  await mkdir20(path43.dirname(file), { recursive: true });
+  await mkdir21(path43.dirname(file), { recursive: true });
   const temporary = `${file}.${process.pid}.${Date.now()}.tmp`;
   try {
-    await writeFile13(temporary, JSON.stringify(snapshot), "utf8");
+    await writeFile14(temporary, JSON.stringify(snapshot), "utf8");
     await renameOver(temporary, file);
   } catch (error) {
     await rm11(temporary, { force: true });
@@ -30740,18 +31957,18 @@ async function initProjectGit({ folder, git: git2 = runGit }) {
 import { isDeepStrictEqual } from "node:util";
 
 // orchestrator/src/action-journal-files.mjs
-import { createHash as createHash31, randomUUID as randomUUID14 } from "node:crypto";
-import { lstat as lstat24, mkdir as mkdir21, open as open8, readdir as readdir10, readFile as readFile23, realpath as realpath15, rename as rename13, rm as rm12, stat as stat5 } from "node:fs/promises";
+import { createHash as createHash33, randomUUID as randomUUID14 } from "node:crypto";
+import { lstat as lstat24, mkdir as mkdir22, open as open8, readdir as readdir10, readFile as readFile23, realpath as realpath15, rename as rename13, rm as rm12, stat as stat5 } from "node:fs/promises";
 import path45 from "node:path";
 var MAX_FILE_BYTES2 = 1048576;
 var KEPT_FILES = 200;
 var SHA25625 = /^[a-f0-9]{64}$/u;
-function fail77(code) {
+function fail79(code) {
   throw Object.assign(new Error(code), { code });
 }
-var sha25615 = (value) => createHash31("sha256").update(value).digest("hex");
+var sha25617 = (value) => createHash33("sha256").update(value).digest("hex");
 function keptFolder(controllerRoot, projectId) {
-  return path45.join(controllerRoot, ".project-local", "journal-files", sha25615(projectId).slice(0, 32));
+  return path45.join(controllerRoot, ".project-local", "journal-files", sha25617(projectId).slice(0, 32));
 }
 async function projectFile(store, projectId, relativePath) {
   assertPublicApplicationProjectPath(relativePath);
@@ -30761,15 +31978,15 @@ async function projectFile(store, projectId, relativePath) {
   for (const segment of relativePath.split("/")) {
     candidate = path45.join(candidate, segment);
     const info = await lstat24(candidate).catch((error) => error.code === "ENOENT" ? null : Promise.reject(error));
-    if (info?.isSymbolicLink()) fail77("journal_file_refused");
+    if (info?.isSymbolicLink()) fail79("journal_file_refused");
   }
   const relative = path45.relative(root, candidate);
-  if (relative.startsWith("..") || path45.isAbsolute(relative)) fail77("journal_file_refused");
+  if (relative.startsWith("..") || path45.isAbsolute(relative)) fail79("journal_file_refused");
   return candidate;
 }
 async function readSmallFile(file) {
   const info = await stat5(file);
-  if (!info.isFile() || info.size > MAX_FILE_BYTES2) fail77("journal_file_refused");
+  if (!info.isFile() || info.size > MAX_FILE_BYTES2) fail79("journal_file_refused");
   return readFile23(file);
 }
 async function prune(folder) {
@@ -30782,10 +31999,10 @@ async function prune(folder) {
 async function keepPreviousFile({ controllerRoot, store, projectId, relativePath, expectedSha256 }) {
   const file = await projectFile(store, projectId, relativePath);
   const bytes = await readSmallFile(file);
-  const hash13 = sha25615(bytes);
+  const hash13 = sha25617(bytes);
   if (hash13 !== expectedSha256) return null;
   const folder = keptFolder(controllerRoot, projectId);
-  await mkdir21(folder, { recursive: true });
+  await mkdir22(folder, { recursive: true });
   const target2 = path45.join(folder, hash13);
   const exists6 = await stat5(target2).then(() => true, () => false);
   if (!exists6) {
@@ -30803,12 +32020,12 @@ async function keepPreviousFile({ controllerRoot, store, projectId, relativePath
   return hash13;
 }
 async function restoreKeptFile({ controllerRoot, store, projectId, relativePath, sha256: kept, expectSha256 }) {
-  if (!SHA25625.test(kept) || !SHA25625.test(expectSha256)) fail77("journal_invalid_entry");
+  if (!SHA25625.test(kept) || !SHA25625.test(expectSha256)) fail79("journal_invalid_entry");
   const file = await projectFile(store, projectId, relativePath);
   const current = await readSmallFile(file);
-  if (sha25615(current) !== expectSha256) fail77("journal_undo_stale");
-  const copy = await readFile23(path45.join(keptFolder(controllerRoot, projectId), kept)).catch((error) => error.code === "ENOENT" ? fail77("journal_undo_file_not_here") : Promise.reject(error));
-  if (sha25615(copy) !== kept) fail77("journal_undo_file_not_here");
+  if (sha25617(current) !== expectSha256) fail79("journal_undo_stale");
+  const copy = await readFile23(path45.join(keptFolder(controllerRoot, projectId), kept)).catch((error) => error.code === "ENOENT" ? fail79("journal_undo_file_not_here") : Promise.reject(error));
+  if (sha25617(copy) !== kept) fail79("journal_undo_file_not_here");
   const mode = (await stat5(file)).mode & 511;
   const temporary = path45.join(path45.dirname(file), `.journal-undo-${randomUUID14()}.tmp`);
   try {
@@ -30819,7 +32036,7 @@ async function restoreKeptFile({ controllerRoot, store, projectId, relativePath,
     } finally {
       await handle.close();
     }
-    if (sha25615(await readSmallFile(file)) !== expectSha256) fail77("journal_undo_stale");
+    if (sha25617(await readSmallFile(file)) !== expectSha256) fail79("journal_undo_stale");
     await rename13(temporary, file);
   } finally {
     await rm12(temporary, { force: true }).catch(() => {
@@ -31157,6 +32374,25 @@ async function createClaudeProviderRuntime({
           }
           return written;
         },
+        // The agent reads a memory and asks to change one (memory-changes.mjs); a change written at
+        // once (its own memory, allowed by the person) goes into the action journal as the agent's.
+        memory: {
+          read: (agent, input2) => memoryService.readMemoryFor({ agentId: agent.agentId, ...input2 }),
+          change: async (agent, input2) => {
+            const result2 = await memoryService.proposeMemoryChange({ agentId: agent.agentId, ...input2 });
+            if (result2.state === "written") {
+              const scope = await memoryService.store.readScope({ scopeId: result2.scopeId }).catch(() => null);
+              if (scope !== null) {
+                await recordActionQuietly(memoryService.store, memoryWrite(
+                  scope,
+                  { previousRevision: result2.previousRevision, revision: result2.revision },
+                  { kind: "agent", id: agent.agentId }
+                ), { now, onDiagnostic });
+              }
+            }
+            return result2;
+          }
+        },
         // Controller tasks reach desk agents registered as sources (claude-code-controller.md).
         taskTools: claude.taskTools ?? deskTools({ controllerRoot: repoRoot, service: memoryService, returns }),
         taskGate: claude.taskTools ? null : (agent) => deskTaskGateHook({ controllerRoot: repoRoot, agentId: agent.agentId }),
@@ -31230,23 +32466,23 @@ async function createClaudeProviderRuntime({
 }
 
 // orchestrator/src/project-memory-provider-router.mjs
-function fail78(code) {
+function fail80(code) {
   throw Object.assign(new Error(code), { code });
 }
 function createProjectMemoryProviderRouter(providers) {
   const table = new Map(Object.entries(providers ?? {}).filter(([, provider]) => provider));
-  if (table.size === 0) fail78("memory_provider_unavailable");
+  if (table.size === 0) fail80("memory_provider_unavailable");
   const providerIdOf = (agent) => agent?.binding?.providerId ?? agent?.profile?.provider ?? null;
-  const forProfile = (profile3) => table.get(profile3?.provider) ?? fail78("memory_provider_unavailable");
-  const forAgent = (agent) => table.get(providerIdOf(agent)) ?? fail78("memory_provider_unavailable");
+  const forProfile = (profile3) => table.get(profile3?.provider) ?? fail80("memory_provider_unavailable");
+  const forAgent = (agent) => table.get(providerIdOf(agent)) ?? fail80("memory_provider_unavailable");
   const call = (name) => async (args) => {
     const provider = forAgent(args?.agent);
-    if (typeof provider[name] !== "function") fail78("memory_provider_unavailable");
+    if (typeof provider[name] !== "function") fail80("memory_provider_unavailable");
     return provider[name](args);
   };
   const callAgent = (name) => async (agent, ...rest) => {
     const provider = forAgent(agent);
-    if (typeof provider[name] !== "function") fail78("memory_provider_unavailable");
+    if (typeof provider[name] !== "function") fail80("memory_provider_unavailable");
     return provider[name](agent, ...rest);
   };
   return {
@@ -31260,7 +32496,7 @@ function createProjectMemoryProviderRouter(providers) {
     },
     async resolveWorkspace(agent) {
       const provider = forAgent(agent);
-      if (typeof provider.resolveWorkspace !== "function") fail78("memory_provider_unavailable");
+      if (typeof provider.resolveWorkspace !== "function") fail80("memory_provider_unavailable");
       return provider.resolveWorkspace(agent);
     },
     async create(agent) {
@@ -31367,7 +32603,7 @@ async function resourceService({ repoRoot, sourceId: sourceId2, instanceId, now 
   return new ApplicationResourceService({
     reader,
     backendInstanceId: instanceId,
-    continuationSecret: randomBytes4(32),
+    continuationSecret: randomBytes6(32),
     now
   });
 }
@@ -31514,6 +32750,12 @@ async function createApplicationGatewayReadRuntime({
     now,
     projectRead: projectResources["query.project-workspace.read"]
   }) : null;
+  if (memoryService) {
+    memoryService.artifactRegistry = {
+      read: (projectId, filePath) => projectResources["query.project-workspace.read"]({ input: { projectId, path: filePath } }),
+      register: (input2) => artifacts.register(input2)
+    };
+  }
   const handlers = Object.freeze(journalGatewayHandlers({
     ...projectResources,
     ...projectSave,
@@ -31574,11 +32816,11 @@ async function createApplicationGatewayReadRuntime({
 
 // orchestrator/src/application-gateway-descriptor.mjs
 import { randomUUID as randomUUID15 } from "node:crypto";
-import { mkdir as mkdir22, readFile as readFile24, rename as rename14, rm as rm13, writeFile as writeFile14 } from "node:fs/promises";
+import { mkdir as mkdir23, readFile as readFile24, rename as rename14, rm as rm13, writeFile as writeFile15 } from "node:fs/promises";
 import path47 from "node:path";
 
 // orchestrator/src/application-gateway-security.mjs
-import { createHash as createHash32, timingSafeEqual as timingSafeEqual4 } from "node:crypto";
+import { createHash as createHash34, timingSafeEqual as timingSafeEqual4 } from "node:crypto";
 var APPLICATION_GATEWAY_SECURITY_VERSION = "v0.1.0";
 var APPLICATION_GATEWAY_SECURITY_LIMITS = Object.freeze({
   maximumHeaderBytes: 16 * 1024,
@@ -31597,58 +32839,58 @@ var ApplicationGatewaySecurityError = class extends Error {
     this.code = code;
   }
 };
-function fail79(code, message) {
+function fail81(code, message) {
   throw new ApplicationGatewaySecurityError(code, message);
 }
 function object21(value, label2) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    fail79("invalid_type", `${label2} must be an object`);
+    fail81("invalid_type", `${label2} must be an object`);
   }
   return value;
 }
 function exact42(value, keys, label2) {
   if (Object.keys(value).some((key) => !keys.includes(key))) {
-    fail79("unknown_field", `${label2} contains unsupported fields`);
+    fail81("unknown_field", `${label2} contains unsupported fields`);
   }
 }
 function uuid3(value, label2) {
   if (typeof value !== "string" || !UUID4.test(value)) {
-    fail79("invalid_identifier", `${label2} must be a lowercase UUID`);
+    fail81("invalid_identifier", `${label2} must be a lowercase UUID`);
   }
   return value;
 }
 function hash11(value, label2) {
   if (typeof value !== "string" || !SHA25626.test(value)) {
-    fail79("invalid_hash", `${label2} must be lowercase SHA-256`);
+    fail81("invalid_hash", `${label2} must be lowercase SHA-256`);
   }
   return value;
 }
 function utc31(value, label2) {
   if (typeof value !== "string" || value.length > 64 || !value.endsWith("Z") || !Number.isFinite(Date.parse(value))) {
-    fail79("invalid_timestamp", `${label2} must be a UTC timestamp ending in Z`);
+    fail81("invalid_timestamp", `${label2} must be a UTC timestamp ending in Z`);
   }
   return value;
 }
 function normalizeOrigin(value) {
   if (typeof value !== "string" || value.length > 512) {
-    fail79("invalid_origin", "Allowed origin must be bounded text");
+    fail81("invalid_origin", "Allowed origin must be bounded text");
   }
   let parsed2;
   try {
     parsed2 = new URL(value);
   } catch {
-    fail79("invalid_origin", "Allowed origin must be an absolute URL origin");
+    fail81("invalid_origin", "Allowed origin must be an absolute URL origin");
   }
   if (parsed2.protocol !== "http:" || parsed2.hostname !== "127.0.0.1" || !parsed2.port || parsed2.username || parsed2.password || parsed2.search || parsed2.hash || parsed2.pathname !== "/" || parsed2.origin === "null") {
-    fail79("invalid_origin", "Allowed origin must be an exact non-opaque origin");
+    fail81("invalid_origin", "Allowed origin must be an exact non-opaque origin");
   }
   return parsed2.origin;
 }
 function hashApplicationGatewayBearerToken(value) {
   if (typeof value !== "string" || !TOKEN.test(value)) {
-    fail79("invalid_token", "Gateway bearer token must be bounded base64url text");
+    fail81("invalid_token", "Gateway bearer token must be bounded base64url text");
   }
-  return createHash32("sha256").update(value, "utf8").digest("hex");
+  return createHash34("sha256").update(value, "utf8").digest("hex");
 }
 function createSecurityPolicy({
   sessionId,
@@ -31661,16 +32903,16 @@ function createSecurityPolicy({
   allowedOrigins = []
 }) {
   if (!Array.isArray(allowedOrigins) || allowedOrigins.length > APPLICATION_GATEWAY_SECURITY_LIMITS.maximumAllowedOrigins) {
-    fail79("invalid_origin", "Allowed origin list exceeds its bound");
+    fail81("invalid_origin", "Allowed origin list exceeds its bound");
   }
   const origins = [...new Set(allowedOrigins.map(normalizeOrigin))].sort();
   const issued = utc31(issuedAtUtc, "session.issuedAtUtc");
   const expires = utc31(expiresAtUtc, "session.expiresAtUtc");
   if (Date.parse(expires) <= Date.parse(issued)) {
-    fail79("invalid_timeline", "Gateway session expiry must follow issue time");
+    fail81("invalid_timeline", "Gateway session expiry must follow issue time");
   }
   if (Date.parse(expires) - Date.parse(issued) > APPLICATION_GATEWAY_SECURITY_LIMITS.maximumSessionLifetimeMs) {
-    fail79("invalid_timeline", "Gateway session lifetime exceeds its bound");
+    fail81("invalid_timeline", "Gateway session lifetime exceeds its bound");
   }
   return Object.freeze({
     schemaVersion: 1,
@@ -31725,12 +32967,12 @@ function validateApplicationGatewaySecurityPolicy(value) {
     "limits"
   ], "securityPolicy");
   if (value.schemaVersion !== 1 || value.contractVersion !== APPLICATION_GATEWAY_SECURITY_VERSION || value.transportId !== APPLICATION_GATEWAY_TRANSPORT_ID) {
-    fail79("unsupported_contract", "Gateway security policy is unsupported");
+    fail81("unsupported_contract", "Gateway security policy is unsupported");
   }
   object21(value.listener, "listener");
   exact42(value.listener, ["host", "family", "portStrategy", "requestedPort"], "listener");
   if (value.listener.host !== "127.0.0.1" || value.listener.family !== "ipv4" || value.listener.portStrategy !== "os-assigned" || value.listener.requestedPort !== 0) {
-    fail79("non_loopback_listener", "Gateway listener must use OS-assigned IPv4 loopback");
+    fail81("non_loopback_listener", "Gateway listener must use OS-assigned IPv4 loopback");
   }
   object21(value.session, "session");
   exact42(value.session, [
@@ -31747,21 +32989,21 @@ function validateApplicationGatewaySecurityPolicy(value) {
   if (Object.entries(APPLICATION_GATEWAY_SECURITY_LIMITS).some(
     ([key, expected]) => value.limits[key] !== expected
   )) {
-    fail79("invalid_limits", "Gateway security limits are not canonical");
+    fail81("invalid_limits", "Gateway security limits are not canonical");
   }
   const rebuilt = createSecurityPolicy({
     ...value.session,
     allowedOrigins: value.allowedOrigins
   });
   if (applicationCanonicalSha256(rebuilt) !== applicationCanonicalSha256(value)) {
-    fail79("noncanonical_policy", "Gateway security policy is not canonical");
+    fail81("noncanonical_policy", "Gateway security policy is not canonical");
   }
   return rebuilt;
 }
 function bindApplicationGatewayEndpoint(policyValue, port2) {
   const policy = validateApplicationGatewaySecurityPolicy(policyValue);
   if (!Number.isSafeInteger(port2) || port2 < 1024 || port2 > 65535) {
-    fail79("invalid_port", "Bound gateway port must be an unprivileged TCP port");
+    fail81("invalid_port", "Bound gateway port must be an unprivileged TCP port");
   }
   const identity2 = {
     transportId: policy.transportId,
@@ -31796,14 +33038,14 @@ function bearerMatches(header, expectedSha256) {
   if (typeof header === "string" && header.length <= 320 && header.startsWith("Bearer ")) {
     candidate = header.slice(7);
   }
-  const candidateHash = TOKEN.test(candidate) ? createHash32("sha256").update(candidate, "utf8").digest() : createHash32("sha256").update("invalid", "utf8").digest();
+  const candidateHash = TOKEN.test(candidate) ? createHash34("sha256").update(candidate, "utf8").digest() : createHash34("sha256").update("invalid", "utf8").digest();
   return timingSafeEqual4(candidateHash, Buffer.from(expectedSha256, "hex"));
 }
 function authorizeApplicationGatewayRequest(policyValue, endpointValue, requestValue) {
   const policy = validateApplicationGatewaySecurityPolicy(policyValue);
   const endpoint = bindApplicationGatewayEndpoint(policy, endpointValue?.port);
   if (applicationCanonicalSha256(endpoint) !== applicationCanonicalSha256(endpointValue)) {
-    fail79("endpoint_mismatch", "Bound gateway endpoint identity is not canonical");
+    fail81("endpoint_mismatch", "Bound gateway endpoint identity is not canonical");
   }
   object21(requestValue, "request");
   exact42(requestValue, [
@@ -31847,7 +33089,7 @@ var APPLICATION_GATEWAY_ROUTES = Object.freeze({
   operation: "/v1/operations",
   eventRead: "/v1/events/read"
 });
-var ID42 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/;
+var ID45 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/;
 var REQUEST_FIELDS = /* @__PURE__ */ new Set(["method", "path", "contentType", "body", "security"]);
 var EVENT_READ_FIELDS = /* @__PURE__ */ new Set(["streamId", "cursor", "limit", "byteLimit"]);
 var JSON_MEDIA_TYPE = "application/json";
@@ -31860,18 +33102,18 @@ var ApplicationGatewayAdapterError = class extends Error {
     this.code = code;
   }
 };
-function fail80(code, message) {
+function fail82(code, message) {
   throw new ApplicationGatewayAdapterError(code, message);
 }
 function object22(value, label2) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    fail80("invalid_transport_request", `${label2} must be an object`);
+    fail82("invalid_transport_request", `${label2} must be an object`);
   }
   return value;
 }
 function exact43(value, fields, label2) {
   if (Object.keys(value).some((key) => !fields.has(key))) {
-    fail80("invalid_transport_request", `${label2} contains unsupported fields`);
+    fail82("invalid_transport_request", `${label2} contains unsupported fields`);
   }
 }
 function responseHeaders(mediaType2, origin = null, extra = {}) {
@@ -31919,25 +33161,25 @@ function parseJson(body2) {
   try {
     return JSON.parse(body2);
   } catch {
-    fail80("invalid_json", "Gateway body must be valid JSON");
+    fail82("invalid_json", "Gateway body must be valid JSON");
   }
 }
 function validateEventReadRequest(value) {
   object22(value, "eventReadRequest");
   exact43(value, EVENT_READ_FIELDS, "eventReadRequest");
-  if (typeof value.streamId !== "string" || !ID42.test(value.streamId)) {
-    fail80("invalid_event_read", "eventReadRequest.streamId is invalid");
+  if (typeof value.streamId !== "string" || !ID45.test(value.streamId)) {
+    fail82("invalid_event_read", "eventReadRequest.streamId is invalid");
   }
   if (value.cursor !== null && (typeof value.cursor !== "string" || value.cursor.length > 768)) {
-    fail80("invalid_event_read", "eventReadRequest.cursor is invalid");
+    fail82("invalid_event_read", "eventReadRequest.cursor is invalid");
   }
   const limit = value.limit ?? APPLICATION_EVENT_STREAM_LIMITS.defaultReplayEvents;
   const byteLimit = value.byteLimit ?? APPLICATION_EVENT_STREAM_LIMITS.defaultReplayBytes;
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > APPLICATION_EVENT_STREAM_LIMITS.maximumReplayEvents) {
-    fail80("invalid_event_read", "eventReadRequest.limit is outside its bound");
+    fail82("invalid_event_read", "eventReadRequest.limit is outside its bound");
   }
   if (!Number.isSafeInteger(byteLimit) || byteLimit < APPLICATION_EVENT_ENVELOPE_LIMITS.maximumBytes || byteLimit > APPLICATION_EVENT_STREAM_LIMITS.maximumReplayBytes) {
-    fail80("invalid_event_read", "eventReadRequest.byteLimit is outside its bound");
+    fail82("invalid_event_read", "eventReadRequest.byteLimit is outside its bound");
   }
   return Object.freeze({ streamId: value.streamId, cursor: value.cursor, limit, byteLimit });
 }
@@ -31961,10 +33203,10 @@ var InMemoryApplicationGatewayAdapter = class {
     this.#policy = validateApplicationGatewaySecurityPolicy(securityPolicy);
     this.#endpoint = bindApplicationGatewayEndpoint(this.#policy, endpoint?.port);
     if (applicationCanonicalSha256(this.#endpoint) !== applicationCanonicalSha256(endpoint)) {
-      fail80("endpoint_mismatch", "Gateway endpoint does not match security policy");
+      fail82("endpoint_mismatch", "Gateway endpoint does not match security policy");
     }
     if (typeof invokeApplication !== "function" || typeof readEvents !== "function") {
-      fail80("invalid_adapter", "Gateway adapter requires application and event readers");
+      fail82("invalid_adapter", "Gateway adapter requires application and event readers");
     }
     this.#invokeApplication = invokeApplication;
     this.#readEvents = readEvents;
@@ -31990,7 +33232,7 @@ var InMemoryApplicationGatewayAdapter = class {
     try {
       exact43(value, REQUEST_FIELDS, "gatewayRequest");
       if (typeof value.method !== "string" || typeof value.path !== "string" || typeof value.contentType !== "string" || typeof value.body !== "string") {
-        fail80("invalid_transport_request", "Gateway request fields are invalid");
+        fail82("invalid_transport_request", "Gateway request fields are invalid");
       }
       const actualBytes = Buffer.byteLength(value.body, "utf8");
       if (actualBytes > APPLICATION_GATEWAY_SECURITY_LIMITS.maximumRequestBytes) {
@@ -32123,29 +33365,29 @@ var ApplicationGatewayDescriptorError = class extends Error {
     this.code = code;
   }
 };
-function fail81(code, message) {
+function fail83(code, message) {
   throw new ApplicationGatewayDescriptorError(code, message);
 }
 function object23(value, label2) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    fail81("invalid_descriptor", `${label2} must be an object`);
+    fail83("invalid_descriptor", `${label2} must be an object`);
   }
   return value;
 }
 function exact44(value, fields, label2) {
   if (Object.keys(value).some((key) => !fields.has(key))) {
-    fail81("invalid_descriptor", `${label2} contains unsupported fields`);
+    fail83("invalid_descriptor", `${label2} contains unsupported fields`);
   }
 }
 function utc32(value, label2) {
   if (typeof value !== "string" || value.length > 64 || !value.endsWith("Z") || !Number.isFinite(Date.parse(value))) {
-    fail81("invalid_descriptor", `${label2} must be a bounded UTC timestamp`);
+    fail83("invalid_descriptor", `${label2} must be a bounded UTC timestamp`);
   }
   return value;
 }
 function hash12(value, label2) {
   if (typeof value !== "string" || !SHA25627.test(value)) {
-    fail81("invalid_descriptor", `${label2} must be lowercase SHA-256`);
+    fail83("invalid_descriptor", `${label2} must be lowercase SHA-256`);
   }
   return value;
 }
@@ -32170,12 +33412,12 @@ function validateApplicationGatewayDescriptor(value) {
   object23(value, "descriptor");
   exact44(value, DESCRIPTOR_FIELDS, "descriptor");
   if (value.schemaVersion !== 1 || value.contractVersion !== APPLICATION_GATEWAY_DESCRIPTOR_VERSION || value.transportId !== APPLICATION_GATEWAY_TRANSPORT_ID) {
-    fail81("unsupported_contract", "Application gateway descriptor is unsupported");
+    fail83("unsupported_contract", "Application gateway descriptor is unsupported");
   }
   utc32(value.publishedAtUtc, "publishedAtUtc");
   utc32(value.validUntilUtc, "validUntilUtc");
   if (Date.parse(value.validUntilUtc) <= Date.parse(value.publishedAtUtc)) {
-    fail81("invalid_timeline", "Descriptor validity must follow publication");
+    fail83("invalid_timeline", "Descriptor validity must follow publication");
   }
   object23(value.instance, "instance");
   exact44(value.instance, /* @__PURE__ */ new Set([
@@ -32190,7 +33432,7 @@ function validateApplicationGatewayDescriptor(value) {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
     value.instance.instanceId ?? ""
   ) || !Number.isSafeInteger(value.instance.generation) || value.instance.generation < 1 || !Number.isSafeInteger(value.instance.processId) || value.instance.processId < 1 || value.instance.adapterVersion !== APPLICATION_GATEWAY_ADAPTER_VERSION) {
-    fail81("invalid_instance", "Descriptor instance identity is invalid");
+    fail83("invalid_instance", "Descriptor instance identity is invalid");
   }
   hash12(value.instance.lifecycleIdentitySha256, "instance.lifecycleIdentitySha256");
   utc32(value.instance.processStartedAtUtc, "instance.processStartedAtUtc");
@@ -32198,7 +33440,7 @@ function validateApplicationGatewayDescriptor(value) {
   object23(value.workspace, "workspace");
   exact44(value.workspace, /* @__PURE__ */ new Set(["projectId", "sourceId", "workspaceRootSha256"]), "workspace");
   if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/.test(value.workspace.projectId ?? "") || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/.test(value.workspace.sourceId ?? "")) {
-    fail81("invalid_workspace", "Descriptor workspace identity is invalid");
+    fail83("invalid_workspace", "Descriptor workspace identity is invalid");
   }
   hash12(value.workspace.workspaceRootSha256, "workspace.workspaceRootSha256");
   object23(value.endpoint, "endpoint");
@@ -32217,10 +33459,10 @@ function validateApplicationGatewayDescriptor(value) {
     "endpointId"
   ]), "endpoint");
   if (value.endpoint.transportId !== value.transportId || value.endpoint.scheme !== "http" || value.endpoint.schemaVersion !== 1 || value.endpoint.contractVersion !== APPLICATION_GATEWAY_SECURITY_VERSION || value.endpoint.host !== "127.0.0.1" || !Number.isSafeInteger(value.endpoint.port) || value.endpoint.port < 1024 || value.endpoint.port > 65535 || value.endpoint.authority !== `127.0.0.1:${value.endpoint.port}` || !/^gateway-endpoint-[a-f0-9]{64}$/.test(value.endpoint.endpointId ?? "")) {
-    fail81("invalid_endpoint", "Descriptor endpoint is invalid");
+    fail83("invalid_endpoint", "Descriptor endpoint is invalid");
   }
   if (value.endpoint.instanceId !== value.instance.instanceId || value.endpoint.lifecycleIdentitySha256 !== value.instance.lifecycleIdentitySha256 || value.endpoint.workspaceRootSha256 !== value.workspace.workspaceRootSha256) {
-    fail81("identity_mismatch", "Descriptor endpoint identity does not match its instance");
+    fail83("identity_mismatch", "Descriptor endpoint identity does not match its instance");
   }
   const endpointIdentity = {
     transportId: value.endpoint.transportId,
@@ -32233,7 +33475,7 @@ function validateApplicationGatewayDescriptor(value) {
     port: value.endpoint.port
   };
   if (value.endpoint.endpointId !== `gateway-endpoint-${applicationCanonicalSha256(endpointIdentity)}`) {
-    fail81("invalid_endpoint", "Descriptor endpoint identity is not canonical");
+    fail83("invalid_endpoint", "Descriptor endpoint identity is not canonical");
   }
   object23(value.authorization, "authorization");
   exact44(value.authorization, /* @__PURE__ */ new Set([
@@ -32243,14 +33485,14 @@ function validateApplicationGatewayDescriptor(value) {
     "expiresAtUtc"
   ]), "authorization");
   if (value.authorization.scheme !== "Bearer" || typeof value.authorization.bearerToken !== "string" || !TOKEN2.test(value.authorization.bearerToken) || value.authorization.sessionId !== value.endpoint.sessionId) {
-    fail81("invalid_authorization", "Descriptor authorization is invalid");
+    fail83("invalid_authorization", "Descriptor authorization is invalid");
   }
   utc32(value.authorization.expiresAtUtc, "authorization.expiresAtUtc");
   if (value.validUntilUtc !== value.authorization.expiresAtUtc) {
-    fail81("invalid_timeline", "Descriptor validity must match session expiry");
+    fail83("invalid_timeline", "Descriptor validity must match session expiry");
   }
   if (applicationCanonicalSha256(value.routes) !== applicationCanonicalSha256(ROUTES)) {
-    fail81("route_mismatch", "Descriptor routes do not match the adapter");
+    fail83("route_mismatch", "Descriptor routes do not match the adapter");
   }
   object23(value.capabilityDiscovery, "capabilityDiscovery");
   exact44(
@@ -32259,28 +33501,28 @@ function validateApplicationGatewayDescriptor(value) {
     "capabilityDiscovery"
   );
   if (value.capabilityDiscovery.operationId !== CAPABILITY_OPERATION_ID || value.capabilityDiscovery.contractVersion !== APPLICATION_CAPABILITY_CONTRACT_VERSION) {
-    fail81("capability_mismatch", "Descriptor capability discovery is unsupported");
+    fail83("capability_mismatch", "Descriptor capability discovery is unsupported");
   }
   if (!Array.isArray(value.exposedOperations) || value.exposedOperations.length < 1 || value.exposedOperations.length > 128) {
-    fail81("operation_mismatch", "Descriptor exposed operations are invalid");
+    fail83("operation_mismatch", "Descriptor exposed operations are invalid");
   }
   const operationIds = /* @__PURE__ */ new Set();
   for (const operation3 of value.exposedOperations) {
     validateApplicationOperationRef(operation3);
     if (operationIds.has(operation3.operationId)) {
-      fail81("operation_mismatch", "Descriptor exposed operations are duplicated");
+      fail83("operation_mismatch", "Descriptor exposed operations are duplicated");
     }
     operationIds.add(operation3.operationId);
   }
   if (!operationIds.has(CAPABILITY_OPERATION_ID)) {
-    fail81("operation_mismatch", "Capability discovery must remain exposed");
+    fail83("operation_mismatch", "Capability discovery must remain exposed");
   }
   const expectedId = `application-gateway:${applicationCanonicalSha256(descriptorIdentity(value))}`;
   if (value.descriptorId !== expectedId) {
-    fail81("descriptor_identity_mismatch", "Descriptor identity is not canonical");
+    fail83("descriptor_identity_mismatch", "Descriptor identity is not canonical");
   }
   if (Buffer.byteLength(applicationCanonicalJson(value), "utf8") > 128 * 1024) {
-    fail81("descriptor_too_large", "Application gateway descriptor exceeds 128 KiB");
+    fail83("descriptor_too_large", "Application gateway descriptor exceeds 128 KiB");
   }
   return structuredClone(value);
 }
@@ -32294,19 +33536,19 @@ function buildApplicationGatewayDescriptor({
 }) {
   const lifecycle = validateApplicationGatewayLifecycleStatus(lifecycleStatus);
   if (!lifecycle.ready || lifecycle.lifecycle !== "ready") {
-    fail81("gateway_not_ready", "Only a ready gateway can publish discovery");
+    fail83("gateway_not_ready", "Only a ready gateway can publish discovery");
   }
   const policy = validateApplicationGatewaySecurityPolicy(securityPolicy);
   const canonicalEndpoint = bindApplicationGatewayEndpoint(policy, endpoint?.port);
   if (applicationCanonicalSha256(canonicalEndpoint) !== applicationCanonicalSha256(endpoint) || policy.session.lifecycleIdentitySha256 !== lifecycle.identity.identitySha256 || policy.session.instanceId !== lifecycle.identity.instanceId || policy.session.workspaceRootSha256 !== lifecycle.identity.workspace.workspaceRootSha256) {
-    fail81("identity_mismatch", "Gateway lifecycle, policy and endpoint do not match");
+    fail83("identity_mismatch", "Gateway lifecycle, policy and endpoint do not match");
   }
   if (hashApplicationGatewayBearerToken(bearerToken) !== policy.session.bearerSha256) {
-    fail81("authorization_mismatch", "Gateway bearer does not match its session");
+    fail83("authorization_mismatch", "Gateway bearer does not match its session");
   }
   const published = utc32(publishedAtUtc, "publishedAtUtc");
   if (Date.parse(published) < Date.parse(lifecycle.readyAtUtc) || Date.parse(published) >= Date.parse(policy.session.expiresAtUtc)) {
-    fail81("invalid_timeline", "Descriptor publication is outside ready session time");
+    fail83("invalid_timeline", "Descriptor publication is outside ready session time");
   }
   const value = {
     schemaVersion: 1,
@@ -32382,18 +33624,18 @@ var ApplicationGatewayDescriptorStore = class {
   #claimPath;
   constructor({ descriptorPath }) {
     if (typeof descriptorPath !== "string" || descriptorPath.trim() === "") {
-      fail81("invalid_store", "Descriptor store requires a path");
+      fail83("invalid_store", "Descriptor store requires a path");
     }
     this.#descriptorPath = path47.resolve(descriptorPath);
     this.#claimPath = `${this.#descriptorPath}.publish-claim.v1.json`;
   }
   async publish(options) {
     const descriptor = buildApplicationGatewayDescriptor(options);
-    await mkdir22(path47.dirname(this.#descriptorPath), { recursive: true });
+    await mkdir23(path47.dirname(this.#descriptorPath), { recursive: true });
     const temporaryPath = `${this.#descriptorPath}.${randomUUID15()}.tmp`;
     let claimed = false;
     try {
-      await writeFile14(this.#claimPath, `${applicationCanonicalJson({
+      await writeFile15(this.#claimPath, `${applicationCanonicalJson({
         schemaVersion: 1,
         instanceId: descriptor.instance.instanceId
       })}
@@ -32401,11 +33643,11 @@ var ApplicationGatewayDescriptorStore = class {
       claimed = true;
       try {
         await readFile24(this.#descriptorPath, "utf8");
-        fail81("descriptor_exists", "A gateway descriptor already owns this workspace");
+        fail83("descriptor_exists", "A gateway descriptor already owns this workspace");
       } catch (error) {
         if (error?.code !== "ENOENT") throw error;
       }
-      await writeFile14(temporaryPath, `${applicationCanonicalJson(descriptor)}
+      await writeFile15(temporaryPath, `${applicationCanonicalJson(descriptor)}
 `, {
         encoding: "utf8",
         mode: 384,
@@ -32416,7 +33658,7 @@ var ApplicationGatewayDescriptorStore = class {
       await rm13(temporaryPath, { force: true }).catch(() => {
       });
       if (error?.code === "EEXIST") {
-        fail81("descriptor_exists", "A gateway descriptor already owns this workspace");
+        fail83("descriptor_exists", "A gateway descriptor already owns this workspace");
       }
       throw error;
     } finally {
@@ -32445,12 +33687,12 @@ var ApplicationGatewayDescriptorStore = class {
     const prior = validateApplicationGatewayDescriptor(expected);
     const next = buildApplicationGatewayDescriptor(options);
     if (next.descriptorId !== prior.descriptorId || next.instance.instanceId !== prior.instance.instanceId || next.authorization.sessionId !== prior.authorization.sessionId || next.authorization.bearerToken !== prior.authorization.bearerToken || Date.parse(next.publishedAtUtc) <= Date.parse(prior.publishedAtUtc) || Date.parse(next.publishedAtUtc) >= Date.parse(prior.validUntilUtc) || Date.parse(next.validUntilUtc) <= Date.parse(prior.validUntilUtc)) {
-      fail81("descriptor_stale", "Descriptor renewal changed identity or timeline");
+      fail83("descriptor_stale", "Descriptor renewal changed identity or timeline");
     }
     const temporaryPath = `${this.#descriptorPath}.${randomUUID15()}.tmp`;
     let claimed = false;
     try {
-      await writeFile14(this.#claimPath, `${applicationCanonicalJson({
+      await writeFile15(this.#claimPath, `${applicationCanonicalJson({
         schemaVersion: 1,
         instanceId: prior.instance.instanceId
       })}
@@ -32462,12 +33704,12 @@ var ApplicationGatewayDescriptorStore = class {
           await readFile24(this.#descriptorPath, "utf8")
         ));
       } catch {
-        fail81("descriptor_stale", "Owned descriptor is missing or invalid");
+        fail83("descriptor_stale", "Owned descriptor is missing or invalid");
       }
       if (applicationCanonicalSha256(current) !== applicationCanonicalSha256(prior)) {
-        fail81("descriptor_stale", "Owned descriptor changed before renewal");
+        fail83("descriptor_stale", "Owned descriptor changed before renewal");
       }
-      await writeFile14(temporaryPath, `${applicationCanonicalJson(next)}
+      await writeFile15(temporaryPath, `${applicationCanonicalJson(next)}
 `, {
         encoding: "utf8",
         mode: 384,
@@ -32478,7 +33720,7 @@ var ApplicationGatewayDescriptorStore = class {
     } catch (error) {
       await rm13(temporaryPath, { force: true }).catch(() => {
       });
-      if (error?.code === "EEXIST") fail81("descriptor_exists", "Descriptor publication is already claimed");
+      if (error?.code === "EEXIST") fail83("descriptor_exists", "Descriptor publication is already claimed");
       throw error;
     } finally {
       if (claimed) await rm13(this.#claimPath, { force: true }).catch(() => {
@@ -32516,7 +33758,7 @@ var ApplicationGatewayDescriptorStore = class {
 
 // orchestrator/src/application-gateway-server.mjs
 import http from "node:http";
-import { randomBytes as randomBytes5, randomUUID as randomUUID16 } from "node:crypto";
+import { randomBytes as randomBytes7, randomUUID as randomUUID16 } from "node:crypto";
 var APPLICATION_GATEWAY_SERVER_VERSION = "v0.2.4";
 function wireProblem(response3, statusCode, reasonCode2) {
   const body2 = `${applicationCanonicalJson({
@@ -32645,7 +33887,7 @@ var ApplicationGatewayServer = class {
     const expiresAtUtc = new Date(
       Date.parse(issuedAtUtc) + this.#sessionLifetimeMs
     ).toISOString();
-    this.#bearerToken = randomBytes5(32).toString("base64url");
+    this.#bearerToken = randomBytes7(32).toString("base64url");
     this.#policy = buildApplicationGatewaySecurityPolicy({
       lifecycleStatus: this.status,
       sessionId: randomUUID16(),
@@ -32864,7 +34106,7 @@ var ApplicationGatewayServer = class {
 import { spawn as spawn5 } from "node:child_process";
 import { EventEmitter as EventEmitter2 } from "node:events";
 var MAX_LINE_BYTES2 = 8 * 1024 * 1024;
-function fail82(code, message = code, extra = {}) {
+function fail84(code, message = code, extra = {}) {
   throw Object.assign(new Error(message), { code, ...extra });
 }
 var AcpStdioClient = class extends EventEmitter2 {
@@ -32883,7 +34125,7 @@ var AcpStdioClient = class extends EventEmitter2 {
   constructor({ command, args = [], env = null, cwd = void 0, onDiagnostic = () => {
   } } = {}) {
     super();
-    if (typeof command !== "string" || command.length === 0 || !Array.isArray(args)) fail82("acp_client_invalid");
+    if (typeof command !== "string" || command.length === 0 || !Array.isArray(args)) fail84("acp_client_invalid");
     this.#command = command;
     this.#args = [...args];
     this.#env = env;
@@ -32900,7 +34142,7 @@ var AcpStdioClient = class extends EventEmitter2 {
     }
   }
   start() {
-    if (this.#child !== null || this.#closed) fail82("acp_client_state");
+    if (this.#child !== null || this.#closed) fail84("acp_client_state");
     const child = spawn5(this.#command, this.#args, {
       cwd: this.#cwd,
       env: this.#env ?? process.env,
@@ -32994,16 +34236,16 @@ var AcpStdioClient = class extends EventEmitter2 {
   }
   /** Handles one kind of request the agent sends to the client. */
   onRequest(method, handler) {
-    if (typeof method !== "string" || typeof handler !== "function") fail82("acp_client_invalid");
+    if (typeof method !== "string" || typeof handler !== "function") fail84("acp_client_invalid");
     this.#handlers.set(method, handler);
   }
   request(method, params = {}, { timeoutMs = 0, signal = null } = {}) {
     if (!this.running) return Promise.reject(Object.assign(new Error("provider_disconnected"), { code: "provider_disconnected" }));
-    const id12 = this.#nextId++;
+    const id14 = this.#nextId++;
     return new Promise((resolve, reject) => {
       let timer = null;
       const onAbort = () => {
-        this.#pending.delete(id12);
+        this.#pending.delete(id14);
         cleanup();
         reject(Object.assign(new Error("acp_request_aborted"), { code: "acp_request_aborted" }));
       };
@@ -33013,16 +34255,16 @@ var AcpStdioClient = class extends EventEmitter2 {
       };
       if (timeoutMs > 0) {
         timer = setTimeout(() => {
-          this.#pending.delete(id12);
+          this.#pending.delete(id14);
           cleanup();
           reject(Object.assign(new Error(`${method} timed out`), { code: "acp_request_timeout" }));
         }, timeoutMs);
         timer.unref?.();
       }
       signal?.addEventListener?.("abort", onAbort, { once: true });
-      this.#pending.set(id12, { resolve, reject, cleanup });
-      if (!this.#write({ jsonrpc: "2.0", id: id12, method, params })) {
-        this.#pending.delete(id12);
+      this.#pending.set(id14, { resolve, reject, cleanup });
+      if (!this.#write({ jsonrpc: "2.0", id: id14, method, params })) {
+        this.#pending.delete(id14);
         cleanup();
         reject(Object.assign(new Error("provider_disconnected"), { code: "provider_disconnected" }));
       }
@@ -33088,15 +34330,15 @@ var ACP_PATH_FIELDS = new Map([...[...ACP_FILE_TOOLS].map(([name, field]) => [na
 var ACP_SHELLS = /* @__PURE__ */ new Map([["bash", false], ["shell", false], ["pwsh", true]]);
 var TRACE_LIMITS2 = Object.freeze({ textBytes: 128 * 1024, inputBytes: 64 * 1024, outputBytes: 64 * 1024 });
 var TERMINAL6 = /* @__PURE__ */ new Set(["completed", "failed", "interrupted"]);
-var ID43 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
+var ID46 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
 var STOP_GRACE_MS2 = 1e4;
 var DEFAULT_SILENCE_MS = 10 * 60 * 1e3;
 var SETUP_TIMEOUT_MS = 12e4;
 var MODEL_UNREACHABLE = /\b50[234]\b[^\n]{0,24}status|status[^\n]{0,8}\b50[234]\b|ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|EHOSTUNREACH|fetch failed|socket hang up|connect(?:ion)? (?:refused|error|timed? ?out)/iu;
-function fail83(code, message = code) {
+function fail85(code, message = code) {
   throw Object.assign(new Error(message), { code });
 }
-function clip2(value, maximumBytes) {
+function clip3(value, maximumBytes) {
   return clipText(value, maximumBytes).text;
 }
 function capability2(operation3, { visibility = "headless", recovery = ["none"] } = {}) {
@@ -33148,21 +34390,21 @@ function createAcpProviderDescriptor({ sourceId: sourceId2, runtimeInstanceId, o
   });
 }
 function normalizeAcpModels(models) {
-  if (!Array.isArray(models) || models.length < 1 || models.length > 32) fail83("acp_models_invalid");
+  if (!Array.isArray(models) || models.length < 1 || models.length > 32) fail85("acp_models_invalid");
   return models.map((model) => {
-    if (!model || typeof model !== "object" || typeof model.id !== "string" || !ID43.test(model.id)) {
-      fail83("acp_models_invalid");
+    if (!model || typeof model !== "object" || typeof model.id !== "string" || !ID46.test(model.id)) {
+      fail85("acp_models_invalid");
     }
     const value = model.value ?? null;
-    if (value !== null && (typeof value !== "string" || value.length > 512)) fail83("acp_models_invalid");
+    if (value !== null && (typeof value !== "string" || value.length > 512)) fail85("acp_models_invalid");
     const efforts = model.efforts ?? ["default"];
     if (!Array.isArray(efforts) || efforts.length < 1 || efforts.some((effort) => typeof effort !== "string" || !/^[a-z0-9_-]{1,32}$/u.test(effort))) {
-      fail83("acp_models_invalid");
+      fail85("acp_models_invalid");
     }
     const defaultEffort = model.defaultEffort ?? efforts[0];
-    if (!efforts.includes(defaultEffort)) fail83("acp_models_invalid");
+    if (!efforts.includes(defaultEffort)) fail85("acp_models_invalid");
     const check2 = model.check ?? null;
-    if (check2 !== null && (typeof check2 !== "string" || !/^https?:\/\/[^\s]{1,500}$/u.test(check2))) fail83("acp_models_invalid");
+    if (check2 !== null && (typeof check2 !== "string" || !/^https?:\/\/[^\s]{1,500}$/u.test(check2))) fail85("acp_models_invalid");
     return {
       id: model.id,
       value,
@@ -33175,11 +34417,11 @@ function normalizeAcpModels(models) {
 }
 function textOf2(input2) {
   if (!Array.isArray(input2) || input2.length < 1 || input2.some((part) => part?.type !== "text" || typeof part.text !== "string")) {
-    fail83("invalid_request", "Only text input is supported");
+    fail85("invalid_request", "Only text input is supported");
   }
-  const text10 = input2.map((part) => part.text).join("\n");
-  if (!text10.trim()) fail83("invalid_request", "Input text is empty");
-  return text10;
+  const text11 = input2.map((part) => part.text).join("\n");
+  if (!text11.trim()) fail85("invalid_request", "Input text is empty");
+  return text11;
 }
 function contentText(content) {
   const blocks = Array.isArray(content) ? content : [content];
@@ -33191,17 +34433,17 @@ function contentText(content) {
     return "";
   }).filter(Boolean).join("\n");
 }
-var lineCount2 = (text10) => typeof text10 === "string" && text10 !== "" ? text10.split(/\r?\n/u).length : 0;
-var text8 = (value, maximumBytes) => typeof value === "string" && value !== "" ? clip2(value, maximumBytes) : null;
+var lineCount2 = (text11) => typeof text11 === "string" && text11 !== "" ? text11.split(/\r?\n/u).length : 0;
+var text9 = (value, maximumBytes) => typeof value === "string" && value !== "" ? clip3(value, maximumBytes) : null;
 var inputOf = (raw) => raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
-function toolItem2(id12, name, input2) {
+function toolItem2(id14, name, input2) {
   if (ACP_SHELL_TOOLS.has(name)) {
     return {
-      id: id12,
+      id: id14,
       type: "commandExecution",
       tool: name,
-      command: clip2(input2.command ?? "", 8192),
-      description: text8(input2.description, 512),
+      command: clip3(input2.command ?? "", 8192),
+      description: text9(input2.description, 512),
       aggregatedOutput: null,
       exitCode: null,
       status: "inProgress"
@@ -33213,19 +34455,19 @@ function toolItem2(id12, name, input2) {
     const added = lineCount2(input2.content ?? input2.file_text ?? input2.new_string ?? input2.new_str ?? input2.insert_text);
     const removed = writes ? null : lineCount2(input2.old_string ?? input2.old_str);
     return {
-      id: id12,
+      id: id14,
       type: "fileChange",
       tool: name,
-      changes: typeof target2 === "string" ? [{ path: clip2(target2, 1024), kind: writes ? "write" : "update", added, removed }] : [],
+      changes: typeof target2 === "string" ? [{ path: clip3(target2, 1024), kind: writes ? "write" : "update", added, removed }] : [],
       status: "inProgress"
     };
   }
   const keys = Object.keys(input2);
   return {
-    id: id12,
+    id: id14,
     type: "mcpToolCall",
-    tool: clip2(name, 256),
-    detail: keys.length === 0 ? null : clip2(JSON.stringify(input2), 512),
+    tool: clip3(name, 256),
+    detail: keys.length === 0 ? null : clip3(JSON.stringify(input2), 512),
     status: "inProgress"
   };
 }
@@ -33250,13 +34492,13 @@ function turnView2(turn) {
 }
 function pageOf2(values, { cursor = null, limit = 32 } = {}) {
   const start = cursor === null || cursor === void 0 ? 0 : Number(cursor);
-  if (!Number.isSafeInteger(start) || start < 0 || start > values.length) fail83("invalid_request", "Invalid cursor");
+  if (!Number.isSafeInteger(start) || start < 0 || start > values.length) fail85("invalid_request", "Invalid cursor");
   const size = Number.isSafeInteger(limit) && limit > 0 ? Math.min(limit, 128) : 32;
   const end = Math.min(values.length, start + size);
   return { data: values.slice(start, end), nextCursor: end < values.length ? String(end) : null };
 }
-function optionValue(configOptions, id12) {
-  const option = Array.isArray(configOptions) ? configOptions.find((entry) => entry?.id === id12) : null;
+function optionValue(configOptions, id14) {
+  const option = Array.isArray(configOptions) ? configOptions.find((entry) => entry?.id === id14) : null;
   return typeof option?.currentValue === "string" ? option.currentValue : null;
 }
 var AcpSessionHost = class extends EventEmitter3 {
@@ -33306,9 +34548,9 @@ var AcpSessionHost = class extends EventEmitter3 {
     silenceCheckMs = 15e3
   } = {}) {
     super();
-    if (typeof startClient !== "function" || !journal || typeof now !== "function") fail83("acp_host_invalid");
-    if (!Array.isArray(mcpServers)) fail83("acp_host_invalid");
-    if (silenceTimeoutMs !== null && (!Number.isSafeInteger(silenceTimeoutMs) || silenceTimeoutMs < 1)) fail83("acp_host_invalid");
+    if (typeof startClient !== "function" || !journal || typeof now !== "function") fail85("acp_host_invalid");
+    if (!Array.isArray(mcpServers)) fail85("acp_host_invalid");
+    if (silenceTimeoutMs !== null && (!Number.isSafeInteger(silenceTimeoutMs) || silenceTimeoutMs < 1)) fail85("acp_host_invalid");
     this.#startClient = startClient;
     this.#journal = journal;
     this.#now = now;
@@ -33347,13 +34589,13 @@ var AcpSessionHost = class extends EventEmitter3 {
   }
   // --- connection ---------------------------------------------------------------------
   async connect() {
-    if (this.#closed) fail83("provider_disconnected");
+    if (this.#closed) fail85("provider_disconnected");
     if (this.#recoverOnConnect) await this.#journal.recover(this.#at());
     await this.#ensureClient();
   }
   /** The running agent process, started (and initialized) when there is none. */
   async #ensureClient() {
-    if (this.#closed) fail83("provider_disconnected");
+    if (this.#closed) fail85("provider_disconnected");
     if (this.#client?.running) return this.#client;
     if (this.#starting) return this.#starting;
     this.#starting = (async () => {
@@ -33364,7 +34606,7 @@ var AcpSessionHost = class extends EventEmitter3 {
         this.#updates = this.#updates.then(() => this.#update(params)).catch((error) => this.#diagnostic({
           phase: "update",
           reasonCode: error?.code ?? "acp_update_failed",
-          message: clip2(error?.message ?? "", 200)
+          message: clip3(error?.message ?? "", 200)
         }));
       });
       client.on("exit", () => this.#lost(generation));
@@ -33375,11 +34617,11 @@ var AcpSessionHost = class extends EventEmitter3 {
           clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
           clientInfo: { name: "agents-factory-gateway", version: ACP_SESSION_HOST_VERSION }
         }, { timeoutMs: SETUP_TIMEOUT_MS });
-        if (answer?.protocolVersion !== ACP_PROTOCOL_VERSION) fail83("acp_protocol_unsupported");
-        if (!answer?.agentCapabilities?.sessionCapabilities?.resume) fail83("acp_resume_unsupported");
+        if (answer?.protocolVersion !== ACP_PROTOCOL_VERSION) fail85("acp_protocol_unsupported");
+        if (!answer?.agentCapabilities?.sessionCapabilities?.resume) fail85("acp_resume_unsupported");
         this.#agentInfo = {
-          name: clip2(String(answer.agentInfo?.name ?? "acp-agent"), 128),
-          version: clip2(String(answer.agentInfo?.version ?? ""), 64)
+          name: clip3(String(answer.agentInfo?.name ?? "acp-agent"), 128),
+          version: clip3(String(answer.agentInfo?.version ?? ""), 64)
         };
       } catch (error) {
         await client.close().catch(() => void 0);
@@ -33412,8 +34654,8 @@ var AcpSessionHost = class extends EventEmitter3 {
     this.emit("close");
   }
   registerServerRequestHandler(method, handler) {
-    if (typeof method !== "string" || typeof handler !== "function") fail83("invalid_request");
-    if (this.#handlers.has(method)) fail83("conflict", `A handler for ${method} is already registered`);
+    if (typeof method !== "string" || typeof handler !== "function") fail85("invalid_request");
+    if (this.#handlers.has(method)) fail85("conflict", `A handler for ${method} is already registered`);
     this.#handlers.set(method, handler);
     return () => {
       if (this.#handlers.get(method) === handler) this.#handlers.delete(method);
@@ -33452,13 +34694,13 @@ var AcpSessionHost = class extends EventEmitter3 {
   }
   async listThreadTurns(threadId2, options = {}) {
     const session = await this.#journal.readSession(claudeSessionId(threadId2));
-    if (session === null) fail83("thread_not_found");
+    if (session === null) fail85("thread_not_found");
     const ids = options.sortDirection === "desc" ? [...session.turnIds].reverse() : session.turnIds;
     const page = pageOf2(ids, options);
     const turns = [];
-    for (const id12 of page.data) {
-      const turn = await this.#journal.readTurn(threadId2, id12);
-      if (turn === null) fail83("concurrent_update");
+    for (const id14 of page.data) {
+      const turn = await this.#journal.readTurn(threadId2, id14);
+      if (turn === null) fail85("concurrent_update");
       turns.push(turnView2(turn));
     }
     return { data: turns, nextCursor: page.nextCursor };
@@ -33466,7 +34708,7 @@ var AcpSessionHost = class extends EventEmitter3 {
   /** The context the session fills now (ACP reports occupancy, not spent tokens). */
   async readThreadUsage(threadId2) {
     const session = await this.#journal.readSession(claudeSessionId(threadId2));
-    if (session === null) fail83("thread_not_found");
+    if (session === null) fail85("thread_not_found");
     const usage = session.usage;
     if (usage === null || !(usage.contextWindow > 0)) return { threadUsage: null };
     return { threadUsage: { groups: [{
@@ -33512,27 +34754,28 @@ var AcpSessionHost = class extends EventEmitter3 {
    * without it every question goes to the person.
    */
   async startTurn(threadId2, input2, options = {}) {
-    if (this.#closed) fail83("provider_disconnected");
+    if (this.#closed) fail85("provider_disconnected");
     claudeSessionId(threadId2);
-    const text10 = textOf2(input2);
+    const text11 = textOf2(input2);
     const model = options.model ?? null;
     const entry = model === null ? null : this.#models.find((item) => item.id === model);
-    if (model !== null && !entry) fail83("memory_profile_conflict");
+    if (model !== null && !entry) fail85("memory_profile_conflict");
     const effort = options.effort ?? "default";
-    if (effort !== "default" && !(entry ?? this.#models[0]).efforts.includes(effort)) fail83("memory_profile_conflict");
-    if (this.#running.has(threadId2)) fail83("acp_session_busy");
+    if (effort !== "default" && !(entry ?? this.#models[0]).efforts.includes(effort)) fail85("memory_profile_conflict");
+    if (this.#running.has(threadId2)) fail85("acp_session_busy");
     const turnId2 = randomUUID17();
     const startedAt = this.#at();
-    const displayText = typeof options.displayText === "string" && options.displayText.trim() !== "" ? clip2(options.displayText, CLAUDE_CODE_SESSION_LIMITS.textBytes) : null;
+    const displayText = typeof options.displayText === "string" && options.displayText.trim() !== "" ? clip3(options.displayText, CLAUDE_CODE_SESSION_LIMITS.textBytes) : null;
     const userItem = {
       id: `${turnId2}:user`,
       type: "userMessage",
-      content: [{ type: "text", text: text10 }],
+      content: [{ type: "text", text: text11 }],
       ...displayText === null ? {} : { displayText },
       clientId: typeof options.clientUserMessageId === "string" ? options.clientUserMessageId : null,
       atUtc: startedAt
     };
     const run3 = this.#claim(threadId2, turnId2, options.policy);
+    run3.planning = options.planning === true;
     let session;
     try {
       session = await this.#journal.appendTurn(threadId2, {
@@ -33566,9 +34809,9 @@ var AcpSessionHost = class extends EventEmitter3 {
       effort,
       clientId: userItem.clientId,
       displayText,
-      text: clip2(text10, TRACE_LIMITS2.textBytes)
+      text: clip3(text11, TRACE_LIMITS2.textBytes)
     });
-    run3.begin(session, text10, { entry, effort });
+    run3.begin(session, text11, { entry, effort });
     return { turn: { id: turnId2, status: "inProgress" } };
   }
   /**
@@ -33577,8 +34820,8 @@ var AcpSessionHost = class extends EventEmitter3 {
    * next prompt of the same turn; until then it can be taken back.
    */
   async steerTurn(threadId2, turnId2, input2, { mode = "steer", clientUserMessageId = null, displayText = null } = {}) {
-    if (this.#closed) fail83("provider_disconnected");
-    if (mode !== "steer" && mode !== "queue") fail83("invalid_request", "mode");
+    if (this.#closed) fail85("provider_disconnected");
+    if (mode !== "steer" && mode !== "queue") fail85("invalid_request", "mode");
     const run3 = this.#running.get(claudeSessionId(threadId2));
     const clientId = typeof clientUserMessageId === "string" ? clientUserMessageId : null;
     if (run3 && run3.turnId === turnId2 && clientId !== null && (run3.held.some((held) => held.clientId === clientId) || run3.delivered.has(clientId))) {
@@ -33586,14 +34829,14 @@ var AcpSessionHost = class extends EventEmitter3 {
     }
     if (run3 && run3.turnId === turnId2 && !run3.accepting) {
       await run3.finished;
-      fail83("turn_not_active");
+      fail85("turn_not_active");
     }
-    if (!run3 || run3.turnId !== turnId2) fail83("turn_not_active");
-    const text10 = textOf2(input2);
+    if (!run3 || run3.turnId !== turnId2) fail85("turn_not_active");
+    const text11 = textOf2(input2);
     const message = {
       clientId,
-      text: text10,
-      displayText: typeof displayText === "string" && displayText.trim() !== "" ? clip2(displayText, CLAUDE_CODE_SESSION_LIMITS.textBytes) : null,
+      text: text11,
+      displayText: typeof displayText === "string" && displayText.trim() !== "" ? clip3(displayText, CLAUDE_CODE_SESSION_LIMITS.textBytes) : null,
       queuedAtUtc: this.#at()
     };
     run3.held.push(message);
@@ -33601,7 +34844,7 @@ var AcpSessionHost = class extends EventEmitter3 {
       type: "user_queued",
       clientId,
       displayText: message.displayText,
-      text: clip2(text10, TRACE_LIMITS2.textBytes)
+      text: clip3(text11, TRACE_LIMITS2.textBytes)
     });
     return { delivery: "queued", clientId };
   }
@@ -33626,7 +34869,7 @@ var AcpSessionHost = class extends EventEmitter3 {
   }
   async interruptTurn(threadId2, turnId2) {
     const run3 = this.#running.get(claudeSessionId(threadId2));
-    if (!run3 || run3.turnId !== turnId2) fail83("turn_not_active");
+    if (!run3 || run3.turnId !== turnId2) fail85("turn_not_active");
     await run3.stop();
     return {};
   }
@@ -33657,8 +34900,8 @@ var AcpSessionHost = class extends EventEmitter3 {
       lastSignAt: Date.now(),
       waitingForPerson: 0,
       silent: false,
-      begin(session, text10, options) {
-        host.#execute(run3, session, text10, options).then(finishedResolve, finishedResolve);
+      begin(session, text11, options) {
+        host.#execute(run3, session, text11, options).then(finishedResolve, finishedResolve);
       },
       async stop() {
         if (run3.stopping) return;
@@ -33742,14 +34985,14 @@ var AcpSessionHost = class extends EventEmitter3 {
     timer.unref?.();
     return () => clearInterval(timer);
   }
-  async #execute(run3, session, text10, options) {
+  async #execute(run3, session, text11, options) {
     const { threadId: threadId2, turnId: turnId2 } = run3;
     let stopReason = null;
     let failure3 = null;
     const unwatch = this.#watchSilence(run3);
     try {
       const client = await this.#prepare(run3, session, options);
-      let next = text10;
+      let next = text11;
       while (next !== null) {
         const answer = await client.request("session/prompt", {
           sessionId: threadId2,
@@ -33773,7 +35016,7 @@ var AcpSessionHost = class extends EventEmitter3 {
         turnId: turnId2,
         phase: "turn",
         reasonCode: error?.code ?? "acp_prompt_failed",
-        message: clip2(error?.message ?? error, 400)
+        message: clip3(error?.message ?? error, 400)
       });
     } finally {
       run3.accepting = false;
@@ -33804,11 +35047,11 @@ var AcpSessionHost = class extends EventEmitter3 {
       delivery: "queue",
       clientId: message.clientId,
       displayText: message.displayText,
-      text: clip2(message.text, TRACE_LIMITS2.textBytes)
+      text: clip3(message.text, TRACE_LIMITS2.textBytes)
     });
   }
-  async #record(run3, change2) {
-    await this.#journal.updateTurn(run3.threadId, run3.turnId, change2, this.#at());
+  async #record(run3, change4) {
+    await this.#journal.updateTurn(run3.threadId, run3.turnId, change4, this.#at());
   }
   async #trace(run3, record) {
     if (typeof this.#journal.appendTrace !== "function") return;
@@ -33824,8 +35067,8 @@ var AcpSessionHost = class extends EventEmitter3 {
     }
   }
   async readTrace(threadId2, options = {}) {
-    if (typeof this.#journal.readTrace !== "function") fail83("acp_trace_unavailable");
-    if (await this.#journal.readSession(claudeSessionId(threadId2)) === null) fail83("thread_not_found");
+    if (typeof this.#journal.readTrace !== "function") fail85("acp_trace_unavailable");
+    if (await this.#journal.readSession(claudeSessionId(threadId2)) === null) fail85("thread_not_found");
     return this.#journal.readTrace(threadId2, options);
   }
   async #addItem(run3, item, completed) {
@@ -33841,12 +35084,12 @@ var AcpSessionHost = class extends EventEmitter3 {
     this.emit("item/started", event);
     if (completed) this.emit("item/completed", structuredClone(event));
   }
-  async #completeItem(run3, itemId, change2) {
+  async #completeItem(run3, itemId, change4) {
     let completed = null;
     await this.#record(run3, (turn) => {
       const item = turn.items.find((entry) => entry.id === itemId);
       if (!item) return;
-      change2(item);
+      change4(item);
       completed = structuredClone(item);
     });
     if (completed !== null) this.emit("item/completed", { threadId: run3.threadId, turnId: run3.turnId, item: completed });
@@ -33854,9 +35097,9 @@ var AcpSessionHost = class extends EventEmitter3 {
   /** The item id of one of the agent's tool calls: its own id when the chat can carry it. */
   #toolId(run3, toolCallId) {
     if (run3.toolIds.has(toolCallId)) return run3.toolIds.get(toolCallId);
-    const id12 = ID43.test(toolCallId) ? toolCallId : `${run3.turnId}:tool:${run3.toolIds.size + 1}`;
-    run3.toolIds.set(toolCallId, id12);
-    return id12;
+    const id14 = ID46.test(toolCallId) ? toolCallId : `${run3.turnId}:tool:${run3.toolIds.size + 1}`;
+    run3.toolIds.set(toolCallId, id14);
+    return id14;
   }
   /** One `session/update` of a session with a running turn. */
   async #update(params) {
@@ -33870,14 +35113,14 @@ var AcpSessionHost = class extends EventEmitter3 {
       const said3 = contentText(update2.content);
       if (!said3.trim()) return;
       run3.messages += 1;
-      const base2 = typeof update2.messageId === "string" && ID43.test(update2.messageId) ? update2.messageId : run3.turnId;
-      const id12 = `${base2}:${run3.messages}`;
+      const base2 = typeof update2.messageId === "string" && ID46.test(update2.messageId) ? update2.messageId : run3.turnId;
+      const id14 = `${base2}:${run3.messages}`;
       if (kind2 === "agent_message_chunk") {
-        await this.#addItem(run3, { id: id12, type: "agentMessage", text: clip2(said3.trim(), CLAUDE_CODE_SESSION_LIMITS.textBytes) }, true);
-        await this.#trace(run3, { type: "assistant", text: clip2(said3, TRACE_LIMITS2.textBytes) });
+        await this.#addItem(run3, { id: id14, type: "agentMessage", text: clip3(said3.trim(), CLAUDE_CODE_SESSION_LIMITS.textBytes) }, true);
+        await this.#trace(run3, { type: "assistant", text: clip3(said3, TRACE_LIMITS2.textBytes) });
       } else {
-        await this.#addItem(run3, { id: id12, type: "reasoning", summary: clip2(said3.trim(), 8192) }, true);
-        await this.#trace(run3, { type: "thinking", text: clip2(said3, TRACE_LIMITS2.textBytes) });
+        await this.#addItem(run3, { id: id14, type: "reasoning", summary: clip3(said3.trim(), 8192) }, true);
+        await this.#trace(run3, { type: "thinking", text: clip3(said3, TRACE_LIMITS2.textBytes) });
       }
       return;
     }
@@ -33890,7 +35133,7 @@ var AcpSessionHost = class extends EventEmitter3 {
         type: "tool_use",
         toolUseId: item.id,
         tool: name,
-        input: clip2(JSON.stringify(update2.rawInput ?? {}), TRACE_LIMITS2.inputBytes)
+        input: clip3(JSON.stringify(update2.rawInput ?? {}), TRACE_LIMITS2.inputBytes)
       });
       await this.#addItem(run3, item, false);
       return;
@@ -33903,14 +35146,14 @@ var AcpSessionHost = class extends EventEmitter3 {
       const output2 = contentText(update2.content ?? []);
       await this.#completeItem(run3, tool.itemId, (item) => {
         item.status = failed ? "failed" : "completed";
-        if (item.type === "commandExecution") item.aggregatedOutput = clip2(output2, CLAUDE_CODE_SESSION_LIMITS.outputBytes);
-        else item.output = clip2(output2, CLAUDE_CODE_SESSION_LIMITS.outputBytes);
+        if (item.type === "commandExecution") item.aggregatedOutput = clip3(output2, CLAUDE_CODE_SESSION_LIMITS.outputBytes);
+        else item.output = clip3(output2, CLAUDE_CODE_SESSION_LIMITS.outputBytes);
       });
       await this.#trace(run3, {
         type: "tool_result",
         toolUseId: tool.itemId,
         isError: failed,
-        output: clip2(output2, TRACE_LIMITS2.outputBytes)
+        output: clip3(output2, TRACE_LIMITS2.outputBytes)
       });
       return;
     }
@@ -33962,9 +35205,9 @@ var AcpSessionHost = class extends EventEmitter3 {
     if (ACP_SHELL_TOOLS.has(tool.name)) {
       return { method: "item/commandExecution/requestApproval", params: {
         ...base2,
-        command: clip2(tool.input.command ?? "", 8192),
+        command: clip3(tool.input.command ?? "", 8192),
         cwd: session.cwd,
-        reason: text8(tool.input.description, 4096),
+        reason: text9(tool.input.description, 4096),
         availableDecisions: ["accept", "cancel", "decline"]
       } };
     }
@@ -33972,15 +35215,15 @@ var AcpSessionHost = class extends EventEmitter3 {
       const target2 = tool.input[ACP_FILE_TOOLS.get(tool.name)];
       return { method: "item/fileChange/requestApproval", params: {
         ...base2,
-        reason: clip2(`${tool.name} ${typeof target2 === "string" ? target2 : ""}`.trim(), 4096),
+        reason: clip3(`${tool.name} ${typeof target2 === "string" ? target2 : ""}`.trim(), 4096),
         grantRoot: null
       } };
     }
     return { method: "item/permissions/requestApproval", params: {
       ...base2,
       cwd: session.cwd,
-      reason: clip2(tool.name, 256),
-      permissions: { tool: clip2(tool.name, 256), input: clip2(JSON.stringify(tool.input), 4096) }
+      reason: clip3(tool.name, 256),
+      permissions: { tool: clip3(tool.name, 256), input: clip3(JSON.stringify(tool.input), 4096) }
     } };
   }
   /** The agent asks before a tool call: the desk's policy decides, else the person. */
@@ -34015,6 +35258,10 @@ var AcpSessionHost = class extends EventEmitter3 {
       return reject;
     }
     if (ACP_READ_TOOLS.has(tool.name) || tool.name === "str_replace_editor" && tool.input?.command === "view") return allow;
+    if (run3.planning === true) {
+      await decided("deny", "desk");
+      return reject;
+    }
     let verdict = "ask";
     if (run3.policy !== null) {
       try {
@@ -34246,7 +35493,7 @@ async function acpEnvironment(config, { base: base2 = process.env, read = (file)
 }
 
 // orchestrator/src/project-memory-acp.mjs
-function fail84(code) {
+function fail86(code) {
   throw Object.assign(new Error(code), { code });
 }
 async function createProjectMemoryAcp({
@@ -34267,7 +35514,7 @@ async function createProjectMemoryAcp({
   }
 } = {}) {
   if (!host || typeof resolveWorkspace !== "function" || typeof assertVisible !== "function") {
-    fail84("memory_provider_unavailable");
+    fail86("memory_provider_unavailable");
   }
   const captures = /* @__PURE__ */ new Map();
   const interactions = /* @__PURE__ */ new Map();
@@ -34305,20 +35552,20 @@ async function createProjectMemoryAcp({
   };
   const bound3 = (agent) => {
     const binding = agent.binding;
-    if (!binding || binding.providerId !== ACP_PROVIDER_ID || binding.sourceId !== providerSourceId || binding.projectId !== sourceId2) fail84("memory_identity_conflict");
+    if (!binding || binding.providerId !== ACP_PROVIDER_ID || binding.sourceId !== providerSourceId || binding.projectId !== sourceId2) fail86("memory_identity_conflict");
     return binding.threadId;
   };
   const preflight = async (profile3) => {
-    if (profile3.provider !== ACP_PROVIDER_ID || profile3.fallbackPolicy !== "deny") fail84("memory_provider_unavailable");
+    if (profile3.provider !== ACP_PROVIDER_ID || profile3.fallbackPolicy !== "deny") fail86("memory_provider_unavailable");
     if (!host.models.some((model) => model.id === profile3.model && model.efforts.includes(profile3.reasoningEffort))) {
-      fail84("memory_profile_conflict");
+      fail86("memory_profile_conflict");
     }
     await assertVisible();
     const account = await host.readAccount();
-    if (account.account === null) fail84("memory_provider_unavailable");
+    if (account.account === null) fail86("memory_provider_unavailable");
   };
   const interactionFor = async (agent) => {
-    if (!descriptor) fail84("memory_provider_unavailable");
+    if (!descriptor) fail86("memory_provider_unavailable");
     if (!interactions.has(agent.agentId)) {
       const capture = captureFor(agent);
       interactions.set(agent.agentId, createApplicationProviderInteractionBridge({
@@ -34337,6 +35584,8 @@ async function createProjectMemoryAcp({
   return {
     memoryDocuments: false,
     controllerTasks: false,
+    // Its answer comes in pieces (agent_message_chunk): a task's plan is their text joined as it came.
+    chunkedText: true,
     enforcesWriteZones: enforcesWriteZones === true && typeof policy === "function",
     // The agent keeps its whole conversation; memory is sent again only after it changed.
     async memoryDeliveryKey(agent) {
@@ -34350,13 +35599,13 @@ async function createProjectMemoryAcp({
       const threadId2 = await host.createSession({ cwd: workspace3.workspacePath });
       return { projectId: sourceId2, sourceId: providerSourceId, providerId: ACP_PROVIDER_ID, threadId: threadId2 };
     },
-    async send({ agent, operation: operation3, text: text10, displayText = null, writeZone }) {
+    async send({ agent, operation: operation3, text: text11, displayText = null, writeZone }) {
       await preflight(agent.profile);
       const workspace3 = await resolveWorkspace(agent);
-      if (workspace3.workspaceKey !== agent.workspaceKey) fail84("memory_workspace_conflict");
+      if (workspace3.workspaceKey !== agent.workspaceKey) fail86("memory_workspace_conflict");
       const threadId2 = bound3(agent);
       const session = await host.readThread(threadId2);
-      if (session === null) fail84("memory_identity_conflict");
+      if (session === null) fail86("memory_identity_conflict");
       const capture = captureFor(agent);
       if (descriptor) await interactionFor(agent);
       await capture.flush();
@@ -34370,19 +35619,21 @@ async function createProjectMemoryAcp({
       };
       const intentSha256 = applicationCanonicalSha256({ agentId: agent.agentId, ...operation3 });
       const acquired = await lease.acquire({ owner: owner2, intentSha256 });
-      if (!acquired.mutationAllowed) fail84("memory_uncertain_outcome");
+      if (!acquired.mutationAllowed) fail86("memory_uncertain_outcome");
       const zone = writeZone !== void 0 ? writeZone : effectiveWriteZone(agent);
       const before = commits === null ? null : await commits.snapshot(workspace3.workspacePath).catch(() => null);
       try {
-        const result2 = await host.startTurn(threadId2, [{ type: "text", text: text10 }], {
+        const result2 = await host.startTurn(threadId2, [{ type: "text", text: text11 }], {
           model: agent.profile.model,
           effort: agent.profile.reasoningEffort,
           clientUserMessageId: operation3.operationId,
           ...typeof displayText === "string" ? { displayText } : {},
-          ...typeof policy === "function" ? { policy: policy({ agent, root: workspace3.workspacePath, zone }) } : {}
+          ...typeof policy === "function" ? { policy: policy({ agent, root: workspace3.workspacePath, zone }) } : {},
+          // A task's planning turn (agent-tasks.mjs): the host refuses every change in it.
+          ...operation3.task?.phase === "plan" ? { planning: true } : {}
         });
         const turnId2 = result2?.turn?.id;
-        if (typeof turnId2 !== "string" || !turnId2) fail84("memory_invalid_observation");
+        if (typeof turnId2 !== "string" || !turnId2) fail86("memory_invalid_observation");
         if (before !== null) {
           pendingCommits.set(turnId2, {
             folder: workspace3.workspacePath,
@@ -34422,7 +35673,7 @@ async function createProjectMemoryAcp({
     },
     async observe({ agent, operation: operation3 }) {
       const turn = await host.readTurn(bound3(agent), operation3.turnId);
-      if (turn === null) fail84("memory_invalid_observation");
+      if (turn === null) fail86("memory_invalid_observation");
       return {
         turnId: turn.id,
         state: acpTurnState(turn),
@@ -34431,13 +35682,13 @@ async function createProjectMemoryAcp({
       };
     },
     /** A message for the running turn: it waits for the agent's current prompt to end. */
-    async steer({ agent, operation: operation3, text: text10, mode, clientId }) {
+    async steer({ agent, operation: operation3, text: text11, mode, clientId }) {
       await assertVisible();
       await preflight(agent.profile);
       return host.steerTurn(
         bound3(agent),
         operation3.turnId,
-        [{ type: "text", text: text10 }],
+        [{ type: "text", text: text11 }],
         { mode, clientUserMessageId: clientId }
       );
     },
@@ -34461,7 +35712,7 @@ async function createProjectMemoryAcp({
     ...descriptor ? {
       async interactionSummary(agent) {
         const bridge = await interactions.get(agent.agentId);
-        if (!bridge) fail84("memory_provider_unavailable");
+        if (!bridge) fail86("memory_provider_unavailable");
         return bridge.summary();
       },
       async listInteractions(agent, input2) {
@@ -34729,14 +35980,14 @@ function listWindowsFileLockers(file, { timeoutMs = 15e3 } = {}) {
 // orchestrator/src/project-memory-cli.mjs
 import path53 from "node:path";
 import { randomUUID as randomUUID19 } from "node:crypto";
-import { lstat as lstat28, mkdir as mkdir25, readFile as readFile28, realpath as realpath18, writeFile as writeFile17 } from "node:fs/promises";
+import { lstat as lstat28, mkdir as mkdir26, readFile as readFile28, realpath as realpath18, writeFile as writeFile18 } from "node:fs/promises";
 
 // orchestrator/src/world-task-board.mjs
-import { createHash as createHash33 } from "node:crypto";
+import { createHash as createHash35 } from "node:crypto";
 import { lstat as lstat26, readdir as readdir11, readFile as readFile26 } from "node:fs/promises";
 import path50 from "node:path";
 var TASK_BOARD_LIMITS = Object.freeze({ sources: 128, tasks: 200, tasksPerSource: 512, text: 400 });
-var TASK_STAGES = Object.freeze([
+var TASK_STAGES2 = Object.freeze([
   "dispatched",
   "started",
   "accepted",
@@ -34747,7 +35998,7 @@ var TASK_STAGES = Object.freeze([
   "declined"
 ]);
 var TASK_ID3 = /^[a-z0-9][a-z0-9.-]{2,95}$/u;
-var ID44 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
+var ID47 = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/u;
 var MAX_FILE_BYTES3 = 1024 * 1024;
 var IMPLEMENTING = /* @__PURE__ */ new Set(["implementation", "validation", "reporting", "complete"]);
 var PLANNING = /* @__PURE__ */ new Set(["planning", "awaiting_confirmation"]);
@@ -34762,7 +36013,7 @@ var WORKING_STATES = /* @__PURE__ */ new Set([
   "cancelling",
   "cancelled"
 ]);
-function fail85(code) {
+function fail87(code) {
   throw Object.assign(new Error(code), { code });
 }
 async function readBounded3(file) {
@@ -34780,8 +36031,8 @@ async function readJson7(file) {
     return null;
   }
 }
-var sha25616 = (bytes) => createHash33("sha256").update(bytes).digest("hex");
-var text9 = (value, limit = TASK_BOARD_LIMITS.text) => typeof value === "string" && value.trim() !== "" ? value.trim().slice(0, limit) : null;
+var sha25618 = (bytes) => createHash35("sha256").update(bytes).digest("hex");
+var text10 = (value, limit = TASK_BOARD_LIMITS.text) => typeof value === "string" && value.trim() !== "" ? value.trim().slice(0, limit) : null;
 var token = (value) => typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$/u.test(value) ? value : null;
 var time2 = (value) => typeof value === "string" && value.length <= 64 && Number.isFinite(Date.parse(value)) ? value : null;
 var integer4 = (value) => Number.isSafeInteger(value) ? value : null;
@@ -34809,7 +36060,7 @@ async function readSources(root) {
   const sources = [];
   for (const entry of entries2) {
     if (sources.length >= TASK_BOARD_LIMITS.sources) break;
-    if (typeof entry?.deskAgentId !== "string" || !ID44.test(entry.deskAgentId) || typeof entry.id !== "string") continue;
+    if (typeof entry?.deskAgentId !== "string" || !ID47.test(entry.deskAgentId) || typeof entry.id !== "string") continue;
     const found = await readDeskAgentSource({ controllerRoot: root, agentId: entry.deskAgentId }).catch(() => null);
     sources.push({
       agentId: entry.deskAgentId,
@@ -34819,7 +36070,7 @@ async function readSources(root) {
   }
   return sources;
 }
-async function readTask(root, source, taskId2) {
+async function readTask2(root, source, taskId2) {
   const folder = path50.join(root, DESK_AGENT_FOLDER, source.sourceId, ".orchestrator");
   const inboxBytes = await readBounded3(path50.join(folder, "tasks", "inbox", taskId2, "task.json"));
   if (inboxBytes === null) return null;
@@ -34850,17 +36101,17 @@ async function readTask(root, source, taskId2) {
   const definition3 = await lstat26(path50.join(root, ".project-local", "desk-coordinator", "definitions", `${taskId2}.json`)).catch(() => null);
   const task = {
     taskId: taskId2,
-    title: text9(packet.title, 200),
+    title: text10(packet.title, 200),
     sourceId: source.sourceId,
     agentId: source.agentId,
     contractVersion: token(packet.contractVersion),
     priority: token(packet.priority),
     dispatchedAtUtc: time2(packet.dispatchedAtUtc),
-    verified: dispatchedBytes !== null && sha25616(dispatchedBytes) === sha25616(inboxBytes),
+    verified: dispatchedBytes !== null && sha25618(dispatchedBytes) === sha25618(inboxBytes),
     dispatchedByCoordinator: definition3?.isFile() === true,
     start: start === null ? null : {
       startedAtUtc: time2(start.startedAtUtc),
-      coordinatorAgentId: typeof start.coordinatorAgentId === "string" && ID44.test(start.coordinatorAgentId) ? start.coordinatorAgentId : null,
+      coordinatorAgentId: typeof start.coordinatorAgentId === "string" && ID47.test(start.coordinatorAgentId) ? start.coordinatorAgentId : null,
       reportOperation: token(start.reportOperation),
       continuationPolicy: token(start.continuationPolicy),
       returnState: token(start.returnState),
@@ -34868,7 +36119,7 @@ async function readTask(root, source, taskId2) {
     },
     acknowledgement: acknowledgement === null || acknowledgement.taskId !== taskId2 ? null : {
       decision: token(acknowledgement.decision),
-      reason: text9(acknowledgement.reason),
+      reason: text10(acknowledgement.reason),
       acknowledgedAtUtc: time2(acknowledgement.acknowledgedAtUtc)
     },
     progress: progress === null || progress.taskId !== taskId2 ? null : {
@@ -34876,12 +36127,12 @@ async function readTask(root, source, taskId2) {
       lifecycleStage: token(progress.workflow?.lifecycleStage ?? progress.lifecycleStage ?? null),
       planStatus: token(progress.workflow?.plan?.status ?? null),
       planRevision: integer4(progress.workflow?.plan?.revision ?? null),
-      now: text9(progress.summary?.now, 200),
+      now: text10(progress.summary?.now, 200),
       updatedAtUtc: time2(progress.updatedAtUtc)
     },
     report: report === null || report.taskId !== taskId2 ? null : {
       status: token(report.status),
-      summary: text9(report.summary),
+      summary: text10(report.summary),
       reportedAtUtc: time2(report.reportedAtUtc)
     },
     acceptance,
@@ -34890,8 +36141,8 @@ async function readTask(root, source, taskId2) {
   return { ...task, stage: taskStageOf(task) };
 }
 async function readWorldTaskBoard({ controllerRoot, agentId = null }) {
-  if (typeof controllerRoot !== "string" || !path50.isAbsolute(controllerRoot)) fail85("memory_invalid_input");
-  if (agentId !== null && (typeof agentId !== "string" || !ID44.test(agentId))) fail85("memory_invalid_input");
+  if (typeof controllerRoot !== "string" || !path50.isAbsolute(controllerRoot)) fail87("memory_invalid_input");
+  if (agentId !== null && (typeof agentId !== "string" || !ID47.test(agentId))) fail87("memory_invalid_input");
   const root = path50.resolve(controllerRoot);
   const sources = await readSources(root);
   const tasks = [];
@@ -34902,7 +36153,7 @@ async function readWorldTaskBoard({ controllerRoot, agentId = null }) {
     const names = (await readdir11(inbox, { withFileTypes: true }).catch(() => [])).filter((entry) => entry.isDirectory() && TASK_ID3.test(entry.name)).map((entry) => entry.name).sort();
     if (names.length > TASK_BOARD_LIMITS.tasksPerSource) truncated = true;
     for (const taskId2 of names.slice(-TASK_BOARD_LIMITS.tasksPerSource)) {
-      const task = await readTask(root, source, taskId2);
+      const task = await readTask2(root, source, taskId2);
       if (task !== null) tasks.push(task);
     }
   }
@@ -34933,9 +36184,9 @@ async function readWorldTaskBoard({ controllerRoot, agentId = null }) {
         report: null,
         acceptance: null,
         review: null,
-        stage: TASK_STAGES.includes(entry.stage) ? entry.stage : "dispatched",
+        stage: TASK_STAGES2.includes(entry.stage) ? entry.stage : "dispatched",
         availability: "not-here",
-        projectTitle: text9(index.title, 200)
+        projectTitle: text10(index.title, 200)
       });
     }
   }
@@ -34946,10 +36197,10 @@ async function readWorldTaskBoard({ controllerRoot, agentId = null }) {
 
 // orchestrator/src/project-rebind.mjs
 import { randomUUID as randomUUID18 } from "node:crypto";
-import { lstat as lstat27, mkdir as mkdir23, readdir as readdir12, readFile as readFile27, realpath as realpath16, rename as rename15, writeFile as writeFile15 } from "node:fs/promises";
+import { lstat as lstat27, mkdir as mkdir24, readdir as readdir12, readFile as readFile27, realpath as realpath16, rename as rename15, writeFile as writeFile16 } from "node:fs/promises";
 import path51 from "node:path";
 var RECEIPTS = path51.join(".project-local", "rebind-receipts");
-function fail86(code, detail) {
+function fail88(code, detail) {
   throw new ProjectPackageError(code, detail);
 }
 async function exists5(target2) {
@@ -34967,7 +36218,7 @@ function dshSessionSlug(cwd) {
 }
 async function writeJsonOver(target2, value) {
   const temporary = `${target2}.${process.pid}.${randomUUID18()}.tmp`;
-  await writeFile15(temporary, `${JSON.stringify(value)}
+  await writeFile16(temporary, `${JSON.stringify(value)}
 `, "utf8");
   await rename15(temporary, target2);
 }
@@ -34981,11 +36232,11 @@ async function rebindWorkedProject({
   claudeConfigDir,
   dshHome
 }) {
-  if (confirm !== projectId) fail86("rebind_confirmation_required", projectId);
+  if (confirm !== projectId) fail88("rebind_confirmation_required", projectId);
   const root = await realpath16(controllerRoot);
   const current = await readProjectWorkspace(store, { projectId });
   if (!current.configured) return rebindProjectWorkspace(store, { projectId, workspacePath });
-  const target2 = await realpath16(workspacePath).catch(() => fail86("rebind_folder_missing", workspacePath));
+  const target2 = await realpath16(workspacePath).catch(() => fail88("rebind_folder_missing", workspacePath));
   if (current.workspacePath.toLowerCase() === target2.toLowerCase()) {
     return rebindProjectWorkspace(store, { projectId, workspacePath: target2 });
   }
@@ -34993,9 +36244,9 @@ async function rebindWorkedProject({
   const agents = (catalog?.value?.agents ?? []).filter((agent) => agent.projectId === projectId);
   const worked = agents.some((agent) => agent.state !== "archived" || (agent.operations ?? []).length > 0);
   if (!worked) return rebindProjectWorkspace(store, { projectId, workspacePath: target2 });
-  if (agents.some((agent) => agent.currentOperationId)) fail86("rebind_project_busy", projectId);
+  if (agents.some((agent) => agent.currentOperationId)) fail88("rebind_project_busy", projectId);
   const paths = await instancePaths(root, projectId, { claudeConfigDir, dshHome });
-  if (await gatewayRunning(paths.gatewayStatus)) fail86("gateway_running");
+  if (await gatewayRunning(paths.gatewayStatus)) fail88("gateway_running");
   const moves = [];
   const journals = [];
   const caches = [];
@@ -35007,7 +36258,7 @@ async function rebindWorkedProject({
       if (!await exists5(journal)) continue;
       const session = JSON.parse(await readFile27(journal, "utf8"));
       if (typeof session.cwd !== "string" || session.cwd.toLowerCase() !== current.workspacePath.toLowerCase()) {
-        fail86("rebind_session_elsewhere", `${threadId2}: ${session.cwd}`);
+        fail88("rebind_session_elsewhere", `${threadId2}: ${session.cwd}`);
       }
       journals.push({ journal, session, threadId: threadId2 });
       const oldCwd = session.cwd;
@@ -35016,9 +36267,9 @@ async function rebindWorkedProject({
         for (const slug of await readdir12(claudeProjects).catch(() => [])) {
           const from = path51.join(claudeProjects, slug, name);
           if (!await exists5(from)) continue;
-          if (slug !== claudeProjectSlug(oldCwd)) fail86("rebind_provider_folder_unknown", from);
+          if (slug !== claudeProjectSlug(oldCwd)) fail88("rebind_provider_folder_unknown", from);
           const to = path51.join(claudeProjects, claudeProjectSlug(target2), name);
-          if (await exists5(to)) fail86("rebind_target_exists", to);
+          if (await exists5(to)) fail88("rebind_target_exists", to);
           moves.push({ from, to });
         }
       }
@@ -35027,9 +36278,9 @@ async function rebindWorkedProject({
         const from = path51.join(dshSessions, slug, threadId2);
         if (!await exists5(from)) continue;
         const newSlug = dshSessionSlug(target2);
-        if (slug !== dshSessionSlug(oldCwd) || newSlug === null) fail86("rebind_provider_folder_unknown", from);
+        if (slug !== dshSessionSlug(oldCwd) || newSlug === null) fail88("rebind_provider_folder_unknown", from);
         const to = path51.join(dshSessions, newSlug, threadId2);
-        if (await exists5(to)) fail86("rebind_target_exists", to);
+        if (await exists5(to)) fail88("rebind_target_exists", to);
         moves.push({ from, to });
       }
       const cache = path51.join(paths.dshHome, "storages", "session_projcache", "sessions", `${threadId2}.json`);
@@ -35039,7 +36290,7 @@ async function rebindWorkedProject({
   const done = [];
   try {
     for (const move of moves) {
-      await mkdir23(path51.dirname(move.to), { recursive: true });
+      await mkdir24(path51.dirname(move.to), { recursive: true });
       await rename15(move.from, move.to);
       done.push(move);
     }
@@ -35053,7 +36304,7 @@ async function rebindWorkedProject({
     const identity2 = await workspaceIdentity(target2);
     const keyed = { ...catalog.value, agents: catalog.value.agents.map((agent) => agent.projectId === projectId ? { ...agent, workspaceKey: identity2.workspaceKey } : agent) };
     if (!await store.compareAndSwapDocument({ key: "memory-agents-v1", expectedRevision: catalog.revision, value: keyed })) {
-      fail86("rebind_contention");
+      fail88("rebind_contention");
     }
     const bindingKey = workspaceDocumentKey(projectId);
     const binding = await store.readDocument({ key: bindingKey });
@@ -35064,7 +36315,7 @@ async function rebindWorkedProject({
     })) {
       const back = await store.readDocument({ key: "memory-agents-v1" });
       await store.compareAndSwapDocument({ key: "memory-agents-v1", expectedRevision: back.revision, value: catalog.value });
-      fail86("rebind_contention");
+      fail88("rebind_contention");
     }
   } catch (error) {
     for (const move of done.reverse()) await rename15(move.to, move.from).catch(() => {
@@ -35084,31 +36335,31 @@ async function rebindWorkedProject({
     rebasedAtUtc: now().toISOString()
   };
   const file = path51.join(root, RECEIPTS, `${receipt.rebasedAtUtc.replace(/[-:.]/gu, "")}-${projectId.replace(/[^A-Za-z0-9._-]/gu, "_")}.json`);
-  await mkdir23(path51.dirname(file), { recursive: true });
-  await writeFile15(file, `${JSON.stringify(receipt, null, 2)}
+  await mkdir24(path51.dirname(file), { recursive: true });
+  await writeFile16(file, `${JSON.stringify(receipt, null, 2)}
 `, "utf8");
   return { ...receipt, configured: true, changed: true, receipt: file };
 }
 
 // orchestrator/src/project-send-settle.mjs
-import { mkdir as mkdir24, realpath as realpath17, writeFile as writeFile16 } from "node:fs/promises";
+import { mkdir as mkdir25, realpath as realpath17, writeFile as writeFile17 } from "node:fs/promises";
 import path52 from "node:path";
 var AGENTS_KEY4 = "memory-agents-v1";
 var JOURNAL_FOLDERS = Object.freeze({ claude: "claude-sessions", acp: "acp-sessions" });
 var RECEIPTS2 = path52.join(".project-local", "settle-receipts");
 var TERMINAL7 = /* @__PURE__ */ new Set(["completed", "failed", "interrupted"]);
-function fail87(code, detail) {
+function fail89(code, detail) {
   throw new ProjectPackageError(code, detail);
 }
 async function turnOfSend(root, agent, operationId) {
   const folder = JOURNAL_FOLDERS[agent.binding?.providerId];
-  if (folder === void 0 || typeof agent.binding?.threadId !== "string") fail87("settle_unsupported", agent.agentId);
+  if (folder === void 0 || typeof agent.binding?.threadId !== "string") fail89("settle_unsupported", agent.agentId);
   const journal = await createClaudeCodeSessionJournal({ controllerRoot: root, folder });
   const threadId2 = agent.binding.threadId;
   const session = await journal.readSession(threadId2);
   if (session === null) return null;
-  for (const id12 of session.turnIds) {
-    const turn = await journal.readTurn(threadId2, id12);
+  for (const id14 of session.turnIds) {
+    const turn = await journal.readTurn(threadId2, id14);
     if (turn?.clientUserMessageId === operationId) return turn;
   }
   return null;
@@ -35121,20 +36372,20 @@ async function settleUncertainSend({
   confirm,
   now = () => /* @__PURE__ */ new Date()
 }) {
-  if (confirm !== agentId) fail87("settle_confirmation_required", agentId);
+  if (confirm !== agentId) fail89("settle_confirmation_required", agentId);
   const root = await realpath17(controllerRoot);
   if (await gatewayRunning(path52.join(root, ".project-local", "application-gateway", "status.v1.json"))) {
-    fail87("gateway_running");
+    fail89("gateway_running");
   }
   const catalog = await store.readDocument({ key: AGENTS_KEY4 });
   const agent = (catalog?.value?.agents ?? []).find((item) => item.agentId === agentId);
-  if (agent === void 0) fail87("settle_agent_not_found", agentId);
+  if (agent === void 0) fail89("settle_agent_not_found", agentId);
   const operation3 = agent.operations.find((item) => item.operationId === operationId);
-  if (operation3 === void 0) fail87("settle_operation_not_found", operationId);
+  if (operation3 === void 0) fail89("settle_operation_not_found", operationId);
   if (!["uncertain", "requested"].includes(operation3.state) || agent.currentOperationId !== operationId) {
-    fail87("settle_not_uncertain", operationId);
+    fail89("settle_not_uncertain", operationId);
   }
-  if (operation3.turnId) fail87("settle_turn_known", operationId);
+  if (operation3.turnId) fail89("settle_turn_known", operationId);
   const turn = await turnOfSend(root, agent, operationId);
   const threadId2 = agent.binding.threadId;
   const went = turn !== null;
@@ -35170,7 +36421,7 @@ async function settleUncertainSend({
     if (stored.currentOperationId === operationId) stored.currentOperationId = null;
   }
   if (!await store.compareAndSwapDocument({ key: AGENTS_KEY4, expectedRevision: catalog.revision, value: next })) {
-    fail87("settle_contention");
+    fail89("settle_contention");
   }
   const receipt = {
     schemaVersion: 1,
@@ -35186,8 +36437,8 @@ async function settleUncertainSend({
     settledAtUtc: atUtc
   };
   const file = path52.join(root, RECEIPTS2, `${atUtc.replace(/[-:.]/gu, "")}-${agentId.replace(/[^A-Za-z0-9._-]/gu, "_")}.json`);
-  await mkdir24(path52.dirname(file), { recursive: true });
-  await writeFile16(file, `${JSON.stringify(receipt, null, 2)}
+  await mkdir25(path52.dirname(file), { recursive: true });
+  await writeFile17(file, `${JSON.stringify(receipt, null, 2)}
 `, "utf8");
   return { ...receipt, receipt: file };
 }
@@ -35362,6 +36613,49 @@ async function entryOf(action, input2, result2, before, { store }) {
         summary: `Started a git repository in the folder of ${input2.projectId}`,
         noUndo: "git_not_undone"
       };
+    // Task mode (agent-tasks.mjs): each step of a task is the person's, and goes forward only (a task is cancelled, not undone).
+    case "start-task":
+    case "revise-task":
+    case "approve-task":
+    case "cancel-task": {
+      const task = action === "cancel-task" ? result2?.task : result2;
+      if (typeof task?.taskId !== "string") return null;
+      const summary2 = {
+        "start-task": `Gave task ${task.taskId} to ${task.agentId}: a plan first`,
+        "revise-task": `Asked ${task.agentId} to change the plan of task ${task.taskId}`,
+        "approve-task": `Approved revision ${task.approved?.revision ?? "?"} of the plan of task ${task.taskId}`,
+        "cancel-task": `Cancelled task ${task.taskId} of ${task.agentId}`
+      }[action];
+      return {
+        action: `task.${action.slice(0, -"-task".length)}`,
+        projectId: task.projectId,
+        quarterId: task.quarterId,
+        agentId: task.agentId,
+        summary: summary2,
+        noUndo: "task_not_undone"
+      };
+    }
+    // An agent's memory change the person approved: written as the person's, with the memory's undo.
+    case "approve-memory-change": {
+      if (result2?.state !== "approved" || !Number.isSafeInteger(result2.writtenRevision)) return null;
+      const scope = await store.readScope({ scopeId: result2.target.scopeId });
+      return {
+        ...memoryWrite(scope, { previousRevision: result2.writtenRevision - 1, revision: result2.writtenRevision }, PERSON2),
+        agentId: result2.target.agentId ?? result2.agentId
+      };
+    }
+    case "set-memory-autonomy": {
+      if (result2?.changed !== true) return null;
+      const agent = await agentOf2(store, input2.agentId);
+      return agent === null ? null : {
+        action: "agent.memory-autonomy",
+        projectId: agent.projectId,
+        quarterId: agent.quarterId,
+        agentId: agent.agentId,
+        summary: input2.allowed ? `${agent.agentId} changes its own memory without asking` : `${agent.agentId} asks before changing its own memory`,
+        noUndo: "setting_not_undone"
+      };
+    }
     case "register-desk-source": {
       const agent = await agentOf2(store, input2.agentId);
       return agent === null ? null : {
@@ -35399,14 +36693,14 @@ async function readJournal(store, input2) {
   }
   const projectIds = [.../* @__PURE__ */ new Set([
     ...(await store.listScopes({})).scopes.map((scope) => scope.projectId),
-    WORLD_PROJECT_ID2
+    WORLD_PROJECT_ID3
   ])];
   return { schemaVersion: 1, entries: await readActions(store, { projectIds, limit }) };
 }
 
 // orchestrator/src/action-journal-undo.mjs
 import { isDeepStrictEqual as isDeepStrictEqual3 } from "node:util";
-function fail88(code) {
+function fail90(code) {
   throw new ActionJournalError(code);
 }
 var PERSON3 = Object.freeze({ kind: "person", id: null });
@@ -35417,14 +36711,14 @@ async function requireOfferedModel(controllerRoot, profile3) {
   let models = [];
   if (profile3.provider === "claude") models = (await readClaudeProviderConfig(controllerRoot)).models;
   else if (profile3.provider === "acp") models = (await readAcpProviderConfig(controllerRoot))?.models ?? [];
-  if (!models.some((model) => model.id === profile3.model)) fail88("journal_undo_model_unavailable");
+  if (!models.some((model) => model.id === profile3.model)) fail90("journal_undo_model_unavailable");
 }
 var UNDO = {
   /** Undo of a created agent: closed while it has done nothing; once it worked, the person closes it. */
   async "close-agent"({ service, recipe, entry }) {
     const agent = await agentOf3(service, recipe.agentId);
-    if (agent.state !== "active") fail88("journal_undo_stale");
-    if (agent.operations.length > 0) fail88("journal_undo_agent_worked");
+    if (agent.state !== "active") fail90("journal_undo_stale");
+    if (agent.operations.length > 0) fail90("journal_undo_agent_worked");
     await service.closeAgent({ agentId: agent.agentId, operationId: `undo-${entry.entryId}` });
     return {
       action: "agent.close",
@@ -35435,7 +36729,7 @@ var UNDO = {
   },
   async "reopen-agent"({ service, recipe }) {
     const agent = await agentOf3(service, recipe.agentId);
-    if (agent.state !== "archived") fail88("journal_undo_stale");
+    if (agent.state !== "archived") fail90("journal_undo_stale");
     await service.reopenAgent({ agentId: agent.agentId });
     return {
       action: "agent.reopen",
@@ -35446,12 +36740,12 @@ var UNDO = {
   },
   async "set-profile"({ service, controllerRoot, recipe }) {
     const agent = await agentOf3(service, recipe.agentId);
-    if (!isDeepStrictEqual3(agent.profile, recipe.expect)) fail88("journal_undo_stale");
-    if (agent.state !== "active") fail88("journal_undo_stale");
+    if (!isDeepStrictEqual3(agent.profile, recipe.expect)) fail90("journal_undo_stale");
+    if (agent.state !== "active") fail90("journal_undo_stale");
     await requireOfferedModel(controllerRoot, recipe.profile);
     await service.change((doc) => {
       const current = service.find(doc, agent.agentId);
-      if (!isDeepStrictEqual3(current.profile, recipe.expect) || current.state !== "active") fail88("journal_undo_stale");
+      if (!isDeepStrictEqual3(current.profile, recipe.expect) || current.state !== "active") fail90("journal_undo_stale");
       current.profile = structuredClone(recipe.profile);
       current.profileChangedAtUtc = service.now().toISOString();
     });
@@ -35472,7 +36766,7 @@ var UNDO = {
         writeZone: recipe.writeZone
       });
     } catch (error) {
-      if (error?.code === "memory_revision_conflict") fail88("journal_undo_stale");
+      if (error?.code === "memory_revision_conflict") fail90("journal_undo_stale");
       throw error;
     }
     return {
@@ -35484,7 +36778,7 @@ var UNDO = {
   },
   async "set-permission-mode"({ service, recipe }) {
     const agent = await agentOf3(service, recipe.agentId);
-    if ((agent.permissionMode ?? null) !== recipe.expect) fail88("journal_undo_stale");
+    if ((agent.permissionMode ?? null) !== recipe.expect) fail90("journal_undo_stale");
     await service.setAgentPermissionMode({ agentId: agent.agentId, permissionMode: recipe.permissionMode });
     return {
       action: "agent.permission-mode",
@@ -35494,17 +36788,17 @@ var UNDO = {
     };
   },
   async "archive-project"({ store, recipe }) {
-    if ((await archivedSets(store)).projects.has(recipe.projectId)) fail88("journal_undo_stale");
+    if ((await archivedSets(store)).projects.has(recipe.projectId)) fail90("journal_undo_stale");
     await archiveProject({ store, projectId: recipe.projectId });
     return { action: "project.archive", summary: `Archived project ${recipe.projectId}` };
   },
   async "restore-project"({ store, recipe }) {
-    if (!(await archivedSets(store)).projects.has(recipe.projectId)) fail88("journal_undo_stale");
+    if (!(await archivedSets(store)).projects.has(recipe.projectId)) fail90("journal_undo_stale");
     await restoreProject({ store, projectId: recipe.projectId });
     return { action: "project.restore", summary: `Restored project ${recipe.projectId}` };
   },
   async "archive-quarter"({ store, recipe }) {
-    if ((await archivedSets(store)).quarters.has(`${recipe.projectId}/${recipe.quarterId}`)) fail88("journal_undo_stale");
+    if ((await archivedSets(store)).quarters.has(`${recipe.projectId}/${recipe.quarterId}`)) fail90("journal_undo_stale");
     await archiveQuarter({ store, projectId: recipe.projectId, quarterId: recipe.quarterId });
     return {
       action: "quarter.archive",
@@ -35513,7 +36807,7 @@ var UNDO = {
     };
   },
   async "restore-quarter"({ store, recipe }) {
-    if (!(await archivedSets(store)).quarters.has(`${recipe.projectId}/${recipe.quarterId}`)) fail88("journal_undo_stale");
+    if (!(await archivedSets(store)).quarters.has(`${recipe.projectId}/${recipe.quarterId}`)) fail90("journal_undo_stale");
     await restoreQuarter({ store, projectId: recipe.projectId, quarterId: recipe.quarterId });
     return {
       action: "quarter.restore",
@@ -35524,7 +36818,7 @@ var UNDO = {
   /** A memory goes back to the revision before the change, as a new revision; the later ones stay in its history. */
   async "memory-revision"({ store, recipe, entry }) {
     const current = await store.readScope({ scopeId: recipe.scopeId });
-    if (current.revision !== recipe.expectRevision) fail88("journal_undo_stale");
+    if (current.revision !== recipe.expectRevision) fail90("journal_undo_stale");
     const previous = await store.readScope({ scopeId: recipe.scopeId, revision: recipe.revision });
     const commandId = `undo-${entry.entryId}`;
     await store.authorizeWrite({
@@ -35564,7 +36858,7 @@ var UNDO = {
   async rename({ store, recipe }) {
     const names = await readNames(store, recipe.projectId);
     const current = recipe.objectKind === "project" ? names.project : names[`${recipe.objectKind}s`][recipe.objectId] ?? null;
-    if (current !== recipe.expect) fail88("journal_undo_stale");
+    if (current !== recipe.expect) fail90("journal_undo_stale");
     await setName(store, {
       projectId: recipe.projectId,
       kind: recipe.objectKind,
@@ -35580,18 +36874,18 @@ var UNDO = {
   },
   async "set-project-policy"({ controllerRoot, recipe }) {
     const current = (await readWorldRegistry(controllerRoot)).projects[recipe.projectId]?.policy ?? null;
-    if (!isDeepStrictEqual3(current, recipe.expect)) fail88("journal_undo_stale");
+    if (!isDeepStrictEqual3(current, recipe.expect)) fail90("journal_undo_stale");
     await recordWorldProjects(controllerRoot, [{ projectId: recipe.projectId, policy: recipe.policy }]);
     return { action: "project.policy", summary: `Where ${recipe.projectId} may be kept: back to the previous rule` };
   }
 };
 async function undoAction({ controllerRoot, store, service, projectId, entryId, now = () => /* @__PURE__ */ new Date() }) {
   const entry = await findAction(store, { projectId, entryId });
-  if (entry === null) fail88("journal_entry_not_found");
-  if (entry.undoneBy !== null) fail88("journal_already_undone");
-  if (entry.undo === null) fail88("journal_not_undoable");
+  if (entry === null) fail90("journal_entry_not_found");
+  if (entry.undoneBy !== null) fail90("journal_already_undone");
+  if (entry.undo === null) fail90("journal_not_undoable");
   const inverse = UNDO[entry.undo.kind];
-  if (!inverse) fail88("journal_not_undoable");
+  if (!inverse) fail90("journal_not_undoable");
   const done = await inverse({ controllerRoot, store, service, recipe: entry.undo, entry });
   const undo = await recordAction(store, {
     action: done.action,
@@ -35626,6 +36920,7 @@ async function runProjectMemoryCommand(options) {
       "set-agent-settings": "setAgentSettings",
       "preview-memory-document": "previewMemoryDocument",
       "approve-memory-document": "approveMemoryDocument",
+      "export-memory-document": "exportMemoryDocument",
       "register-desk-source": "registerDeskSource",
       "archive-project": "archiveProject",
       "restore-project": "restoreProject",
@@ -35646,7 +36941,17 @@ async function runProjectMemoryCommand(options) {
       "read-journal": "readJournal",
       "undo-action": "undoAction",
       rename: "renameObject",
-      "read-names": "readAllNames"
+      "read-names": "readAllNames",
+      "start-task": "startTask",
+      "revise-task": "reviseTask",
+      "approve-task": "approveTask",
+      "cancel-task": "cancelTask",
+      "read-tasks": "readTasks",
+      "read-task": "readTask",
+      "read-memory-changes": "readMemoryChanges",
+      "approve-memory-change": "decideMemoryChange",
+      "reject-memory-change": "decideMemoryChange",
+      "set-memory-autonomy": "setOwnMemoryAutonomy"
     };
     if (!Object.hasOwn(methods, action)) throw new Error("unsupported_command");
     let input2 = {};
@@ -35706,7 +37011,16 @@ async function runProjectMemoryCommand(options) {
       throw new Error("invalid_argument:confirm-user-command");
     }
     phase = "store-open";
-    if (["register-artifact", "register-desk-source", "set-permission-mode"].includes(action) && (typeof input2.agentId !== "string" || options["confirm-agent"] !== input2.agentId)) throw new Error("invalid_argument:confirm-agent");
+    if ([
+      "register-artifact",
+      "register-desk-source",
+      "set-permission-mode",
+      "start-task",
+      "revise-task",
+      "approve-task",
+      "cancel-task",
+      "set-memory-autonomy"
+    ].includes(action) && (typeof input2.agentId !== "string" || options["confirm-agent"] !== input2.agentId)) throw new Error("invalid_argument:confirm-agent");
     const store = await createProjectMemoryStore({ controllerRoot: root });
     const before = await journalBefore(action, input2, { store, root });
     const done = async (result2) => {
@@ -35716,7 +37030,7 @@ async function runProjectMemoryCommand(options) {
     phase = "input-validate";
     if (action === "save-user-edit") {
       const expected = ["scopeId", "expectedRevision", "entries", "operationId", "commandId", "actorId"];
-      if (Object.keys(input2).sort().join() !== expected.sort().join() || [input2.operationId, input2.actorId].some((id12) => typeof id12 !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/.test(id12))) throw new Error("invalid_argument:input-file");
+      if (Object.keys(input2).sort().join() !== expected.sort().join() || [input2.operationId, input2.actorId].some((id14) => typeof id14 !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$/.test(id14))) throw new Error("invalid_argument:input-file");
       phase = "authorize";
       await store.authorizeWrite({
         commandId: input2.commandId,
@@ -35800,7 +37114,7 @@ async function runProjectMemoryCommand(options) {
       return await undoAction({ controllerRoot: root, store, service, projectId: input2.projectId, entryId: input2.entryId });
     }
     phase = "operation";
-    if (["preview-memory-document", "approve-memory-document"].includes(action)) {
+    if (["preview-memory-document", "approve-memory-document", "export-memory-document"].includes(action)) {
       const service = await createProjectMemoryService({ controllerRoot: root, store });
       return done(await service[methods[action]](input2));
     }
@@ -35822,6 +37136,20 @@ async function runProjectMemoryCommand(options) {
       }
       const workspace3 = await resolveProjectWorkspace(store, input2.projectId);
       return done({ projectId: input2.projectId, ...await initProjectGit({ folder: workspace3.workspacePath }) });
+    }
+    if (["start-task", "revise-task", "approve-task", "cancel-task", "read-tasks", "read-task"].includes(action)) {
+      const service = await createProjectMemoryService({ controllerRoot: root, store });
+      const result2 = await service[methods[action]](input2);
+      return action.startsWith("read-") ? result2 : done(result2);
+    }
+    if (["read-memory-changes", "approve-memory-change", "reject-memory-change", "set-memory-autonomy"].includes(action)) {
+      if (["approve-memory-change", "reject-memory-change"].includes(action) && (Object.keys(input2).sort().join() !== "changeId,projectId" || options["confirm-change"] !== input2.changeId)) {
+        throw new Error("invalid_argument:confirm-change");
+      }
+      const service = await createProjectMemoryService({ controllerRoot: root, store });
+      if (action === "read-memory-changes") return await service.readMemoryChanges(input2);
+      if (action === "set-memory-autonomy") return done(await service.setOwnMemoryAutonomy(input2));
+      return done(await service.decideMemoryChange({ ...input2, approve: action === "approve-memory-change" }));
     }
     if (action === "set-permission-mode") {
       const service = await createProjectMemoryService({ controllerRoot: root, store });
@@ -35859,7 +37187,7 @@ async function runProjectMemoryCommand(options) {
       if (root !== null) {
         try {
           const directory = path53.join(root, ".project-local", "memory-cli-diagnostics");
-          await mkdir25(directory, { recursive: true });
+          await mkdir26(directory, { recursive: true });
           if (path53.relative(directory, await realpath18(directory)) !== "") throw new Error("unsafe_diagnostic_path");
           const action = [
             "list-scopes",
@@ -35873,6 +37201,7 @@ async function runProjectMemoryCommand(options) {
             "set-agent-settings",
             "preview-memory-document",
             "approve-memory-document",
+            "export-memory-document",
             "register-desk-source",
             "archive-project",
             "restore-project",
@@ -35893,7 +37222,17 @@ async function runProjectMemoryCommand(options) {
             "read-journal",
             "undo-action",
             "rename",
-            "read-names"
+            "read-names",
+            "start-task",
+            "revise-task",
+            "approve-task",
+            "cancel-task",
+            "read-tasks",
+            "read-task",
+            "read-memory-changes",
+            "approve-memory-change",
+            "reject-memory-change",
+            "set-memory-autonomy"
           ].includes(options.action) ? options.action : "unknown";
           const record = {
             schemaVersion: 1,
@@ -35905,7 +37244,7 @@ async function runProjectMemoryCommand(options) {
             nodeVersion: process.versions.node
           };
           delete record.diagnosticPersisted;
-          await writeFile17(
+          await writeFile18(
             path53.join(directory, `${error.diagnosticId}.json`),
             JSON.stringify(record) + "\n",
             { flag: "wx", mode: 384 }
@@ -35964,7 +37303,7 @@ function output(value, asJson = false) {
   else console.log(JSON.stringify(value, null, 2));
 }
 async function sha256File2(filePath) {
-  const digest7 = createHash34("sha256");
+  const digest7 = createHash36("sha256");
   await new Promise((resolve, reject) => {
     const stream = createReadStream(filePath);
     stream.on("data", (chunk) => digest7.update(chunk));

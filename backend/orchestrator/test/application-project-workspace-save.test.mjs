@@ -49,6 +49,17 @@ test("existing UTF-8 file saves only against its exact read hash and returns a b
   assert.equal(await readFile(path.join(f.root, "docs", "notes.md"), "utf8"), "external edit\n");
 });
 
+test("a file that begins with a UTF-8 byte-order mark reads and saves with the mark kept", async (t) => {
+  const f = await fixture(t);
+  const bom = Buffer.from([0xef, 0xbb, 0xbf]);
+  await writeFile(path.join(f.root, "docs", "notes.md"), Buffer.concat([bom, Buffer.from("hello\r\n")]));
+  const old = await f.read("docs/notes.md");
+  assert.equal(old.text, "\ufeffhello\r\n");
+  await f.save({ input: { ...f.input, expectedSha256: old.contentSha256, text: "\ufeffchanged\r\n" } });
+  assert.deepEqual(await readFile(path.join(f.root, "docs", "notes.md")),
+    Buffer.concat([bom, Buffer.from("changed\r\n")]));
+});
+
 test("save rejects unsafe path, reparse, binary and oversized source before writer entry", async (t) => {
   const f = await fixture(t);
   const old = await f.read("docs/notes.md");

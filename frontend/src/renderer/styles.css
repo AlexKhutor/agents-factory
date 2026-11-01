@@ -525,3 +525,67 @@ footer#bottomBar{height:36px;flex:none;display:flex;align-items:center;gap:10px;
 .history-mark{color:var(--muted);font-size:12px}
 .history-details{padding:0 4px 10px 58px}
 .history-details .actions{margin-top:6px}
+/* Task mode and the Plan tab (workspace.js renderPlan): a task is planned first, worked on once approved. */
+.chat-mode{display:inline-flex;border:1px solid var(--line);border-radius:5px;overflow:hidden}
+.chat-mode button{border-radius:0;padding:3px 10px}
+.chat-mode button.active{background:#2f3a26;color:var(--gold)}
+.workspace-tabs button.waiting{color:var(--amber)}
+.plan-head{display:flex;align-items:baseline;gap:12px;margin:2px 0 6px}
+.plan-stage{font-size:12px;color:var(--muted)}
+.plan-stage.waiting{color:var(--amber);font-weight:650}
+.plan-stage.stage-done{color:var(--green)}
+.plan-task{white-space:pre-wrap;margin:0 0 10px;padding:8px 10px;border-left:3px solid var(--line);background:#1e231e}
+.plan-card{border:1px solid var(--line);border-radius:6px;padding:8px 12px 10px;margin:8px 0}
+.plan-label{margin:10px 0 4px;font-size:11px;letter-spacing:.08em;color:var(--gold);text-transform:uppercase}
+.plan-understanding,.plan-raw{white-space:pre-wrap}
+.plan-question{margin:4px 0 8px}
+.plan-question-text{margin-bottom:3px}
+.plan-answer-given{color:var(--muted);padding-left:14px}
+.plan-steps{margin:2px 0;padding-left:22px}
+.plan-step{margin:3px 0}
+.plan-step-mark{display:inline-block;width:16px;margin-left:-2px;color:var(--muted)}
+.plan-step.change-added{color:var(--green)}
+.plan-step.change-removed{color:var(--muted);text-decoration:line-through}
+.plan-step.status-done .plan-step-mark{color:var(--green)}
+.plan-step.status-in-progress{color:var(--gold)}
+.plan-card-head{display:flex;align-items:center;gap:6px}
+.plan-card-head.toggles{cursor:pointer;user-select:none}
+.plan-card-head.toggles:hover .section-title{color:var(--text)}
+.plan-chevron{color:var(--gold);width:10px}
+.plan-result-row{padding:6px 0;border-bottom:1px solid #2c3129}
+.plan-result-row:last-child{border-bottom:0}
+.plan-result-path{font-family:Consolas,monospace;font-size:12px}
+.plan-result-note{color:var(--muted);margin:2px 0}
+.plan-result-problem{color:var(--muted);font-size:12px}
+.plan-card.closed .plan-body{display:none}
+.plan-card.open .plan-summary{display:none}
+.plan-summary{margin-top:4px}
+.entry.memory-change-added .entry-title{color:var(--green)}
+.entry.memory-change-removed .entry-title{color:var(--muted);text-decoration:line-through}
+.entry.memory-change-changed .entry-title{color:var(--gold)}
+.file-image{display:block;max-width:100%;height:auto;margin:6px 0;border:1px solid var(--line);background:#0f130d}
+.plan-card.nested{margin:6px 0;padding:4px 10px 6px;border-color:#2c3129}
+.plan-earlier-card{margin:2px 0}
+.plan-earlier-card .plan-earlier{border-bottom:0;flex:1}
+.plan-step-name{font-weight:600}
+.plan-step-detail{color:var(--muted)}
+.plan-step.change-added .plan-step-detail{color:inherit}
+.plan-actions{margin-top:8px}
+.plan-remarks{margin:6px 0}
+.plan-remarks textarea{margin-bottom:6px}
+.plan-earlier{display:flex;gap:10px;padding:4px 0;border-bottom:1px solid #2c3129;font-size:12px}
+.plan-earlier-id{color:var(--muted);min-width:72px}
+.plan-earlier-stage{min-width:120px}
+.plan-earlier-text{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* The agent's own memory changes in its chat (workspace.js memoryChangeCard). */
+.memory-change-reason{color:var(--muted);margin-bottom:6px}
+.memory-change-line{margin:4px 0}
+.memory-change-mark{display:inline-block;width:16px;font-weight:700}
+.memory-change-title{font-weight:600}
+.memory-change-line.change-added .memory-change-mark{color:var(--green)}
+.memory-change-line.change-removed{color:var(--muted)}
+.memory-change-line.change-removed .memory-change-title{text-decoration:line-through}
+.memory-change-previous{margin-left:16px;color:var(--muted);text-decoration:line-through;white-space:pre-wrap}
+.memory-change-text{margin-left:16px;white-space:pre-wrap}
+.memory-autonomy{display:flex;align-items:center;gap:8px;margin:4px 0 10px}
+.memory-autonomy input{width:auto}

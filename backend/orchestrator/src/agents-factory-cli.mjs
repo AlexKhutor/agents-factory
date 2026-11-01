@@ -6,4 +6,4 @@
 
 import { runCli } from "./agents-factory-commands.mjs";
 
-process.exitCode = await runCli(process.argv.slice(2));
+process.exitCode = await runCli(process.argv.slice(2), { cliPath: process.argv[1] ?? null });

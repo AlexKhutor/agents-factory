@@ -157,10 +157,19 @@ test("the Gateway settles a finished Claude turn at once, so the agent is idle w
   assert.equal(operation.state, "completed");
   assert.match(operation.settledAtUtc, /Z$/u);
   assert.equal((await service.listActivity())[0].activity.state, "idle");
-  // Every turn carries the desk's tools: the memory document and the controller task tools.
+  // Every turn carries the desk's tools: the memory document, the memory tools and the controller task tools.
   assert.deepEqual(sdk.calls[0].options.allowedTools, ["mcp__desk__write_memory_from_document",
+    "mcp__desk__read_memory", "mcp__desk__change_memory",
     "mcp__desk__task_read", "mcp__desk__task_accept", "mcp__desk__task_progress",
     "mcp__desk__task_confirm_plan", "mcp__desk__task_report"]);
-  const taskRead = sdk.calls[0].options.mcpServers.desk.tools.find((tool) => tool.name === "task_read");
-  assert.match((await taskRead.handler({ taskId: "some-task" })).content[0].text, /not registered for controller tasks/u);
+  const deskTool = (name) => sdk.calls[0].options.mcpServers.desk.tools.find((tool) => tool.name === name);
+  assert.match((await deskTool("task_read").handler({ taskId: "some-task" })).content[0].text, /not registered for controller tasks/u);
+  // The agent's change of its own memory waits for the person; another memory is not its to change.
+  const asked = (await deskTool("change_memory").handler({ target: "own", reason: "test",
+    changes: [{ action: "set", title: "Tools", text: "pnpm" }] })).content[0].text;
+  assert.match(asked, /^Asked: change mem-[0-9a-z]{4} waits for the person's approval in the chat/u);
+  assert.match(asked, /\+ Tools/u);
+  assert.match((await deskTool("change_memory").handler({ target: "project",
+    changes: [{ action: "set", title: "x", text: "y" }] })).content[0].text, /^Nothing changed: this memory is not yours to change/u);
+  assert.match((await deskTool("read_memory").handler({ target: "own" })).content[0].text, /memory is empty/u);
 });

@@ -35,6 +35,10 @@ const workspaceState = {
   // Pending questions of the agent for the conversation: { agentId, records, loading, failed, key }.
   chatQuestions: null,
   trace: null,
+  // The agents' tasks from task mode (the backend's agent-tasks.mjs): agentId -> { readAt, tasks, error }.
+  tasks: new Map(),
+  // The open agent's pending memory changes (the backend's memory-changes.mjs): { agentId, changes, failed }.
+  memoryChanges: null,
 };
 
 const isWorkspaceOpen = () => workspaceState.node !== null;
@@ -152,6 +156,7 @@ function agentOf() {
 
 const TABS = Object.freeze([
   ["chat", tx("Conversation")],
+  ["plan", tx("Plan")],
   ["trace", tx("Trace")],
   ["tasks", tx("Tasks")],
   ["questions", tx("Questions")],
@@ -216,10 +221,15 @@ function renderWorkspace() {
   if (workspaceState.tab === "scope" && scopeTab === null) workspaceState.tab = "chat";
   for (const [id, title] of tabList) {
     // Skills are a workspace tab, not a window beside it; their count is shown on the tab.
-    const label = id === "skills" ? `${title} · ${sceneSkillsOf(node).length}` : title;
+    // The Plan tab is marked while the agent's task waits for the person.
+    const label = id === "skills" ? `${title} · ${sceneSkillsOf(node).length}` : id === "plan" ? planTabLabel(node.agentId) : title;
     const button = el("button", workspaceState.tab === id ? "active" : null, label);
+    button.dataset.tab = id;
+    if (id === "plan" && taskWaitsForPerson(node.agentId)) button.classList.add("waiting");
     button.addEventListener("click", () => {
       workspaceState.tab = id;
+      // The artifact list is read again each time its tab opens: a finished task may have added to it.
+      if (id === "artifacts") workspaceState.artifacts = null;
       renderWorkspace();
     });
     tabs.append(button);
@@ -229,6 +239,9 @@ function renderWorkspace() {
 
   const body = el("div", "workspace-body");
   panel.append(body);
+  if (agent !== null && workspaceState.tab !== "plan" && tasksOf(agent.agentId) === null) {
+    loadAgentTasks(node).then(() => { if (workspaceState.node?.agentId === node.agentId) paintPlanTabLabel(); });
+  }
 
   if (agent === null) {
     body.append(noteBlock("error",
@@ -237,6 +250,8 @@ function renderWorkspace() {
     renderChat(body, agent);
     // The conversation is on screen, so the agent's answer has been read.
     atlasMarkTurnSeen(agent.agentId);
+  } else if (workspaceState.tab === "plan") {
+    renderPlan(body, agent);
   } else if (workspaceState.tab === "trace") {
     renderTrace(body, agent);
   } else if (workspaceState.tab === "scope") {
@@ -775,13 +790,7 @@ function loadModelCatalog() {
     const agent = agentOf();
     if (line !== null && agent !== null) line.textContent = modelWords(agent);
     // The model picker by the input field gets the list in place: the typed text is not touched.
-    const picker = document.getElementById("chatModel");
-    if (picker !== null && agent !== null) {
-      const [model, effort] = renderModelPicker(agent, document.querySelector(".chat-result"));
-      const oldEffort = document.getElementById("chatEffort");
-      picker.replaceWith(model);
-      oldEffort?.replaceWith(effort);
-    }
+    if (agent !== null) replaceModelPicker(agent, document.querySelector(".chat-result"));
   });
 }
 
@@ -1089,6 +1098,31 @@ function renderContext(body, agent) {
       + tx("the backend does not report, and it does not follow from this.")));
   }
   body.append(el("div", "section-title", tx("Memory")));
+  // Whether the agent changes its own memory without asking (the person's setting, memory-changes.mjs).
+  const autonomy = el("label", "memory-autonomy");
+  const tick = el("input");
+  tick.type = "checkbox";
+  tick.id = "memoryAutonomy";
+  tick.disabled = true;
+  autonomy.append(tick, el("span", null, tx("Changes its own memory without asking")));
+  autonomy.title = tx("Off: each change of its own memory waits for you in the chat. On: written at once, in the History with Undo. ")
+    + tx("Changes of a quarter's or a project's memory always wait for you.");
+  body.append(autonomy);
+  readPermissionModes().then((modes) => {
+    tick.checked = modes?.memoryAutonomy?.get(agent.agentId) === true;
+    tick.disabled = modes === null;
+  });
+  tick.addEventListener("change", async () => {
+    const wanted = tick.checked;
+    tick.disabled = true;
+    const response = await window.atlas.setMemoryAutonomy({ agentId: agent.agentId, allowed: wanted });
+    const modes = await readPermissionModes({ force: true });
+    tick.checked = modes?.memoryAutonomy?.get(agent.agentId) === true;
+    tick.disabled = modes === null;
+    if (!response.ok && response.error?.reasonCode !== "declined") {
+      autonomy.after(noteBlock("error", tx("Not changed: {code}.", { code: response.error?.reasonCode || response.error?.code })));
+    }
+  });
   body.append(infoRow(tx("project"), agent.projectId));
   body.append(infoRow(tx("quarter"), agent.quarterId));
   body.append(infoRow(tx("current operation"), agent.currentOperationId));
@@ -1121,6 +1155,13 @@ function renderContext(body, agent) {
     for (const [title, scope] of scopes) {
       shown.append(el("div", "section-title", tx("{title} · {value}", { title, value: scope ? scope.scopeId : tx("workspace2::not reported") })));
       if (!scope) continue;
+      // The person edits any memory here by hand - an entry's title and text, removing or adding one
+      // (the owner looked for it, 01.11): the same sheet as the memory buttons below.
+      if (atlasState.info?.mode !== "direct") {
+        const edit = actionButton(tx("Edit"), "query.memory.scope.read", () => openMemorySheet(scope.scopeId, title));
+        edit.classList.add("memory-edit");
+        shown.append(edit);
+      }
       shown.append(infoRow(tx("revision"), scope.revision));
       const entries = scope.entries ?? [];
       if (entries.length === 0) shown.append(el("div", "empty", tx("Empty. An empty memory is allowed.")));
@@ -1134,7 +1175,7 @@ function renderContext(body, agent) {
   }));
   if (atlasState.info?.mode !== "direct" && typeof agent.agentScopeId === "string") {
     // The agent's own memory is edited with the same sheet as project and quarter memory.
-    actions.append(actionButton(tx("Open agent memory"), "query.memory.scope.read",
+    actions.append(actionButton(tx("Edit agent memory"), "query.memory.scope.read",
       () => openMemorySheet(agent.agentScopeId, tx("Agent memory · {agentId}", { agentId: agent.agentId }))));
   }
   body.append(actions, shown);
@@ -1163,36 +1204,69 @@ const DOCUMENT_REFUSALS = Object.freeze({
 const documentRefusal = (error) => DOCUMENT_REFUSALS[error?.reasonCode] ?? DOCUMENT_REFUSALS[error?.code]
   ?? error?.reasonCode ?? error?.code ?? tx("no code");
 
+/** Where a memory goes as a document of the project folder, by default. */
+const defaultDocumentPath = (agent, kind) => (kind === "project" ? "docs/memory/project.md"
+  : kind === "quarter" ? `docs/memory/${agent.quarterId}.md` : `docs/memory/${agent.agentId}.md`);
+
 /**
- * Live mode: the memory document. The agent writes a memory draft into a file of the project
- * folder (“## …” headings are entries), you look at what it will turn into, and
- * approve exactly this text (its SHA-256). Code does the writing: the agent's tool
- * or your “Approve and write” button.
+ * Live mode: a memory in a text editor (the owner's choice of 01.11). Atlas writes the chosen memory
+ * as a Markdown file of the project folder (“## …” headings are its entries) and opens it in the
+ * person's editor; “Load back” shows what the edited file changes, and approving writes exactly
+ * that text (its SHA-256). An agent may write such a document too, for a long rewrite.
  */
 function renderLiveMemoryDocument(body, agent) {
-  body.append(el("div", "section-title", tx("Memory document")));
-  body.append(el("div", "muted", tx("Path to the draft from the root of the project folder. “## …” headings become memory entries; ")
-    + tx("approved entries will replace the current entries of the chosen memory.")));
+  body.append(el("div", "section-title", tx("Memory in a text editor")));
+  body.append(el("div", "muted", tx("Open a memory as a Markdown file of the project folder in your text editor: each “## …” heading is one entry. ")
+    + tx("Edit it, save it, then press “Load back”: you see what changes and approve it.")));
+  body.append(el("div", "muted", tx("An agent may write such a file too, for a long rewrite: enter its path and press “Load back”. ")
+    + tx("The agent's usual memory changes come as cards in its chat and need no file.")));
   const role = agent.settings?.role ?? "feature";
   const targets = [["agent", tx("Agent's own memory")]];
   if (role === "project-lead") targets.unshift(["project", tx("Project memory")]);
   if (role === "quarter-lead") targets.unshift(["quarter", tx("Quarter memory")]);
   workspaceState.documentPaths ??= new Map();
-  const pathInput = el("input", "field");
-  pathInput.placeholder = role === "quarter-lead" ? `docs/memory/${agent.quarterId}.md` : "docs/memory/project.md";
-  pathInput.value = workspaceState.documentPaths.get(agent.agentId)
-    ?? (role === "project-lead" ? "docs/memory/project.md" : role === "quarter-lead" ? `docs/memory/${agent.quarterId}.md` : "");
-  pathInput.addEventListener("input", () => workspaceState.documentPaths.set(agent.agentId, pathInput.value));
   const target = el("select", "field");
   for (const [value, label] of targets) {
     const option = el("option", null, label);
     option.value = value;
     target.append(option);
   }
+  const pathInput = el("input", "field");
+  pathInput.placeholder = defaultDocumentPath(agent, target.value);
+  pathInput.value = workspaceState.documentPaths.get(agent.agentId) ?? defaultDocumentPath(agent, target.value);
+  pathInput.addEventListener("input", () => workspaceState.documentPaths.set(agent.agentId, pathInput.value));
+  // Another memory chosen: its own file, unless the person typed a path of their own.
+  target.addEventListener("change", () => {
+    pathInput.placeholder = defaultDocumentPath(agent, target.value);
+    if (!workspaceState.documentPaths.has(agent.agentId)) pathInput.value = defaultDocumentPath(agent, target.value);
+  });
   const shown = el("div");
   const result = el("div");
+  const openInEditor = async () => {
+    result.replaceChildren();
+    shown.replaceChildren(el("div", "muted", tx("Writing the file…")));
+    const answer = await window.atlas.exportMemoryDocument({ agentId: agent.agentId, projectId: agent.projectId,
+      path: pathInput.value.trim(), target: target.value });
+    shown.replaceChildren();
+    if (!answer.ok) {
+      if (answer.error?.code === "user_declined") return;
+      shown.append(noteBlock("error", tx("Not opened: {value}.", { value: documentRefusal(answer.error) })));
+      return;
+    }
+    const { path, state, opened } = answer.data;
+    const said = { written: tx("Wrote “{path}” from the memory.", { path }),
+      same: tx("“{path}” is the memory as it is.", { path }),
+      replaced: tx("Replaced “{path}” with the memory as it is.", { path }),
+      kept: tx("“{path}” is kept as it is, with its edits.", { path }) }[state] ?? path;
+    shown.append(noteBlock("note", `${said} ${opened ? tx("It is open in your text editor: edit it, save it, then press “Load back”.")
+      : tx("The editor did not open: open the file in the project folder yourself, then press “Load back”.")}`));
+  };
   const showPreview = async () => {
     result.replaceChildren();
+    if (pathInput.value.trim() === "") {
+      shown.replaceChildren(noteBlock("note", tx("Enter the path of the file: the one Atlas opened, or the one the agent named in its chat.")));
+      return;
+    }
     shown.replaceChildren(el("div", "muted", tx("Reading the document…")));
     const answer = await window.atlas.previewMemoryDocument({ agentId: agent.agentId, path: pathInput.value.trim(),
       target: target.value });
@@ -1207,11 +1281,21 @@ function renderLiveMemoryDocument(body, agent) {
     shown.append(infoRow(tx("to"), tx("{into}{value}", { into, value: data.target.revision === null ? "" : tx(" · now rev. {revision}", { revision: data.target.revision }) })));
     shown.append(infoRow(tx("size"), data.bytes === null ? null : tx("{bytes} bytes", { bytes: data.bytes })));
     shown.append(infoRow("SHA-256", `${data.contentSha256.slice(0, 16)}…`));
-    shown.append(el("div", "section-title", tx("Entries · {length}", { length: data.entries.length })));
-    for (const entry of data.entries) {
-      const row = el("div", "entry");
-      row.append(el("div", "entry-title", entry.title || tx("(no heading)")));
-      if (entry.characters !== null) row.append(el("div", "entry-text", tx("{characters} chars", { characters: entry.characters })));
+    // What approving changes, entry by entry: + added, ~ changed, − removed, = the same.
+    const changes = Array.isArray(data.changes) && data.changes.length > 0 ? data.changes : null;
+    const changed = changes === null ? null : changes.filter((item) => item.change !== "same").length;
+    shown.append(el("div", "section-title", changes === null ? tx("Entries · {length}", { length: data.entries.length })
+      : tx("Entries · {length} · changes · {changed}", { length: data.entries.length, changed })));
+    if (changed === 0) shown.append(noteBlock("note", tx("Nothing changes: the file is the memory as it is.")));
+    for (const entry of changes ?? data.entries) {
+      const row = el("div", `entry${entry.change ? ` memory-change-${entry.change}` : ""}`);
+      const mark = { added: "+", changed: "~", removed: "−", same: "=" }[entry.change] ?? null;
+      const title = el("div", "entry-title", entry.title || tx("(no heading)"));
+      if (mark !== null) title.prepend(el("span", "plan-step-mark", mark));
+      row.append(title);
+      if (entry.change) row.append(el("div", "entry-text", { added: tx("will be added"), changed: tx("will change"),
+        removed: tx("will be removed"), same: tx("stays the same") }[entry.change]));
+      else if (entry.characters !== null) row.append(el("div", "entry-text", tx("{characters} chars", { characters: entry.characters })));
       shown.append(row);
     }
     if (data.excerpt !== "") {
@@ -1244,8 +1328,8 @@ function renderLiveMemoryDocument(body, agent) {
     shown.append(buttons);
   };
   const actions = el("div", "actions");
-  actions.append(trustedButton(tx("Show document"), showPreview));
-  body.append(pathInput, target, actions, shown, result);
+  actions.append(trustedButton(tx("Open in text editor"), openInEditor, { primary: true }), trustedButton(tx("Load back"), showPreview));
+  body.append(target, pathInput, actions, shown, result);
 }
 
 /**
@@ -1537,7 +1621,12 @@ async function pollAgentEvents(agent) {
     return;
   }
   if (action !== "invalidate") return;
-  if (invalidate.includes("conversation")) await readLive(agent);
+  if (invalidate.includes("conversation")) {
+    await readLive(agent);
+    await refreshAgentTasks(agent);
+    // A turn may have asked to change a memory.
+    if (workspaceState.tab === "chat") await loadMemoryChanges(agent);
+  }
   if (invalidate.includes("interactions") || invalidate.includes("attention")) {
     workspaceState.questions = null;
     await refresh();
@@ -2213,9 +2302,15 @@ function renderChat(body, agent) {
   const questions = el("div", "chat-questions");
   questions.id = "chatQuestions";
   questions.hidden = true;
-  body.append(status, feed, questions, renderCompose(agent));
+  // The agent's memory changes waiting for the person go there too.
+  const memoryChanges = el("div", "chat-questions");
+  memoryChanges.id = "chatMemoryChanges";
+  memoryChanges.hidden = true;
+  body.append(status, feed, questions, memoryChanges, renderCompose(agent));
   workspaceState.chatMounted = agent.agentId;
   syncChatQuestions(agent);
+  paintMemoryChanges(agent);
+  loadMemoryChanges(agent);
   if (workspaceState.feed === null || workspaceState.feed.agentId !== agent.agentId) {
     workspaceState.feed = emptyFeed(agent.agentId);
   }
@@ -2408,6 +2503,23 @@ function renderCompose(agent) {
       paintSendAvailability(send, sendReason, freshAgent());
       return;
     }
+    if (taskModeOf(agent.agentId)) {
+      const started = await startTaskFromChat(freshAgent(), typed);
+      if (!started.ok) {
+        result.replaceChildren(noteBlock("error", started.text));
+      } else {
+        result.replaceChildren(noteBlock("note", tx("The task is given: the agent answers with a plan first. Approve it on the Plan tab.")));
+        atlasState.drafts.delete(agent.agentId);
+        text.value = "";
+        paintPlanTabLabel();
+        await refresh();
+        if (workspaceState.chatSource === "live") await readLive(agent);
+        else await readFeed(agent);
+      }
+      delete send.dataset.busy;
+      paintSendAvailability(send, sendReason, freshAgent());
+      return;
+    }
     const mode = steerCheck.checked ? "steer" : "queue";
     const outcome = await guardedSend({
       agent: freshAgent(),
@@ -2462,7 +2574,23 @@ function renderCompose(agent) {
     stop.disabled = true;
     stop.title = tx("The agent has no current operation");
   }
-  actions.prepend(...renderModelPicker(agent, result), renderPermissionPicker(agent, result),
+  // Question or task: a task is planned first and worked on after the person approves the plan.
+  const modeBox = el("div", "chat-mode");
+  modeBox.id = "chatMode";
+  modeBox.title = tx("Question: the agent answers and may act as usual.\nTask: the agent answers with a plan first, ")
+    + tx("changes nothing, and works after you approve the plan on the Plan tab.");
+  for (const [task, label] of [[false, tx("Question")], [true, tx("Task")]]) {
+    const button = el("button", `small flat${taskModeOf(agent.agentId) === task ? " active" : ""}`, label);
+    button.dataset.mode = task ? "task" : "question";
+    button.addEventListener("click", () => {
+      setTaskMode(agent.agentId, task);
+      for (const other of modeBox.querySelectorAll("button")) other.classList.toggle("active", other === button);
+      text.placeholder = task ? tx("The task for the agent: it answers with a plan first") : tx("Message to the agent");
+    });
+    modeBox.append(button);
+  }
+  if (taskModeOf(agent.agentId)) text.placeholder = tx("The task for the agent: it answers with a plan first");
+  actions.prepend(modeBox, ...renderModelPicker(agent, result), renderPermissionPicker(agent, result),
     el("div", "spacer"), steerBox);
   actions.append(stop);
   // “Send” goes on the right, last, as in Claude Code.
@@ -2489,6 +2617,538 @@ function renderCompose(agent) {
     tx("Enter — send · Shift+Enter — new line · Shift+Tab — permission mode. ")
       + tx("Sending starts a turn and uses quota.")));
   return compose;
+}
+
+// --- the agent's own memory changes (the backend's memory-changes.mjs) -------------------
+//
+// An agent asks to add, change or remove entries of a memory with its desk tool; the
+// change waits for the person as a card in the agent's chat: what changes, line by
+// line, and why, with Approve and Reject. Approved, it is written at once, exactly as
+// shown; the History can undo it.
+
+/** What memory a change is about, in the window's words. */
+function memoryTargetWords(change) {
+  switch (change.target.kind) {
+    case "own": return tx("its own memory");
+    case "quarter": return tx("the quarter's memory");
+    case "project": return tx("the project's memory");
+    default: return tx("the memory of {name}", { name: displayName("agent", change.projectId, change.target.agentId ?? "?") });
+  }
+}
+
+/** Reads the open agent's pending memory changes and paints them. */
+async function loadMemoryChanges(agent) {
+  if (typeof window.atlas?.memoryChanges !== "function") return;
+  const response = await window.atlas.memoryChanges({ projectId: agent.projectId, agentId: agent.agentId, states: ["pending"] });
+  workspaceState.memoryChanges = { agentId: agent.agentId, changes: response.ok ? response.data.changes : [],
+    failed: response.ok ? null : response.error?.reasonCode || response.error?.code || "error" };
+  if (workspaceState.node?.agentId === agent.agentId) paintMemoryChanges(agent);
+}
+
+function paintMemoryChanges(agent) {
+  const box = document.getElementById("chatMemoryChanges");
+  const state = workspaceState.memoryChanges;
+  if (box === null) return;
+  const changes = state !== null && state.agentId === agent.agentId ? state.changes : [];
+  box.hidden = changes.length === 0;
+  box.replaceChildren(...changes.map((change) => memoryChangeCard(agent, change)));
+}
+
+function memoryChangeCard(agent, change) {
+  const card = el("div", "chat-question memory-change");
+  card.dataset.changeId = change.changeId;
+  card.append(el("div", "chat-question-head", tx("Asks to change {memory}", { memory: memoryTargetWords(change) })));
+  if (change.reason) card.append(el("div", "memory-change-reason", change.reason));
+  const list = el("div", "memory-change-lines");
+  for (const line of change.diff) {
+    const row = el("div", `memory-change-line change-${line.change}`);
+    row.append(el("span", "memory-change-mark", line.change === "added" ? "+" : line.change === "removed" ? "−" : "~"),
+      el("span", "memory-change-title", line.title));
+    if (line.change === "changed" && line.previous !== null) row.append(el("div", "memory-change-previous", line.previous));
+    if (line.text !== null) row.append(el("div", "memory-change-text", line.text));
+    list.append(row);
+  }
+  card.append(list);
+  // Its own result line: the chat's "chat-result" is the input field's.
+  const result = el("div", "memory-change-result");
+  const actions = el("div", "actions");
+  const decide = async (approve) => {
+    for (const button of actions.querySelectorAll("button")) button.disabled = true;
+    const response = approve
+      ? await window.atlas.approveMemoryChange({ projectId: change.projectId, changeId: change.changeId })
+      : await window.atlas.rejectMemoryChange({ projectId: change.projectId, changeId: change.changeId });
+    if (!response.ok) {
+      const code = response.error?.reasonCode || response.error?.code || "error";
+      result.replaceChildren(noteBlock("error", code === "memory_change_stale"
+        ? tx("The memory changed since the agent asked: nothing was written. Ask the agent again.")
+        : tx("Not done: {code}.", { code })));
+      for (const button of actions.querySelectorAll("button")) button.disabled = false;
+      if (code === "memory_change_stale") await loadMemoryChanges(agent);
+      return;
+    }
+    await loadMemoryChanges(agent);
+    await refresh({ silent: true });
+  };
+  const approve = el("button", "small primary", tx("Approve"));
+  approve.dataset.action = "approve-memory-change";
+  approve.addEventListener("click", () => decide(true));
+  const reject = el("button", "small", tx("Reject"));
+  reject.dataset.action = "reject-memory-change";
+  reject.addEventListener("click", () => decide(false));
+  actions.append(approve, reject);
+  card.append(actions, result);
+  return card;
+}
+
+// --- task mode and the Plan tab ------------------------------------------------------
+//
+// A message sent in task mode (the owner's decisions of 01.11,
+// docs/personal/plans/01_11_2026_task-mode-and-plan.md) becomes a task: the
+// agent plans first and changes nothing, and the Plan tab shows its plan - what it
+// understood, its questions, its steps - with Approve, Revise and Cancel. Only an
+// approved plan is worked on; approving does not widen the agent's rights. The
+// records are the backend's (agent-tasks.mjs), read through the trusted host; the
+// task board will show the same ones.
+
+const TASK_READ_TTL_MS = 15_000;
+
+/** Whether this agent's chat is in task mode (kept per agent until switched back). */
+const taskModeOf = (agentId) => (atlasState.ui.taskModeAgents ?? []).includes(agentId);
+
+function setTaskMode(agentId, on) {
+  const others = (atlasState.ui.taskModeAgents ?? []).filter((id) => id !== agentId);
+  setPanel("taskModeAgents", on ? [...others, agentId] : others);
+}
+
+/** The agent's tasks as last read: { readAt, tasks, error }; null before the first read. */
+const tasksOf = (agentId) => workspaceState.tasks.get(agentId) ?? null;
+
+/** Reads an agent's tasks (newest first); a fresh read is kept for a while unless `force`. */
+async function loadAgentTasks(node, { force = false } = {}) {
+  const known = tasksOf(node.agentId);
+  if (!force && known !== null && Date.now() - known.readAt < TASK_READ_TTL_MS) return known;
+  if (typeof window.atlas?.tasks !== "function") return null;
+  const response = await window.atlas.tasks({ projectId: node.projectId, agentId: node.agentId, limit: 20 });
+  const read = response.ok ? { readAt: Date.now(), tasks: response.data.tasks, error: null }
+    : { readAt: Date.now(), tasks: known?.tasks ?? [], error: response.error?.reasonCode || response.error?.code || "error" };
+  workspaceState.tasks.set(node.agentId, read);
+  return read;
+}
+
+/** Whether the agent's current task waits for the person (its plan, or a stopped turn). */
+function taskWaitsForPerson(agentId) {
+  const task = currentTask(tasksOf(agentId)?.tasks ?? []);
+  return task !== null && task.waitingFor === "person";
+}
+
+/** Re-reads the open agent's tasks after its conversation changed (a turn ended), and repaints what shows them. */
+async function refreshAgentTasks(agent) {
+  const node = workspaceState.node;
+  if (node === null || node.agentId !== agent.agentId) return;
+  const before = JSON.stringify(currentTask(tasksOf(agent.agentId)?.tasks ?? []));
+  await loadAgentTasks(node, { force: true });
+  const after = JSON.stringify(currentTask(tasksOf(agent.agentId)?.tasks ?? []));
+  if (before !== after && workspaceState.node?.agentId === agent.agentId
+    && (workspaceState.tab === "plan" || workspaceState.tab === "chat")) {
+    if (workspaceState.tab === "plan") renderWorkspace();
+    else paintPlanTabLabel();
+  }
+}
+
+/** The Plan tab's label: a mark while the task waits for the person. */
+function planTabLabel(agentId) {
+  return taskWaitsForPerson(agentId) ? `${tx("Plan")} ●` : tx("Plan");
+}
+
+function paintPlanTabLabel() {
+  const button = document.querySelector("#workspace .workspace-tabs [data-tab=\"plan\"]");
+  const node = workspaceState.node;
+  if (button === null || node === null) return;
+  button.textContent = planTabLabel(node.agentId);
+  button.classList.toggle("waiting", taskWaitsForPerson(node.agentId));
+}
+
+/**
+ * Sends a message for a task step, the way the chat sends one: steered into a
+ * running turn where the backend can, else a plain send. The message is what the
+ * chat shows; the agent gets the task's instruction with it (the backend).
+ */
+async function sendTaskMessage(agent, text) {
+  const steering = operationStatus("mutation.memory.agent.steer")?.status === "available";
+  const outcome = await guardedSend({
+    agent,
+    operation: operationStatus(steering ? "mutation.memory.agent.steer" : "mutation.memory.agent.send"),
+    send: (target) => (steering
+      ? window.atlas.steer({ agentId: target.agentId, text, mode: "queue" })
+      : window.atlas.send({ agentId: target.agentId, text })),
+  });
+  if (!outcome.sent) return { ok: false, text: outcome.reason };
+  if (!outcome.response.ok) return { ok: false, text: outcomeMessage(outcome.response, tx("Sent.")).text };
+  const identity = outcome.response.data?.identity;
+  if (identity !== undefined && identity !== null) workspaceState.lastSend = identity;
+  return { ok: true };
+}
+
+/** Why a task step cannot be sent now, or null: the agent must be idle and active. */
+function taskSendBlocked(agent) {
+  if (agent === null) return tx("The agent is not in the catalog.");
+  if (agent.state !== "active") return tx("The agent is not active.");
+  if (agent.currentOperationId !== null) return tx("The agent is busy with a turn: try again when it is idle.");
+  return null;
+}
+
+/** The chat's task-mode send: the task is made, then its text goes as the planning turn's message. */
+async function startTaskFromChat(agent, typed) {
+  const blocked = taskSendBlocked(agent);
+  if (blocked !== null) return { ok: false, text: blocked };
+  const started = await window.atlas.startTask({ agentId: agent.agentId, text: typed });
+  if (!started.ok) {
+    const code = started.error?.reasonCode || started.error?.code || "error";
+    return { ok: false, text: code === "task_agent_busy"
+      ? tx("This agent already has an open task: see the Plan tab.") : tx("The task was not started: {code}.", { code }) };
+  }
+  const tasks = tasksOf(agent.agentId)?.tasks ?? [];
+  workspaceState.tasks.set(agent.agentId, { readAt: Date.now(), tasks: [started.data.task, ...tasks], error: null });
+  const sent = await sendTaskMessage(agent, typed);
+  if (!sent.ok) {
+    return { ok: false, text: tx("The task {taskId} is saved, but its message did not go: {reason} The next message to this agent starts its plan.",
+      { taskId: started.data.task.taskId, reason: sent.text }) };
+  }
+  return { ok: true };
+}
+
+/** Which plan cards are open, by task (and task#revision), while the window is open. */
+const planCardsOpen = new Map();
+
+/**
+ * A plan as one card (the owner's check of 01.11): closed, it says in a line what the task is
+ * about; a click on its top line opens the whole plan and closes it again. It is only shown or
+ * hidden, never drawn again: answers being typed stay. `title` is a text or a node.
+ */
+function planCard({ key, title, summary, openByDefault, fill, nested = false }) {
+  const card = el("div", `plan-card${nested ? " nested" : ""}`);
+  const head = el("div", "plan-card-head toggles");
+  const chevron = el("span", "plan-chevron");
+  head.append(chevron, typeof title === "string" ? el("div", "section-title", title) : title);
+  const inside = el("div", "plan-body");
+  const show = (open) => {
+    card.classList.toggle("open", open);
+    card.classList.toggle("closed", !open);
+    chevron.textContent = open ? "▾" : "▸";
+    head.title = open ? tx("Close the plan") : tx("Open the whole plan");
+  };
+  head.addEventListener("click", () => {
+    const open = !card.classList.contains("open");
+    planCardsOpen.set(key, open);
+    show(open);
+  });
+  show(planCardsOpen.get(key) ?? openByDefault);
+  card.append(head);
+  if (summary) card.append(el("div", "plan-summary", summary));
+  card.append(inside);
+  fill(inside);
+  return { card, head };
+}
+
+/** What a closed plan says: what the task is about, briefly, and how many steps it has. */
+function planSummary(revision, steps) {
+  const about = String(revision?.understanding || revision?.raw || "").replace(/\s+/gu, " ").trim();
+  const brief = about.length > 220 ? `${about.slice(0, 219).trimEnd()}…` : about;
+  const done = steps.filter((step) => step.status === "done").length;
+  const count = steps.some((step) => step.status)
+    ? tx("steps done: {done} of {total}", { done, total: steps.length })
+    : txn("{count} steps", steps.length);
+  return brief ? `${brief} · ${count}` : count;
+}
+
+/** A step as the whole plan shows it: its short name in bold, then what exactly. */
+function planStepText(text) {
+  const parts = stepParts(text);
+  const node = el("span", "plan-step-text");
+  if (parts.named) node.append(el("span", "plan-step-name", parts.name), el("span", "plan-step-detail", ` — ${parts.detail}`));
+  else node.textContent = text;
+  return node;
+}
+
+/** The understanding and steps of a plan read later (an earlier revision or task): nothing to answer. */
+function fillPlanRecord(inside, revision, { steps = null, answers = [], remarks = [] } = {}) {
+  if (!revision.formatted) {
+    inside.append(el("div", "plan-raw", revision.raw ?? ""));
+  } else {
+    if (revision.understanding) {
+      inside.append(el("div", "plan-label", tx("Understanding")), el("div", "plan-understanding", revision.understanding));
+    }
+    if (revision.questions.length > 0) {
+      inside.append(el("div", "plan-label", tx("Questions")));
+      revision.questions.forEach((question, index) => {
+        const row = el("div", "plan-question");
+        row.append(el("div", "plan-question-text", `${index + 1}. ${question}`));
+        if (answers[index]) row.append(el("div", "plan-answer-given", answers[index]));
+        inside.append(row);
+      });
+    }
+    inside.append(el("div", "plan-label", tx("Steps")));
+    const list = el("ol", "plan-steps");
+    for (const step of steps ?? revision.steps.map((text) => ({ text }))) {
+      const item = el("li", `plan-step${step.status ? ` status-${step.status}` : ""}`);
+      if (step.status === "done") item.append(el("span", "plan-step-mark", "✓"));
+      item.append(planStepText(step.text));
+      list.append(item);
+    }
+    inside.append(list);
+  }
+  for (const remark of remarks) {
+    inside.append(el("div", "plan-label", tx("Your remarks")), el("div", "plan-understanding", remark.text));
+  }
+}
+
+/** Why a listed result is not among the agent's artifacts, in the window's words. */
+function resultProblemWords(code) {
+  switch (code) {
+    case "outside_project": return tx("it is outside the project folder");
+    case "source_unavailable": return tx("the file is not there");
+    case "access_denied": return tx("it is not a text file, or it is a private one");
+    case "conflict": return tx("the artifact list is full, or holds another file under this name");
+    case "stale_revision": return tx("the file changed while it was read");
+    default: return tx("not registered ({code})", { code: code ?? "unknown" });
+  }
+}
+
+/**
+ * The files the agent listed as its finished task's results (agent-tasks.mjs results): each one in
+ * its Artifacts, with the hash it had then, or why not. The task board's card shows the same.
+ */
+function taskResultsCard(task) {
+  const card = el("div", "plan-card plan-results");
+  card.append(el("div", "section-title", tx("Results · {count}", { count: task.results.length })));
+  if (task.results.length === 0) card.append(el("div", "empty", tx("The agent listed no files as results.")));
+  for (const result of task.results) {
+    const row = el("div", "plan-result-row");
+    row.append(el("div", "plan-result-path", result.path));
+    if (result.note) row.append(el("div", "plan-result-note", result.note));
+    if (result.artifactId) {
+      const go = el("button", "small plan-result-artifact", tx("Open in Artifacts"));
+      go.addEventListener("click", () => {
+        workspaceState.artifacts = null;
+        workspaceState.tab = "artifacts";
+        renderWorkspace();
+      });
+      row.append(go);
+    } else {
+      row.append(el("div", "plan-result-problem", tx("Not in Artifacts: {why}.", { why: resultProblemWords(result.problem) })));
+    }
+    card.append(row);
+  }
+  return card;
+}
+
+function renderPlan(body, agent) {
+  const node = workspaceState.node;
+  const known = tasksOf(agent.agentId);
+  if (known === null) {
+    body.append(el("div", "empty", tx("Reading the agent's tasks...")));
+    loadAgentTasks(node).then(() => {
+      if (workspaceState.node?.agentId === agent.agentId && workspaceState.tab === "plan") renderWorkspace();
+    });
+    return;
+  }
+  if (Date.now() - known.readAt >= TASK_READ_TTL_MS) {
+    loadAgentTasks(node).then(() => {
+      if (workspaceState.node?.agentId === agent.agentId && workspaceState.tab === "plan") renderWorkspace();
+    });
+  }
+  if (known.error !== null) body.append(noteBlock("error", tx("Tasks not read: {code}.", { code: known.error })));
+  const task = currentTask(known.tasks);
+  if (task === null) {
+    body.append(el("div", "empty", tx("This agent has no tasks yet.")));
+    body.append(noteBlock("note", tx("Switch the chat to “Task” and write the task: the agent answers with a plan first, ")
+      + tx("changes nothing, and starts the work only after you approve the plan here.")));
+    return;
+  }
+  const result = el("div", "plan-result");
+  const act = async (run, sendText) => {
+    const fresh = agentOf();
+    for (const button of body.querySelectorAll("button")) button.disabled = true;
+    const blocked = sendText === null ? null : taskSendBlocked(fresh);
+    if (blocked !== null) {
+      result.replaceChildren(noteBlock("error", blocked));
+      for (const button of body.querySelectorAll("button")) button.disabled = false;
+      return;
+    }
+    const response = await run();
+    if (!response.ok) {
+      const code = response.error?.reasonCode || response.error?.code || "error";
+      if (code !== "declined") result.replaceChildren(noteBlock("error", tx("Not done: {code}.", { code })));
+      for (const button of body.querySelectorAll("button")) button.disabled = false;
+      return;
+    }
+    if (sendText !== null) {
+      const sent = await sendTaskMessage(fresh, sendText);
+      if (!sent.ok) result.replaceChildren(noteBlock("error", sent.text));
+    }
+    await loadAgentTasks(node, { force: true });
+    await refresh({ silent: true });
+    if (workspaceState.node?.agentId === agent.agentId && workspaceState.tab === "plan") renderWorkspace();
+  };
+
+  const head = el("div", "plan-head");
+  head.append(el("div", "eyebrow", tx("TASK {taskId}", { taskId: task.taskId })));
+  head.append(el("div", `plan-stage stage-${task.stage}${task.waitingFor === "person" ? " waiting" : ""}`, taskStageWords(task)));
+  body.append(head);
+  body.append(el("div", "plan-task", task.text));
+
+  const revision = task.revisions.at(-1) ?? null;
+  if (task.stage === "planning") {
+    body.append(noteBlock("note", task.revisions.length === 0
+      ? tx("The agent reads the project and prepares the plan. It changes nothing until you approve it.")
+      : tx("The agent is preparing revision {revision} after your remarks.", { revision: (revision?.revision ?? 0) + 1 })));
+  }
+  const shown = task.stage === "in-progress" || task.stage === "done"
+    ? task.revisions.find((item) => item.revision === task.approved?.revision) ?? revision : revision;
+  const answers = [];
+  if (shown !== null) {
+    const working = task.stage === "in-progress" || task.stage === "done";
+    const previous = task.revisions.find((item) => item.revision === shown.revision - 1) ?? null;
+    const rows = working
+      ? task.steps.map((step) => ({ text: step.text, change: "same", status: step.status }))
+      : (previous === null ? shown.steps.map((text) => ({ text, change: "same" })) : stepDiff(previous.steps, shown.steps));
+    // Open while the person has to read it (planning, waiting for approval); closed once it is at work or done.
+    const { card, head } = planCard({ key: task.taskId, title: tx("Plan · revision {revision}", { revision: shown.revision }),
+      summary: planSummary(shown, rows), openByDefault: !working, fill: (inside) => {
+        if (!shown.formatted) {
+          inside.append(noteBlock("note", tx("The agent did not answer in the plan's form. Its answer as it is:")));
+          inside.append(el("div", "plan-raw", shown.raw ?? ""));
+          return;
+        }
+        if (shown.understanding) {
+          inside.append(el("div", "plan-label", tx("Understanding")));
+          inside.append(el("div", "plan-understanding", shown.understanding));
+        }
+        if (shown.questions.length > 0) {
+          inside.append(el("div", "plan-label", tx("Questions")));
+          const asked = task.stage === "awaiting-approval" && shown === revision;
+          shown.questions.forEach((question, index) => {
+            const row = el("div", "plan-question");
+            row.append(el("div", "plan-question-text", `${index + 1}. ${question}`));
+            if (asked) {
+              const input = el("input", "plan-answer");
+              input.type = "text";
+              input.maxLength = 2000;
+              input.placeholder = tx("Your answer");
+              answers.push(input);
+              row.append(input);
+            } else {
+              const given = task.approved?.answers?.[index] ?? "";
+              if (given) row.append(el("div", "plan-answer-given", given));
+            }
+            inside.append(row);
+          });
+        }
+        inside.append(el("div", "plan-label", tx("Steps")));
+        const list = el("ol", "plan-steps");
+        for (const step of rows) {
+          const item = el("li", `plan-step change-${step.change}${step.status ? ` status-${step.status}` : ""}`);
+          const mark = step.status === "done" ? "✓" : step.status === "in-progress" ? "▸"
+            : step.change === "added" ? "+" : step.change === "removed" ? "−" : "";
+          if (mark) item.append(el("span", "plan-step-mark", mark));
+          item.append(planStepText(step.text));
+          list.append(item);
+        }
+        inside.append(list);
+        if (previous !== null && !working) {
+          inside.append(el("div", "chat-compose-note", tx("Marked against revision {revision}: + added, − removed.",
+            { revision: previous.revision })));
+        }
+        // The plan's earlier revisions, each one a card of its own, closed, with the remarks that followed it.
+        const earlierRevisions = task.revisions.filter((item) => item.revision !== shown.revision).reverse();
+        if (earlierRevisions.length > 0) {
+          inside.append(el("div", "plan-label", tx("Earlier revisions · {count}", { count: earlierRevisions.length })));
+          for (const item of earlierRevisions) {
+            inside.append(planCard({ key: `${task.taskId}#${item.revision}`, nested: true,
+              title: tx("Revision {revision}", { revision: item.revision }),
+              summary: planSummary(item, item.steps.map((text) => ({ text }))), openByDefault: false,
+              fill: (box) => fillPlanRecord(box, item, { remarks: task.remarks.filter((remark) => remark.afterRevision === item.revision) }),
+            }).card);
+          }
+        }
+      } });
+    head.id = "planToggle";
+    body.append(card);
+  }
+  if (Array.isArray(task.results)) body.append(taskResultsCard(task));
+
+  if (task.stage === "awaiting-approval" && revision !== null) {
+    const actions = el("div", "actions plan-actions");
+    const approve = el("button", "small primary", tx("Approve plan"));
+    approve.id = "planApprove";
+    approve.disabled = !revision.formatted;
+    if (!revision.formatted) approve.title = tx("There are no steps to approve: ask for the plan's form first.");
+    approve.addEventListener("click", () => act(() => window.atlas.approveTask({ agentId: agent.agentId, taskId: task.taskId,
+      revision: revision.revision, answers: answers.map((input) => input.value) }), approvalMessage(revision.revision)));
+    const revise = el("button", "small", tx("Revise…"));
+    revise.id = "planRevise";
+    const remarksBox = el("div", "plan-remarks hidden");
+    const remarks = el("textarea");
+    remarks.rows = 3;
+    remarks.maxLength = 8000;
+    remarks.placeholder = tx("What to change in the plan");
+    const sendRemarks = el("button", "small primary", tx("Send remarks"));
+    sendRemarks.id = "planSendRemarks";
+    sendRemarks.addEventListener("click", () => {
+      const text = remarks.value.trim();
+      if (!text) { remarks.focus(); return; }
+      act(() => window.atlas.reviseTask({ agentId: agent.agentId, taskId: task.taskId, remarks: text,
+        answers: answers.map((input) => input.value) }), text);
+    });
+    remarksBox.append(remarks, sendRemarks);
+    revise.addEventListener("click", () => {
+      remarksBox.classList.toggle("hidden");
+      if (!remarksBox.classList.contains("hidden")) remarks.focus();
+    });
+    actions.append(approve, revise);
+    if (!revision.formatted) {
+      const form = el("button", "small", tx("Ask for the plan's form"));
+      form.addEventListener("click", () => act(() => window.atlas.reviseTask({ agentId: agent.agentId, taskId: task.taskId,
+        remarks: formRemark() }), formRemark()));
+      actions.append(form);
+    }
+    body.append(actions, remarksBox);
+  }
+  if (task.stopped !== null && task.stage === "in-progress") {
+    body.append(noteBlock("note", tx("Send the agent a message in the chat to go on with the plan, or cancel the task.")));
+  }
+  if (isOpenTask(task)) {
+    const cancelRow = el("div", "actions");
+    const cancel = el("button", "small", tx("Cancel the task"));
+    cancel.id = "planCancel";
+    cancel.addEventListener("click", () => act(() => window.atlas.cancelTask({ agentId: agent.agentId, taskId: task.taskId }), null));
+    cancelRow.append(cancel);
+    body.append(cancelRow);
+  }
+  body.append(result);
+
+  const earlier = known.tasks.filter((item) => item !== task);
+  if (earlier.length > 0) {
+    body.append(el("div", "section-title", tx("Earlier tasks · {count}", { count: earlier.length })));
+    // Each earlier task opens to its plan (the approved revision, else the last) and its results.
+    for (const item of earlier.slice(0, 10)) {
+      const row = el("div", "plan-earlier");
+      row.append(el("span", "plan-earlier-id", item.taskId), el("span", "plan-earlier-stage", taskStageWords(item)),
+        el("span", "plan-earlier-text", item.text.split(/\r?\n/u)[0].slice(0, 120)));
+      const plan = item.revisions.find((one) => one.revision === item.approved?.revision) ?? item.revisions.at(-1) ?? null;
+      const { card } = planCard({ key: item.taskId, title: row, nested: true, openByDefault: false, fill: (inside) => {
+        inside.append(el("div", "plan-task", item.text));
+        if (plan === null) inside.append(el("div", "empty", tx("The agent gave no plan for this task.")));
+        else {
+          inside.append(el("div", "section-title", tx("Plan · revision {revision}", { revision: plan.revision })));
+          fillPlanRecord(inside, plan, { steps: item.steps.length > 0 ? item.steps : null, answers: item.approved?.answers ?? [] });
+        }
+        if (Array.isArray(item.results)) inside.append(taskResultsCard(item));
+      } });
+      card.classList.add("plan-earlier-card");
+      body.append(card);
+    }
+  }
 }
 
 // --- permission mode -------------------------------------------------------------
@@ -2520,7 +3180,8 @@ async function readPermissionModes({ force = false } = {}) {
   const response = await window.atlas.permissionModes();
   if (!response.ok) return null;
   workspaceState.permissionModes = { readAt: Date.now(), defaultMode: response.data.defaultMode,
-    byAgent: new Map(response.data.agents.map((item) => [item.agentId, item.permissionMode])) };
+    byAgent: new Map(response.data.agents.map((item) => [item.agentId, item.permissionMode])),
+    memoryAutonomy: new Map(response.data.agents.map((item) => [item.agentId, item.ownMemoryWithoutAsking === true])) };
   return workspaceState.permissionModes;
 }
 
@@ -2621,6 +3282,15 @@ function paintQueued(box, agent) {
   }
 }
 
+/** Draws the model picker by the input field again, in place: the typed text is not touched. */
+function replaceModelPicker(agent, result) {
+  const picker = document.getElementById("chatModel");
+  if (picker === null) return;
+  const [model, effort] = renderModelPicker(agent, result);
+  document.getElementById("chatEffort")?.replaceWith(effort);
+  picker.replaceWith(model);
+}
+
 /**
  * The model and reasoning level of the next turns, right by the input field, as in
  * Claude Code and Codex. The conversation stays the same; with a new model the prompt cache
@@ -2671,7 +3341,12 @@ function renderModelPicker(agent, result) {
       result.replaceChildren(noteBlock("note",
         tx("From the next turn — a new model. The conversation is the same; the first turn after the switch reads it without cache and costs more.")));
       atlasRecord("ok", tx("agent model"), `${agent.agentId}: ${model.value} · ${effort.value}`);
+      const chosen = { ...profile, model: model.value, reasoningEffort: effort.value };
       await refresh();
+      // The picker is drawn again for the agent as it is now (the owner could not switch back, 02.11):
+      // the old one stayed locked and still took the old model for the current one, so choosing
+      // it again changed nothing. The backend has exactly the chosen profile now.
+      replaceModelPicker({ ...(agentOf() ?? agent), profile: chosen }, result);
     } else {
       result.replaceChildren(noteBlock("error", tx("Model not changed: {value}.", { value: response.error?.code ?? tx("error") })));
       model.value = profile.model;
@@ -2819,7 +3494,24 @@ async function fetchProjectDirectory(state, path) {
   if (workspaceState.tab === "files") renderWorkspace();
 }
 
+/** Images the Files tab shows itself (project-images.mjs): the Gateway reads text only. */
+const PROJECT_IMAGE = /\.(?:png|jpe?g|gif|webp|bmp)$/iu;
+
+/** An image of the project folder, read by the trusted host and shown reduced. */
+async function openProjectImage(state, path) {
+  if (leaveBlocked(state)) return;
+  state.file = { path, pages: [], image: null, error: null, loading: true, search: "" };
+  const file = state.file;
+  renderWorkspace();
+  const response = await window.atlas.projectImage({ projectId: state.projectId, path });
+  file.loading = false;
+  if (response.ok) file.image = response.data;
+  else file.error = response.error;
+  if (workspaceState.tab === "files") renderWorkspace();
+}
+
 async function openProjectFile(state, path, cursor = null) {
+  if (cursor === null && PROJECT_IMAGE.test(path)) return openProjectImage(state, path);
   if (cursor === null && leaveBlocked(state)) return;
   if (cursor === null) state.file = { path, pages: [], error: null, loading: true, search: "" };
   const file = state.file;
@@ -2971,6 +3663,19 @@ function renderFiles(body, agent) {
   const file = state.file;
   if (file !== null) {
     body.append(el("div", "section-title", tx("File {path}", { path: file.path })));
+    if (file.image) {
+      const image = file.image;
+      body.append(infoRow(tx("size"), sizeWords(image.sizeBytes)));
+      if (image.width !== null) {
+        body.append(infoRow(tx("picture"), image.shownWidth < image.width
+          ? tx("{width}×{height}, shown reduced to {shownWidth}×{shownHeight}", image)
+          : tx("{width}×{height}", image)));
+      }
+      const picture = el("img", "file-image");
+      picture.src = image.dataUrl;
+      picture.alt = file.path;
+      body.append(picture);
+    }
     const last = file.pages[file.pages.length - 1] ?? null;
     if (last !== null) {
       const shown = last.range.offsetBytes + last.range.returnedBytes;
@@ -2993,11 +3698,20 @@ function renderFiles(body, agent) {
     }
     if (file.outcome) renderFileOutcome(body, state, file);
     if (file.loading) body.append(el("div", "empty", tx("Reading the file…")));
-    if (file.error !== null) body.append(noteBlock("error", tx("File not read: {value}.", { value: failureWords(file.error) })));
+    if (file.error !== null) {
+      // The Gateway reads text only: another file is "access_denied" there, which says too little.
+      const words = { image_missing: tx("the file is not there"), image_too_large: tx("the picture is over 40 MB"),
+        image_path_invalid: tx("the path is not one Atlas reads"), image_type_unsupported: tx("not a picture Atlas shows"),
+        project_folder_unavailable: tx("the project's folder is not bound on this PC, or it is gone") }[file.error.code]
+        ?? (file.error.code === "access_denied" ? tx("not a text file (or a private one): only text files and pictures are shown here")
+          : failureWords(file.error));
+      body.append(noteBlock("error", tx("File not read: {value}.", { value: words })));
+    }
   }
   body.append(noteBlock("note",
     tx("Folders are not walked on their own: each one opens with your click. A path is up to 256 characters, a page up to 64 KB, ")
-    + tx("a file up to 1 MB. Only a whole text file is saved, and only over the version that was read.")));
+    + tx("a file up to 1 MB. Only a whole text file is saved, and only over the version that was read.")
+    + tx(" Pictures (PNG, JPEG, GIF, WebP, BMP, up to 40 MB) are shown, reduced when wide.")));
 }
 
 /** Search in the open file covers the loaded pages, and says so. */
@@ -3214,10 +3928,21 @@ function renderArtifacts(body, agent) {
   }
   const catalog = state.catalog;
   body.append(el("div", "section-title", tx("Registered · {length} · revision {revision}", { length: catalog.records.length, revision: catalog.revision })));
+  const reread = el("button", "small", tx("Reread list"));
+  reread.addEventListener("click", () => {
+    workspaceState.artifacts = null;
+    renderWorkspace();
+  });
+  const rereadRow = el("div", "actions");
+  rereadRow.append(reread);
+  body.append(rereadRow);
   if (catalog.records.length === 0) body.append(el("div", "empty", tx("The agent has not registered any artifacts.")));
   for (const record of catalog.records) {
     const box = el("div", "entry");
     box.append(el("div", "entry-title", record.path));
+    // A task's result (agent-tasks.mjs): its artifact is named after the task.
+    const fromTask = /^(task-[A-Za-z0-9]+)\.\d+$/u.exec(record.artifactId ?? "");
+    if (fromTask) box.append(el("div", "muted", tx("a result of task {taskId}", { taskId: fromTask[1] })));
     box.append(el("div", "entry-text",
       tx("{value} · registered {registeredAtUtc} · hash {value2}…", { value: sizeWords(record.sizeBytes), registeredAtUtc: record.registeredAtUtc, value2: record.sha256.slice(0, 12) })));
     const opened = state.opened.get(record.artifactId);

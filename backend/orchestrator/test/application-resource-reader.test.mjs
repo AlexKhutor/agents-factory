@@ -148,6 +148,16 @@ test("A3.5 reads bounded project slices, metadata, and directory summaries", asy
   assert.equal(directory.payload.entries[0].name, "example.mjs");
 });
 
+test("A3.5 reads a file that begins with a UTF-8 byte-order mark, the mark kept", async (t) => {
+  const context = await fixture(t);
+  await writeFile(path.join(context.root, "orchestrator", "src", "bom.txt"),
+    Buffer.from([0xef, 0xbb, 0xbf, ...Buffer.from("hello\r\n", "utf8")]));
+  const slice = await context.reader.readProject(projectRequest("text-slice",
+    { nativeId: "orchestrator/src/bom.txt" }));
+  assert.equal(slice.payload.text, "\ufeffhel");
+  assert.equal(slice.range.returnedBytes, 6);
+});
+
 test("A3.5 rejects private stores, binary, secret, and oversized content", async (t) => {
   const context = await fixture(t);
   const privateRequest = projectRequest("metadata", {

@@ -25,7 +25,10 @@ function inputValue(value) {
       || Buffer.byteLength(value.text, "utf8") > MAX_FILE_BYTES
       || CONTROL.test(value.text)) fail("access_denied");
   const bytes = Buffer.from(value.text, "utf8");
-  if (new TextDecoder("utf-8", { fatal: true }).decode(bytes) !== value.text) fail("access_denied");
+  // The byte-order mark a read keeps is saved back as it was.
+  if (new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes) !== value.text) {
+    fail("access_denied");
+  }
   validateApplicationPayloadPrivacy(value, { zone: "request-input",
     operationId: APPLICATION_PROJECT_WORKSPACE_SAVE_OPERATION });
   return bytes;

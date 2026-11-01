@@ -399,3 +399,33 @@ test("the account is read from Claude Code's own status and kept for a minute", 
   await f.host.readAccount();
   assert.equal(reads, 1);
 });
+
+test("a task's planning turn runs in plan mode; ExitPlanMode never reaches the person and its plan stays in the trace", async (t) => {
+  const decisions = [];
+  const plan = "## Understanding\nAdd a button.\n## Questions\nNone\n## Plan\n1. Add it";
+  const planning = async function* planningTurn({ sessionId, ask }) {
+    yield { type: "system", subtype: "init", session_id: sessionId, model: FAKE_MODEL };
+    yield { type: "assistant", session_id: sessionId, message: { model: FAKE_MODEL,
+      content: [{ type: "tool_use", id: "toolu_p1", name: "ExitPlanMode", input: { plan } }] } };
+    decisions.push(await ask("ExitPlanMode", { plan }, "toolu_p1"));
+    yield fakeResult(sessionId);
+  };
+  const f = await fixture(t, { turns: [planning, planning] });
+  let asked = 0;
+  f.host.registerServerRequestHandler("item/permissions/requestApproval", async () => { asked += 1; return { permissions: {} }; });
+  const threadId = await f.host.createSession({ cwd: f.root });
+  assert.equal((await runTurn(f.host, threadId, "Plan it", { model: FAKE_MODEL, permissionMode: "plan", planning: true })).status,
+    "completed");
+  assert.equal(f.sdk.calls[0].options.permissionMode, "plan");
+  assert.ok(f.sdk.calls[0].options.tools.includes("ExitPlanMode"), "the tool list is the same for every turn");
+  assert.equal(decisions[0].behavior, "deny");
+  assert.match(decisions[0].message, /recorded and shown to the person for approval/u);
+  // Outside a planning turn there is no plan to present either; the person is never asked.
+  await runTurn(f.host, threadId, "Go on", { model: FAKE_MODEL });
+  assert.equal(decisions[1].behavior, "deny");
+  assert.match(decisions[1].message, /no plan to present/u);
+  assert.equal(asked, 0);
+  const trace = await f.host.readTrace(threadId, { maxBytes: 512 * 1024 });
+  const exits = trace.records.filter((record) => record.type === "tool_use" && record.tool === "ExitPlanMode");
+  assert.equal(JSON.parse(exits[0].input).plan, plan);
+});

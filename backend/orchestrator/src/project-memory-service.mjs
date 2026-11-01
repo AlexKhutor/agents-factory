@@ -4,12 +4,19 @@ import { createConversationArchive } from "./conversation-archive.mjs";
 import { resolveProviderMutationProjectId } from "./provider-mutation-lease-store.mjs";
 import path from "node:path";
 import { WRITE_ZONE_LIMITS, normalizeWriteZone, writeZonesOverlap } from "./agent-write-zone.mjs";
-import { entriesFromDocument, normalizeDocumentPath, readMemoryDocument } from "./memory-documents.mjs";
+import { documentFromEntries, entriesFromDocument, normalizeDocumentPath, readMemoryDocument, writeMemoryDocument }
+  from "./memory-documents.mjs";
 import { resolveProjectWorkspace } from "./project-workspace-binding.mjs";
 import { createOpenDeskTaskReader } from "./desk-task-index.mjs";
 import { listVisibleScopes, requireOpenProject } from "./project-archive.mjs";
-import { unmountedWorldProjects } from "./world-registry.mjs";
+import { readWorldRegistry, unmountedWorldProjects } from "./world-registry.mjs";
 import { nameOf, readNames } from "./object-names.mjs";
+import { approveTask as approveTaskRecord, cancelTask as cancelTaskRecord, createTask, planningPrompt, readAllTasks,
+  parseTaskResults, readTask, readTasks as readTaskRecords, recordPlan, reviseTask as reviseTaskRecord, settleWork, stopTask,
+  workPrompt }
+  from "./agent-tasks.mjs";
+import { applyChanges, normalizeChanges, readAllChanges, readChange, readChanges, recordChange, settleChange }
+  from "./memory-changes.mjs";
 
 export const PROJECT_MEMORY_SERVICE_VERSION = "v0.9.0";
 export const AGENT_ROLES = Object.freeze(["feature", "project-lead", "quarter-lead", "coordinator"]);
@@ -111,13 +118,25 @@ function roleLines(agent, { documents, agents = [], names = null }) {
     lines.push(`Your write zone in this folder: ${zone.join(", ")}. Other agents own the rest of the folder:`
       + " read it, but do not change it; if a change is needed there, say so in your answer.");
   }
-  if (documents && settings.role !== "coordinator") {
-    const which = settings.role === "project-lead" ? "your own or the project's memory"
-      : settings.role === "quarter-lead" ? "your own or the quarter's memory" : "your own memory";
-    lines.push(`To change ${which}, write a memory document in a file you may change (a "# title" line names it,`
-      + " each \"## heading\" starts one entry) and ask the person to approve it in the desk. After the approval,"
-      + " write it into memory with the desk's tool write_memory_from_document. Memory is never changed without the"
-      + " person's approval of the exact document.");
+  if (documents) {
+    // The desk's memory tools (memory-changes.mjs): read, and ask to change by entry title.
+    // A lead changes the memory of the agents below it, when the person asks (the owner's choice of 01.11).
+    const which = settings.role === "project-lead" ? "your own memory, the project's (target \"project\"), and - when the"
+      + " person asks - the memory of an agent of your project (target \"agent\" with its ID)"
+      : settings.role === "quarter-lead" ? "your own memory, the quarter's (target \"quarter\"), and - when the person"
+        + " asks - the memory of an agent of your quarter (target \"agent\" with its ID)"
+        : settings.role === "coordinator" ? "your own memory and the world's (target \"project\"). You are not in a"
+          + " project's context: the memory of an agent in a project is its project lead's to change - give the lead a"
+          + " task for it, as for other project work; change it yourself (target \"agent\" with its ID) only when the"
+          + " person asks you directly. A project kept to some PCs (home only, or some machines only) keeps its memory"
+          + " out of your chat: only its own lead changes it" : "your own memory";
+    lines.push(`You may change ${which}. Read a memory with the desk's tool read_memory; change it with change_memory:`
+      + " name entries by their title - \"set\" adds an entry or replaces its text, \"delete\" removes it - and say why."
+      + " The change waits for the person's approval in the chat, unless the person allowed you to change your own"
+      + " memory without asking; memory never changes otherwise. When the person asks you to update your memory, use"
+      + " these tools. For a long rewrite you may instead write a memory document (a \"# title\" line, each \"## heading\""
+      + " one entry) in a file you may change, which the person approves in the desk; then write it with"
+      + " write_memory_from_document.");
   }
   return lines;
 }
@@ -174,14 +193,16 @@ export function agentMemoryScopeId(agentId) {
  */
 function publicOperation(op) {
   if (!op) return op;
-  const { memory, ...rest } = structuredClone(op);
+  // A task turn's link (agent-tasks.mjs) is read through the trusted host's task records, not here.
+  const { memory, task, taskSettled, ...rest } = structuredClone(op);
   return memory === undefined || rest.memorySnapshot !== undefined ? rest : { ...rest, memorySnapshot: memory };
 }
 
 function publicAgent(agent) {
-  // The permission mode is read through the trusted host (readPermissionModes), not the public agent.
+  // The permission mode is read through the trusted host (readPermissionModes), not the public agent;
+  // so is the next turn's task (taskTurn, agent-tasks.mjs).
   const { operations, createHash, workspaceKey, stops, settings, memoryDelivery, profileChangedAtUtc,
-    permissionMode, ...view } = agent;
+    permissionMode, taskTurn, ownMemoryWithoutAsking, ...view } = agent;
   const last = operations.at(-1);
   return structuredClone({ ...view, settings: agentSettings(agent), lastOperation: last
     ? { operationId: last.operationId, state: last.state,
@@ -217,8 +238,9 @@ function maskTraceRecord(record) {
 }
 
 export class ProjectMemoryService {
-  constructor({ store, provider = null, archive, now = () => new Date(), openTasks = async () => new Map(), worldProjects = null }) {
-    Object.assign(this, { store, provider, archive, now, openTasks, worldProjects });
+  constructor({ store, provider = null, archive, now = () => new Date(), openTasks = async () => new Map(), worldProjects = null,
+    projectPolicy = null }) {
+    Object.assign(this, { store, provider, archive, now, openTasks, worldProjects, projectPolicy });
   }
   /**
    * A provider flag for one agent: under the provider router
@@ -352,8 +374,293 @@ export class ProjectMemoryService {
   /** Every agent's own permission mode (null: the provider's), for the trusted host's window. */
   async readPermissionModes() {
     const agents = (await this.catalog()).value.agents;
-    return { agents: agents.map((agent) => ({ agentId: agent.agentId, permissionMode: agent.permissionMode ?? null })) };
+    return { agents: agents.map((agent) => ({ agentId: agent.agentId, permissionMode: agent.permissionMode ?? null,
+      ownMemoryWithoutAsking: agent.ownMemoryWithoutAsking === true })) };
   }
+
+  // --- task mode (agent-tasks.mjs) --------------------------------------------------
+  //
+  // The person's trusted host starts a task, asks for changes to its plan,
+  // approves or cancels it. Starting, revising and approving mark the agent's
+  // next message as the task's planning or work turn (`taskTurn`, used once by
+  // send): it gets the task's instruction, a planning turn runs read-only, and its
+  // end is read back into the task (receipt).
+
+  async taskAgent(agentId) {
+    const agent = this.find((await this.catalog()).value, id(agentId));
+    if (agent.state !== "active") fail("memory_agent_closed");
+    return agent;
+  }
+  async setTaskTurn(agentId, taskTurn) {
+    await this.change((doc) => {
+      const agent = this.find(doc, agentId);
+      if (taskTurn === null) delete agent.taskTurn;
+      else agent.taskTurn = taskTurn;
+    });
+  }
+  /** A new task for an idle agent: its next message is the planning turn. */
+  async startTask(input) {
+    exact(input, ["agentId", "text"]);
+    const agent = await this.taskAgent(input.agentId);
+    if (agent.currentOperationId) fail("memory_agent_busy");
+    const task = await createTask(this.store, { projectId: agent.projectId, quarterId: agent.quarterId,
+      agentId: agent.agentId, text: input.text, now: this.now() });
+    await this.setTaskTurn(agent.agentId, { taskId: task.taskId, phase: "plan" });
+    return task;
+  }
+  /** The person's remarks (and answers): the next message plans again. */
+  async reviseTask(input) {
+    exact(input, ["agentId", "taskId", "remarks", "answers"]);
+    const agent = await this.taskAgent(input.agentId);
+    const task = await reviseTaskRecord(this.store, { projectId: agent.projectId, taskId: input.taskId,
+      remarks: input.remarks, answers: input.answers, now: this.now() });
+    await this.setTaskTurn(agent.agentId, { taskId: task.taskId, phase: "plan" });
+    return task;
+  }
+  /** The person approved the latest revision: the next message is the work turn. */
+  async approveTask(input) {
+    exact(input, ["agentId", "taskId", "revision", "answers"]);
+    const agent = await this.taskAgent(input.agentId);
+    const task = await approveTaskRecord(this.store, { projectId: agent.projectId, taskId: input.taskId,
+      revision: input.revision, answers: input.answers, now: this.now() });
+    await this.setTaskTurn(agent.agentId, { taskId: task.taskId, phase: "work" });
+    return task;
+  }
+  /** The person cancelled an open task: a turn marked for it is not one any more. */
+  async cancelTask(input) {
+    exact(input, ["agentId", "taskId"]);
+    const agent = this.find((await this.catalog()).value, id(input.agentId));
+    const result = await cancelTaskRecord(this.store, { projectId: agent.projectId, taskId: input.taskId, now: this.now() });
+    if (agent.taskTurn?.taskId === input.taskId) await this.setTaskTurn(agent.agentId, null);
+    return result;
+  }
+  /** Tasks of a project, or of every project without one (newest first; filters as agent-tasks.mjs readTasks). */
+  async readTasks(input) {
+    exact(input, ["projectId", "agentId", "quarterId", "stages", "waitingFor", "limit"]);
+    return input.projectId === undefined ? readAllTasks(this.store, input) : readTaskRecords(this.store, input);
+  }
+  async readTask(input) {
+    exact(input, ["projectId", "taskId"]);
+    return readTask(this.store, input);
+  }
+  /**
+   * What a finished task turn left in the agent's trace: the plan it presented
+   * (Claude's ExitPlanMode), its answer's text, and its last todo list.
+   */
+  async taskTurnReport(agent, turnId) {
+    if (typeof this.provider?.trace !== "function") return { plan: null, text: "", todos: null };
+    const page = await this.provider.trace(agent, { before: null, after: null, maxBytes: 512 * 1024 });
+    const records = page.records.filter((record) => record.turnId === turnId);
+    const input = (tool) => {
+      const record = records.findLast((item) => item.type === "tool_use" && item.tool === tool);
+      try { return record === undefined ? null : JSON.parse(record.input); } catch { return null; }
+    };
+    const plan = input("ExitPlanMode")?.plan;
+    const todos = input("TodoWrite")?.todos;
+    // ACP agents send their answer in pieces; Claude sends whole messages.
+    const joint = this.providerFlag(agent, "chunkedText") ? "" : "\n\n";
+    const text = records.filter((record) => record.type === "assistant" && typeof record.text === "string")
+      .map((record) => record.text).join(joint);
+    return { plan: typeof plan === "string" && plan.trim() ? plan : null, text, todos: Array.isArray(todos) ? todos : null };
+  }
+  /** The end of a task turn goes into its task: a plan, the work's steps, or a stop. Once. */
+  async settleTaskTurn(agent, op) {
+    const { taskId, phase } = op.task;
+    const projectId = agent.projectId;
+    try {
+      const report = await this.taskTurnReport(agent, op.turnId);
+      if (phase === "plan" && (op.state === "completed" || report.plan !== null)) {
+        await recordPlan(this.store, { projectId, taskId, planText: report.plan ?? report.text,
+          operationId: op.operationId, now: this.now() });
+      } else if (phase === "plan") {
+        await stopTask(this.store, { projectId, taskId, state: op.state, operationId: op.operationId, now: this.now() });
+      } else {
+        // A completed work: the files the agent listed as the task's results become its artifacts.
+        const listed = op.state === "completed" ? parseTaskResults(report.text) : null;
+        const working = listed?.listed === true && (await readTask(this.store, { projectId, taskId })).stage === "in-progress";
+        const results = working ? await this.taskResults(agent, taskId, listed.items) : null;
+        await settleWork(this.store, { projectId, taskId, state: op.state, todos: report.todos, results,
+          operationId: op.operationId, now: this.now() });
+      }
+    } catch (error) {
+      // A task that is gone or moved on (cancelled meanwhile) has nothing to take; anything else is tried again.
+      if (!["task_not_found", "task_stage_conflict"].includes(error?.code)) return;
+    }
+    await this.change((doc) => {
+      const stored = this.find(doc, agent.agentId).operations.find((item) => item.operationId === op.operationId);
+      if (stored) stored.taskSettled = true;
+    });
+  }
+  /**
+   * The files an agent listed as its task's results, registered as its artifacts (the Artifacts tab):
+   * each one read in the project folder and kept with its hash as it is now. The registry is the
+   * Gateway's (application-gateway-read-runtime.mjs); without it the task waits for the next receipt.
+   * A file that cannot be registered (outside the folder, missing, not text, private) stays among the
+   * results with why.
+   */
+  async taskResults(agent, taskId, listed) {
+    const registry = this.artifactRegistry;
+    if (!registry) fail("task_results_unavailable");
+    const root = await resolveProjectWorkspace(this.store, agent.projectId).then((workspace) => workspace.workspacePath,
+      () => null);
+    const inside = (value) => {
+      const plain = value.replace(/\\/gu, "/").replace(/^\.\//u, "");
+      if (!/^(?:[A-Za-z]:\/|\/)/u.test(plain)) return plain;
+      if (root === null) return null;
+      const relative = path.relative(root, path.resolve(plain));
+      return !relative || relative.startsWith("..") || path.isAbsolute(relative) ? null : relative.replace(/\\/gu, "/");
+    };
+    const results = [];
+    for (const [index, item] of listed.entries()) {
+      const filePath = inside(item.path);
+      const result = { path: filePath ?? item.path, note: item.note, artifactId: null, problem: null };
+      try {
+        if (filePath === null) fail("outside_project");
+        const page = await registry.read(agent.projectId, filePath);
+        const record = await registry.register({ agentId: agent.agentId, artifactId: `${taskId}.${index + 1}`,
+          path: filePath, sha256: page.contentSha256 });
+        result.artifactId = record.artifactId;
+      } catch (error) {
+        result.problem = typeof error?.code === "string" ? error.code : "unreadable";
+      }
+      results.push(result);
+    }
+    return results;
+  }
+  // --- the agent's own memory changes (memory-changes.mjs) ----------------------------
+  //
+  // An agent reads a memory it may see and asks to add, change or remove entries
+  // of one it may change, by its desk tools; the change waits for the person,
+  // who approves or rejects it in the agent's chat (the trusted host). An agent's
+  // change of its own memory is written at once when the person allowed that
+  // (ownMemoryWithoutAsking, set by the trusted host).
+
+  /**
+   * The memory `target` names for this agent ("own" | "quarter" | "project" | "agent"; `agentOf`
+   * the agent whose memory, for "agent"), if it may `use` it ("read" | "change"): its own memory;
+   * its quarter's and project's to read; a quarter lead changes its quarter's, a project lead
+   * its project's and, when the person asks, its project agents' own; the world lead the world's.
+   */
+  async memoryTargetFor(agent, target, agentOf, use) {
+    const role = agentSettings(agent).role;
+    const denied = () => fail("memory_change_target_denied");
+    if (target === "own") {
+      if (!agent.agentScopeId) denied();
+      return { kind: "own", scope: await this.store.readScope({ scopeId: agent.agentScopeId }), agentId: agent.agentId };
+    }
+    if (target === "quarter" || target === "project") {
+      const lead = target === "quarter" ? role === "quarter-lead" : role === "project-lead" || role === "coordinator";
+      if (use === "change" && !lead) denied();
+      const pair = await this.store.readPair({ projectId: agent.projectId, quarterId: agent.quarterId });
+      return { kind: target, scope: target === "quarter" ? pair.quarter : pair.project, agentId: null };
+    }
+    if (target === "agent" && ["project-lead", "quarter-lead", "coordinator"].includes(role)) {
+      // A lead reaches the agents below it (the owner's choice of 01.11): a quarter lead its quarter's, a
+      // project lead its project's, the world lead any agent's - but not of a project kept to some PCs: the
+      // world lead's chat goes wherever the world goes, and that project's memory must not.
+      const other = this.find((await this.catalog()).value, id(agentOf));
+      if (other.state === "archived" || !other.agentScopeId) denied();
+      const below = other.projectId === agent.projectId && (role !== "quarter-lead" || other.quarterId === agent.quarterId);
+      if (!below && role !== "coordinator") denied();
+      if (!below && !await this.travelsWithWorld(other.projectId)) fail("memory_change_target_kept");
+      return { kind: "agent", scope: await this.store.readScope({ scopeId: other.agentScopeId }), agentId: other.agentId };
+    }
+    return denied();
+  }
+  /** Whether a project goes wherever the world goes: no policy keeps it home or to some PCs (world-registry.mjs). */
+  async travelsWithWorld(projectId) {
+    if (typeof this.projectPolicy !== "function") return false;
+    const policy = await this.projectPolicy(projectId).catch(() => undefined);
+    return policy === null || (policy?.homeOnly === false && policy?.allowedMachines === null);
+  }
+  /** A memory as the agent's tool reads it: its entries by title, and its revision. */
+  async readMemoryFor(input) {
+    exact(input, ["agentId", "target", "agentOf"]);
+    const agent = this.find((await this.catalog()).value, id(input.agentId));
+    if (agent.state !== "active") fail("memory_agent_closed");
+    const { kind, scope, agentId } = await this.memoryTargetFor(agent, input.target, input.agentOf ?? null, "read");
+    return { kind, agentId, revision: scope.revision,
+      entries: scope.entries.map((entry) => ({ title: entry.title, text: entry.text })) };
+  }
+  /** Writes a memory's next entries as `actorId` (the store's own grant first, as for an approved document). */
+  async writeMemoryEntries(scope, entries, actorId, seed) {
+    const key = hash({ seed, scopeId: scope.scopeId, revision: scope.revision }).slice(0, 32);
+    const commandId = `memory-change-${key}`;
+    await this.store.authorizeWrite({ commandId, scopeId: scope.scopeId, expectedRevision: scope.revision, entries,
+      requestedBy: actorId });
+    return this.store.write({ scopeId: scope.scopeId, expectedRevision: scope.revision, entries,
+      operationId: `memory-change:${key}`, commandId, actorId });
+  }
+  /**
+   * The agent's tool asks to change a memory: pending for the person, or written at once for
+   * its own memory when the person allowed that. Returns the state, the change's ID and what changes.
+   */
+  async proposeMemoryChange(input) {
+    exact(input, ["agentId", "target", "agentOf", "changes", "reason"]);
+    const agent = this.find((await this.catalog()).value, id(input.agentId));
+    if (agent.state !== "active") fail("memory_agent_closed");
+    const target = await this.memoryTargetFor(agent, input.target, input.agentOf ?? null, "change");
+    const changes = normalizeChanges(input.changes);
+    const { entries, diff } = applyChanges(target.scope.entries, changes);
+    const where = { projectId: agent.projectId, quarterId: agent.quarterId, agentId: agent.agentId,
+      target: { kind: target.kind, scopeId: target.scope.scopeId, agentId: target.agentId },
+      baseRevision: target.scope.revision, changes, diff, reason: input.reason ?? null, now: this.now() };
+    if (target.kind === "own" && agent.ownMemoryWithoutAsking === true) {
+      const receipt = await this.writeMemoryEntries(target.scope, entries, agent.agentId, { agentId: agent.agentId, changes });
+      const record = await recordChange(this.store, { ...where, state: "written", writtenRevision: receipt.revision });
+      return { state: "written", changeId: record.changeId, scopeId: target.scope.scopeId, revision: receipt.revision,
+        previousRevision: target.scope.revision, diff };
+    }
+    const record = await recordChange(this.store, where);
+    return { state: "pending", changeId: record.changeId, scopeId: target.scope.scopeId, revision: null,
+      previousRevision: target.scope.revision, diff };
+  }
+  /**
+   * The person's decision on an agent's pending change (the trusted host): approved, it is written
+   * at once exactly as shown - unless the memory changed since it was asked for (then it is stale and
+   * the agent asks again); rejected, nothing changes.
+   */
+  async decideMemoryChange(input) {
+    exact(input, ["projectId", "changeId", "approve"]);
+    if (typeof input.approve !== "boolean") fail("memory_invalid_input");
+    const record = await readChange(this.store, { projectId: id(input.projectId), changeId: input.changeId });
+    if (record.state !== "pending") fail("memory_change_decided");
+    if (!input.approve) return settleChange(this.store, { projectId: record.projectId, changeId: record.changeId,
+      state: "rejected", now: this.now() });
+    const scope = await this.store.readScope({ scopeId: record.target.scopeId });
+    if (scope.revision !== record.baseRevision) {
+      await settleChange(this.store, { projectId: record.projectId, changeId: record.changeId, state: "stale", now: this.now() });
+      fail("memory_change_stale");
+    }
+    const { entries } = applyChanges(scope.entries, record.changes);
+    const receipt = await this.writeMemoryEntries(scope, entries, "project-owner", record.changeId);
+    return settleChange(this.store, { projectId: record.projectId, changeId: record.changeId, state: "approved",
+      writtenRevision: receipt.revision, now: this.now() });
+  }
+  /** Changes of a project (or of every project without one), newest first; by agent and states. */
+  async readMemoryChanges(input) {
+    exact(input, ["projectId", "agentId", "states", "limit"]);
+    return input.projectId === undefined
+      ? readAllChanges(this.store, { states: input.states ?? null, limit: input.limit ?? 50 })
+      : readChanges(this.store, { projectId: input.projectId, agentId: input.agentId ?? null, states: input.states ?? null,
+        limit: input.limit ?? 50 });
+  }
+  /** Whether an agent's change of its own memory is written without asking (the person's setting). */
+  async setOwnMemoryAutonomy(input) {
+    exact(input, ["agentId", "allowed"]);
+    if (typeof input.allowed !== "boolean") fail("memory_invalid_input");
+    const agentId = id(input.agentId);
+    let changed = false;
+    await this.change((doc) => {
+      const agent = this.find(doc, agentId);
+      if (agent.state === "archived") fail("memory_agent_closed");
+      changed = (agent.ownMemoryWithoutAsking === true) !== input.allowed;
+      if (input.allowed) agent.ownMemoryWithoutAsking = true;
+      else delete agent.ownMemoryWithoutAsking;
+    });
+    return { agentId, allowed: input.allowed, changed };
+  }
+
   /** Read-modify-compare-and-swap of one store document. */
   async changeDocument(key, update) {
     for (let attempt = 0; attempt < 32; attempt++) {
@@ -392,10 +699,41 @@ export class ProjectMemoryService {
     const target = (await this.documentTargets(agent)).find((item) => item.kind === input.target);
     if (!target) fail("memory_document_target_denied");
     const { document, entries } = await this.documentOf(agent, input.path);
+    // What approving would change, entry by entry by title: the person sees it before approving.
+    const current = new Map(target.scope.entries.map((entry) => [entry.title, String(entry.text ?? "").trim()]));
+    const titles = new Set(entries.map((entry) => entry.title));
+    const changes = [
+      ...entries.map((entry) => ({ title: entry.title,
+        change: !current.has(entry.title) ? "added" : current.get(entry.title) === entry.text.trim() ? "same" : "changed" })),
+      ...target.scope.entries.filter((entry) => !titles.has(entry.title)).map((entry) => ({ title: entry.title, change: "removed" })),
+    ].slice(0, 128);
     return { schemaVersion: 1, agentId: agent.agentId, path: document.path, contentSha256: document.contentSha256,
       bytes: document.bytes, target: { kind: target.kind, scopeId: target.scope.scopeId, revision: target.scope.revision },
       entries: entries.map((entry) => ({ id: entry.id, title: entry.title, characters: entry.text.length })),
-      excerpt: document.text.slice(0, 1200) };
+      changes, excerpt: document.text.slice(0, 1200) };
+  }
+  /**
+   * A memory as a document in the project folder, for the person's text editor (the owner's choice
+   * of 01.11): the trusted host writes it and opens it; the person loads it back through the preview
+   * and approval of a memory document. A file there that differs is kept unless `replace`.
+   */
+  async exportMemoryDocument(input) {
+    exact(input, ["agentId", "path", "target", "replace", "title"]);
+    const agent = this.find((await this.catalog()).value, input.agentId);
+    if (agent.state === "archived") fail("memory_agent_closed");
+    const target = (await this.documentTargets(agent)).find((item) => item.kind === input.target);
+    if (!target) fail("memory_document_target_denied");
+    const workspace = await resolveProjectWorkspace(this.store, agent.projectId);
+    // The "# ..." line names the document for the person (in the window's language when the host
+    // gives it) and is no entry: reading the document back skips it.
+    const named = typeof input.title === "string" ? input.title.replace(/[\r\n]+/gu, " ").trim().slice(0, 200) : "";
+    const title = named || (target.kind === "project" ? `Memory of project ${agent.projectId}`
+      : target.kind === "quarter" ? `Memory of quarter ${agent.quarterId}` : `Memory of agent ${agent.agentId}`);
+    const written = await writeMemoryDocument(workspace.workspacePath, input.path,
+      documentFromEntries(title, target.scope.entries), { replace: input.replace === true });
+    return { schemaVersion: 1, agentId: agent.agentId, ...written,
+      target: { kind: target.kind, scopeId: target.scope.scopeId, revision: target.scope.revision },
+      entries: target.scope.entries.length };
   }
   /**
    * The person's approval of one exact document for one memory: a trusted
@@ -630,11 +968,27 @@ export class ProjectMemoryService {
     const repeated = deliveryKey !== null && agent.memoryDelivery
       && Object.keys(delivery).every((key) => agent.memoryDelivery[key] === delivery[key])
       && agent.operations.at(-1)?.state === "completed";
+    // A task's turn (agent-tasks.mjs, marked by the trusted host): the task's
+    // instruction stands for the message the person sees, and a planning turn
+    // runs read-only. A task that is gone leaves an ordinary message.
+    let taskTurn = agent.taskTurn ?? null;
+    let taskText = null;
+    if (taskTurn !== null) {
+      const task = await readTask(this.store, { projectId: agent.projectId, taskId: taskTurn.taskId }).catch(() => null);
+      const fits = task !== null && (taskTurn.phase === "plan" ? task.stage === "planning" : task.stage === "in-progress");
+      if (fits) taskText = taskTurn.phase === "plan" ? planningPrompt(task) : workPrompt(task);
+    }
     const operation = { operationId, intentHash, manifest, memorySnapshot: repeated ? "unchanged" : "full",
-      state: "requested", turnId: null, requestedAtUtc: this.now().toISOString() };
+      state: "requested", turnId: null, requestedAtUtc: this.now().toISOString(),
+      ...(taskText === null ? {} : { task: { taskId: taskTurn.taskId, phase: taskTurn.phase } }) };
     const claimed = await this.change((doc) => {
       const current = this.find(doc, agentId);
       if (current.operations.some((op) => op.operationId === operationId)) return false;
+      // The mark is used once, by the message it was read for; changed meanwhile, the message reads it again.
+      if (taskTurn !== null) {
+        if (current.taskTurn?.taskId !== taskTurn.taskId || current.taskTurn?.phase !== taskTurn.phase) return false;
+        delete current.taskTurn;
+      }
       if (doc.agents.some((a) => a.agentId !== agentId
           && a.operations.some((op) => op.operationId === operationId))) fail("memory_identity_conflict");
       if (current.state !== "active") fail("memory_agent_closed");
@@ -650,7 +1004,7 @@ export class ProjectMemoryService {
     if (!claimed) return this.send(input);
     const content = (repeated ? [
       `Backend memory unchanged since your last message (manifest ${manifest.manifestHash}).`,
-      "User task:", input.text,
+      "User task:", taskText ?? input.text,
     ] : [
       context.agent
         ? "Backend memory snapshot. Project rules take precedence over quarter details, and quarter details over the agent's own memory."
@@ -659,7 +1013,7 @@ export class ProjectMemoryService {
       JSON.stringify({ manifest, project: context.project.entries, quarter: context.quarter.entries,
         ...(context.agent ? { agent: context.agent.entries } : {}), ...(overview === null ? {} : { overview }) }),
       ...roles,
-      "User task:", input.text,
+      "User task:", taskText ?? input.text,
     ]).join("\n");
     try {
       await this.archive.append(agent.binding, {
@@ -692,6 +1046,8 @@ export class ProjectMemoryService {
             problemCode: problem(error) === "memory_operation_unconfirmed" ? "memory_send_not_started" : problem(error) }
           : { state: "uncertain", problemCode: problem(error) });
         if (notDelivered && current.currentOperationId === operationId) current.currentOperationId = null;
+        // A task's turn that did not go waits for the next message, as it would have.
+        if (notDelivered && operation.task && current.taskTurn === undefined) current.taskTurn = { ...operation.task };
       });
     }
     agent = this.find((await this.catalog()).value, agentId);
@@ -733,6 +1089,11 @@ export class ProjectMemoryService {
       } catch { /* The durable receipt remains authoritative when observation is unavailable. */ }
     }
     op = this.find((await this.catalog()).value, agentId).operations.find((item) => item.operationId === operationId);
+    // A task's turn that ended goes into its task (agent-tasks.mjs); until that worked, every receipt tries again.
+    if (op.task && TERMINAL.has(op.state) && op.taskSettled !== true) {
+      await this.settleTaskTurn(agent, op);
+      op = this.find((await this.catalog()).value, agentId).operations.find((item) => item.operationId === operationId);
+    }
     return { ...publicOperation(op), observation };
   }
   async closeAgent(input) {
@@ -963,5 +1324,7 @@ export async function createProjectMemoryService({ controllerRoot, sourceId, pro
       projectId: await resolveProviderMutationProjectId(controllerRoot), now, pythonCommand }),
     provider, now, openTasks: controllerRoot ? createOpenDeskTaskReader(controllerRoot) : undefined,
     worldProjects: controllerRoot ? () => unmountedWorldProjects(controllerRoot).catch(() => []) : null,
+    projectPolicy: controllerRoot ? async (projectId) => (await readWorldRegistry(controllerRoot)).projects[projectId]?.policy ?? null
+      : null,
   });
 }

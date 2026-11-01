@@ -664,6 +664,48 @@ const overlap = (a, b) => a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.
 }
 
 {
+  // Three kinds of attention, each its own badge (the owner's decision of 01.11): what does not
+  // work, what waits for the person, and an unread answer of an idle agent.
+  const { aggregateAttention, attentionGroupOf } = core;
+  const at = (kind, extra = {}) => ({ kind, agentId: "a1", projectId: "p", quarterId: "q", ...extra });
+  const groups = [at("problem"), at("model-down"), at("state"), at("recovery"), at("turn-finished", { outcome: "failed" }),
+    at("task-plan", { stopped: "failed" }), at("interaction"), at("asks-you"), at("captured-pending"), at("refused"),
+    at("task-plan"), at("turn-finished", { outcome: "completed" }), at("turn-finished", { outcome: "interrupted" })]
+    .map(attentionGroupOf);
+  const signal = aggregateAttention({ attention: [at("problem"), at("asks-you"), at("asks-you"), at("turn-finished", { outcome: "completed" })] })
+    .byAgent.get("a1");
+  check("attention-has-three-kinds",
+    JSON.stringify(groups) === JSON.stringify(["broken", "broken", "broken", "broken", "broken", "broken",
+      "waiting", "waiting", "waiting", "waiting", "waiting", "done", "done"])
+      && signal.count === 4 && signal.groups.broken.count === 1 && signal.groups.waiting.count === 2
+      && signal.groups.done.count === 1 && signal.groups.done.urgent === false && signal.groups.waiting.urgent === true,
+    { groups, signal });
+}
+
+{
+  // The owner's quarter of 01.11: Qwen at 1.42 makes the grid, Haiku at 1.5 is a little
+  // bigger. Haiku goes into the corner cell and to the right end of the third row: its
+  // icon's top left corner lines up with Qwen's cells (it used to miss the first point by
+  // a pixel and land a whole step away); Qwen itself stands on the grid's own points.
+  const { snapAgent, agentBox, GEOMETRY } = core;
+  const box = { x: 0, y: 0, width: 430, height: 256 };
+  const qwen = { x: 203, y: 90, scale: 1.42 };
+  const haiku = { x: 30, y: 30, scale: 1.5 };
+  snapAgent(box, [qwen, haiku], haiku);
+  const corner = { x: haiku.x, y: haiku.y };
+  Object.assign(haiku, { x: 400, y: 150 });
+  snapAgent(box, [qwen, haiku], haiku);
+  const rowEnd = { x: haiku.x, y: haiku.y };
+  Object.assign(qwen, { x: 30, y: 30 });
+  snapAgent(box, [qwen, haiku], qwen);
+  const edge = (spot) => agentBox(spot).x + GEOMETRY.agentGap / 2;
+  check("a-bigger-agent-fits-the-corner-cell",
+    corner.x === 43 && corner.y === 38 && rowEnd.x === 367 && rowEnd.y === 146 && qwen.x === 41 && qwen.y === 36
+      && edge({ ...haiku, ...corner }) >= GEOMETRY.agentInset && edge({ ...haiku, ...corner }) - GEOMETRY.agentInset < 2,
+    { corner, rowEnd, qwen: { x: qwen.x, y: qwen.y } });
+}
+
+{
   // The person's agents stay where they stand when they fit and touch no one - a grid
   // that changed with the smallest agent moves no one; two on one spot - the second one
   // goes to the nearest free crossing, not touching.

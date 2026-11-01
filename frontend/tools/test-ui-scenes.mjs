@@ -23,6 +23,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRunStatus } from "./ui-run-status.mjs";
+import { monitorStatusFile, monitorWanted, startTestMonitor } from "./test-monitor-launch.mjs";
 
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const argument = (name) => {
@@ -76,18 +77,28 @@ const SCENES = Object.freeze([
   ["ui-a38-away-frames", "Grey frames of projects not on this PC: in their place or, without one, in a column on the right; the \"Not on this PC\" ticks (small, with the label beside) hide all frames or one, \"Show hidden frames\" brings them back, a setting of this PC; the frames shown are within the world's bounds (minimap); the buttons at the top right on one line, the sheet below them"],
   ["ui-a39-model-health", "Readiness names each model server and whether it answers (the office one off, this PC's on) with \"Check now\"; a model list marks the one that does not answer"],
   ["ui-a41-names", "Names: an agent renamed in its sheet is shown by its name with the ID beside it in the tooltip; a create form proposes an ID made from the name; an empty name brings the ID back"],
+  ["ui-a51-model-switch-back", "An agent's model switched by the input field and switched back: the picker is free again and knows the model it has now"],
+  ["ui-a50-operations-by-provider", "The operations count: one served by each provider by name counts as usable, a missing one does not; every operation has a title"],
+  ["ui-a49-agent-names", "Agents' names: their size follows the zoom with no step between the world and the project levels; close up the name of a unit reaching above the map stays seen"],
+  ["ui-a48-memory-editor", "A memory in a text editor: written as a file of the project folder and opened; loaded back, the preview marks each entry added, changed, removed or the same"],
+  ["ui-a47-task-results", "A finished task's results: each file the agent listed is in its Artifacts or says why not; the plan is one card closed to a line and opened by its top line; an earlier task opens to its plan"],
+  ["ui-a46-memory-change", "An agent's own memory change: in the attention list and a card in its chat; approved, the card and the signal go and the History has the write; the Memory tab allows changing its own memory without asking"],
+  ["ui-a45-attention-kinds", "Attention in three kinds: a problem and a question are two badges under an agent's corner, an unread answer a green one that opens the chat; badges on agents from 150%, quarters from 85%, projects below; a working agent's light runs"],
+  ["ui-a44-task-mode", "Task mode: the chat gives a task, the Plan tab is marked while the plan waits, a revision is marked against the one before, the plan is approved"],
   ["ui-a43-grid-small-agent", "The quarter grid follows its smallest agent: one made small, one big - the grid gets the small one's step and the big one keeps its place"],
   ["ui-a42-badge-double-click", "Double-click on an attention badge: a number opens the list of what is behind it (even for one agent), a question mark opens that agent's chat"],
   ["ui-a40-history", "History of changes: an archived and restored project shows both; \"Undo\" on the restore (confirmed) archives it again by a new entry, and the restore says it is undone"],
 ]);
 
+// Atlas's own window, by its title: the checks window (tools/test-monitor.cjs) is an Electron
+// process too and must not stop the pack.
 const atlasWindowOpen = () => new Promise((resolve) => {
   if (process.platform !== "win32") {
     resolve(false);
     return;
   }
-  execFile("tasklist", ["/FI", "IMAGENAME eq electron.exe", "/FO", "CSV", "/NH"], { windowsHide: true },
-    (error, stdout) => resolve(!error && /electron\.exe/i.test(String(stdout))));
+  execFile("tasklist", ["/V", "/FI", "IMAGENAME eq electron.exe", "/FO", "CSV", "/NH"], { windowsHide: true },
+    (error, stdout) => resolve(!error && /"Agents Factory Atlas[^"]*"\s*$/imu.test(String(stdout))));
 });
 
 function runScene(root, name, outDir, { fixture = true } = {}) {
@@ -131,7 +142,8 @@ function runSource() {
   };
 }
 
-const statusFile = argument("--status-file");
+// Without a status file of its own, a run here gets one for the checks window (test-monitor-launch.mjs).
+const statusFile = argument("--status-file") ?? (monitorWanted() ? monitorStatusFile("ui") : null);
 const run = statusFile === null ? null : createRunStatus({
   file: path.resolve(statusFile),
   runId: argument("--run-id") ?? `ui-run-${process.pid}`,
@@ -140,6 +152,7 @@ const run = statusFile === null ? null : createRunStatus({
   sceneNames: SCENES.map(([name]) => name),
 });
 run?.start();
+if (statusFile !== null && monitorWanted()) startTestMonitor({ statusFile, label: "UI scenes" });
 // Keeps "updated" fresh on the status surface while one scene runs long.
 const pulse = run === null ? null : setInterval(() => run.heartbeat(), 1000);
 

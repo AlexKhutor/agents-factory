@@ -161,6 +161,8 @@ function boundTarget(input) {
   if ("interactionId" in input) target.interactionId = id(input.interactionId);
   if ("expectedRevision" in input) target.expectedRevision = num(input.expectedRevision);
   if ("agentId" in input) target.agentId = id(input.agentId);
+  if ("taskId" in input) target.taskId = id(input.taskId);
+  if ("changeId" in input) target.changeId = id(input.changeId);
   if ("operationId" in input) target.operationId = id(input.operationId);
   if ("artifactId" in input) target.artifactId = id(input.artifactId);
   if ("sourceProjectId" in input) target.sourceProjectId = id(input.sourceProjectId);

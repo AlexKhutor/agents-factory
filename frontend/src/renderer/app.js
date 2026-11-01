@@ -490,7 +490,22 @@ function atlasShowTooltip(node, pointer) {
   let foot = node.kind === "agent" ? tx("Click — details · double-click — workspace · right-click — actions")
     : tx("Click — details · double-click — enter · right-click — actions");
   const lines = [];
-  if (node.kind === "attention") {
+  if (node.kind === "attention" && node.group === "idle" && node.agentId) {
+    // A free agent's calm mark: no attention behind it.
+    title = displayName("agent", node.projectId, node.agentId);
+    tag = tx("agent · free");
+    lines.push(tx("Free: the turn is over, nothing waits - ready for the next task"));
+    foot = tx("Double-click — give it a task in the chat");
+  } else if (node.kind === "attention" && node.group === "idle") {
+    // A quarter's or a project's free agents.
+    const free = freeAgentsIn(node);
+    title = node.quarterId ?? node.projectId;
+    tag = node.scopeKind === "quarter" ? tx("quarter · free agents") : tx("project · free agents");
+    lines.push(tx("free agents: {count}", { count: free.length }));
+    for (const agent of free.slice(0, 5)) lines.push(displayName("agent", agent.projectId, agent.agentId));
+    if (free.length > 5) lines.push(tx("and {value} more", { value: free.length - 5 }));
+    foot = free.length === 1 ? tx("Double-click — give it a task in the chat") : tx("Double-click — go there");
+  } else if (node.kind === "attention") {
     // An attention badge tells exactly what is behind it, at the level
     // of grouping at which the person is looking at the map right now.
     const items = attentionItemsFor(node);
@@ -503,9 +518,12 @@ function atlasShowTooltip(node, pointer) {
         ? attentionLine(item) : `${item.agentId} — ${attentionLine(item)}`);
     }
     if (items.length > 5) lines.push(tx("and {value} more", { value: items.length - 5 }));
-    // What a double-click does (atlasOpenAttentionTarget): a question - the chat; anything else - the list.
-    foot = items.length === 1 && attentionSeverity(items[0]) === 1
-      ? tx("Double-click — answer in the chat") : tx("Double-click — the list of problems");
+    // What a double-click does (atlasOpenAttentionTarget): one agent waiting for the person or with
+    // an unread answer - its chat; what does not work, or several agents - the list.
+    const agents = attentionByAgent(items).length;
+    foot = node.group === "done" && agents === 1 ? tx("Double-click — read the answer")
+      : node.group !== "broken" && agents === 1 && items.length === 1 ? tx("Double-click — answer in the chat")
+        : node.group === "broken" ? tx("Double-click — the list of problems") : tx("Double-click — the list");
   } else if (node.kind === "hq") {
     tag = tx("HQ");
     lines.push(tx("Goal, team and decisions of the project"));
@@ -821,7 +839,7 @@ function renderHeader() {
     : info.kit
       ? tx("release {releaseId} · kit {version} · client {clientVersion} · contract {contractVersion}", { releaseId: info.kit.releaseId, version: info.kit.version, clientVersion: info.kit.clientVersion, contractVersion: info.kit.contractVersion })
       : tx("kit not accepted: {value}", { value: info.delivery?.reasonCode ?? tx("app::unknown") });
-  const available = atlasState.operations.filter((entry) => entry.status === "available").length;
+  const available = atlasState.operations.filter(operationUsable).length;
   $("operationsLine").textContent = atlasState.operations.length > 0
     ? tx("operations: {available}/{length}", { available, length: atlasState.operations.length }) : "";
 }
@@ -1004,14 +1022,18 @@ const attentionLine = (item) => (item.kind === "interaction"
   ? tx("question: {interactionId}{value}", { interactionId: item.title || item.interactionId, value: item.state ? ` (${item.state})` : "" })
   : item.kind === "turn-finished" ? TURN_FINISHED_WORDS[item.outcome] ?? tx("turn finished")
   : item.kind === "asks-you" ? tx("waiting for your answer: “{question}”", { question: item.question })
+  : item.kind === "task-plan" ? (item.stopped ? tx("task {taskId}: the agent's turn stopped", { taskId: item.taskId })
+    : tx("task {taskId}: the plan waits for your approval", { taskId: item.taskId }))
   : item.kind === "refused" ? tx("action refused{value} — the agent waits for what to do", { value: item.count > 1 ? ` (${item.count})` : "" })
   : item.kind === "problem" ? tx("problem: {value}", { value: problemWords(item.problemCode) })
+  : item.kind === "model-down" ? tx("the model {name} does not answer its check", { name: item.model ?? "?" })
+  : item.kind === "memory-change" ? tx("asks to change a memory: {count} entries", { count: item.count ?? "?" })
     : item.kind === "recovery" ? tx("recovery needed: {count} (according to the catalog)", { count: item.count })
       : item.kind === "captured-pending"
         ? tx("catalog: questions {questions}, approvals {approvals}; pending ones read: {visible}", { questions: item.questions, approvals: item.approvals, visible: item.visible })
         : tx("state: {field} — {value}", { field: item.field, value: item.value }));
 
-const attentionSeverity = (item) => (item.kind === "problem" ? 3
+const attentionSeverity = (item) => (item.kind === "problem" || item.kind === "model-down" ? 3
   : item.kind === "state" || item.kind === "recovery" || item.kind === "refused"
     || (item.kind === "turn-finished" && item.outcome === "failed") ? 2 : 1);
 
@@ -1022,7 +1044,8 @@ const attentionSeverity = (item) => (item.kind === "problem" ? 3
 function attentionItemsFor(scope) {
   const world = atlasState.world;
   if (world === null || world.status !== "ready") return [];
-  const items = world.attention ?? [];
+  // A badge is one kind of attention (scene-core.js attentionGroupOf): its signals only.
+  const items = (world.attention ?? []).filter((item) => !scope?.group || attentionGroupOf(item) === scope.group);
   if (scope === null || scope === undefined) return items;
   if (scope.agentId) return items.filter((item) => item.agentId === scope.agentId);
   if (scope.quarterId) {
@@ -1113,6 +1136,8 @@ function renderAttention() {
 // What happened - in two or three words (details are in the agent's chat).
 const ATTENTION_BRIEF = Object.freeze({
   interaction: tx("waiting for your decision"), "captured-pending": tx("waiting for your decision"), "asks-you": tx("asked a question"),
+  "task-plan": tx("plan waiting for approval"), "model-down": tx("model not answering"),
+  "memory-change": tx("memory change waiting for approval"),
   refused: tx("action refused"), problem: tx("problem"), state: tx("failed"), recovery: tx("recovery needed"),
 });
 
@@ -1135,6 +1160,16 @@ function attentionByAgent(items) {
   return [...byAgent.values()].map((entry) => ({ ...entry, what: entry.words.join(", ") }));
 }
 
+/** The free agents (scene.js agentIdle) of a quarter or a project on the map. */
+function freeAgentsIn(scope) {
+  const world = atlasState.world;
+  if (world === null || world.status !== "ready") return [];
+  const attention = aggregateAttention(world);
+  return world.projection.projects.filter((project) => project.projectId === scope.projectId)
+    .flatMap((project) => project.quarters).filter((quarter) => !scope.quarterId || quarter.quarterId === scope.quarterId)
+    .flatMap((quarter) => quarter.agents).filter((agent) => agentIdle(agent, attention));
+}
+
 /** Open the chat of the agent the signal is about. */
 function atlasOpenAttentionChat(item) {
   const node = { kind: "agent", projectId: item.projectId, quarterId: item.quarterId, agentId: item.agentId };
@@ -1142,7 +1177,8 @@ function atlasOpenAttentionChat(item) {
   const role = findNode(node).agent?.settings?.role ?? null;
   const lead = role === "project-lead" || role === "quarter-lead" || role === "coordinator";
   if (atlasState.ui.attentionOpen) setPanel("attentionOpen", false);
-  atlasOpenWorkspace(node, lead ? { camera: false } : undefined);
+  // A task's plan waiting for approval opens on the agent's Plan tab, where it is approved.
+  atlasOpenWorkspace(node, { ...(lead ? { camera: false } : {}), ...(item.kind === "task-plan" ? { tab: "plan" } : {}) });
 }
 
 /**
@@ -1152,11 +1188,29 @@ function atlasOpenAttentionChat(item) {
  * badge, even when it is one agent: the person sees the problems first.
  */
 function atlasOpenAttentionTarget(scope) {
+  // A free agent's mark opens its chat: the next task is given there. A quarter's or a
+  // project's: the chat of its one free agent, or the camera goes there to see them.
+  if (scope?.group === "idle") {
+    const free = scope.agentId ? [scope] : freeAgentsIn(scope);
+    if (free.length === 1) {
+      atlasOpenAttentionChat({ kind: "idle", projectId: free[0].projectId, quarterId: free[0].quarterId, agentId: free[0].agentId });
+    } else if (scope.quarterId) {
+      goQuarter(scope.projectId, scope.quarterId);
+    } else {
+      goProject(scope.projectId);
+    }
+    return;
+  }
   const items = attentionItemsFor(scope);
   const agents = attentionByAgent(items);
+  // A green badge (an unread answer) of one agent opens its chat to read it; an orange one
+  // with one question opens the chat (or the Plan tab) where it is answered.
   const question = items.length === 1 && attentionSeverity(items[0]) === 1;
-  if (agents.length === 1 && question) atlasOpenAttentionChat(agents[0].first);
-  else atlasOpenAttention(scope);
+  if (agents.length === 1 && (scope?.group === "done" || (scope?.group !== "broken" && question))) {
+    atlasOpenAttentionChat(agents[0].first);
+  } else {
+    atlasOpenAttention(scope);
+  }
 }
 
 function atlasOnTrayChanged(tray) {
@@ -1388,7 +1442,19 @@ const OPERATION_TITLES = Object.freeze({
   "mutation.memory.agent.close": tx("Agent closing"),
   "approval.agent-control.respond": tx("Answer to a question"),
   "mutation.agent-control.interrupt": tx("Turn stop"),
+  "query.provider.models.list": tx("Models of the providers"),
+  "query.memory.agent.trace": tx("Agent trace"),
+  "mutation.memory.agent.steer": tx("A message into a running turn"),
+  "mutation.memory.agent.unqueue": tx("Taking back a queued message"),
+  "mutation.memory.agent.profile": tx("Agent model and effort change"),
 });
+
+/**
+ * Whether Atlas can use an operation: available, or - with several providers (Claude Code and an
+ * ACP agent) - unavailable as one call but asked of each provider by name (the models list,
+ * ipc.mjs atlas:models). The owner asked why the bar said 27/28 (02.11): nothing was missing.
+ */
+const operationUsable = (entry) => entry.status === "available" || entry.reasonCode === "multiple_selectable_providers";
 
 /**
  * What the desktop expects from the backend. Ordered by usefulness to the person. Items without
@@ -1461,9 +1527,35 @@ function atlasPaintModelNote() {
 
 const clockOf = (atUtc) => (atUtc ? new Date(atUtc).toLocaleTimeString(dateLocale(), { hour: "2-digit", minute: "2-digit" }) : "?");
 
+/**
+ * An active agent whose model does not answer its check now is broken before any of its
+ * turns fails (the owner's check of 01.11): a "model-down" signal - unless a failed turn
+ * already says the model is unreachable.
+ */
+function applyModelSignals(world) {
+  if (world === null || world.status !== "ready" || !Array.isArray(world.attention)) return;
+  world.attention = world.attention.filter((item) => item.kind !== "model-down");
+  for (const project of world.projection.projects) {
+    for (const quarter of project.quarters) {
+      for (const agent of quarter.agents) {
+        const down = agent.state === "active" ? modelDown(agent) : null;
+        if (down === null || world.attention.some((item) => item.agentId === agent.agentId
+          && item.kind === "problem" && item.problemCode === "model_unreachable")) continue;
+        world.attention.push({ kind: "model-down", agentId: agent.agentId, projectId: agent.projectId,
+          quarterId: agent.quarterId, model: down.name ?? agent.profile?.model ?? null });
+      }
+    }
+  }
+}
+
 async function refreshModelHealth({ force = false } = {}) {
   const answer = typeof window.atlas.modelHealth === "function" ? await window.atlas.modelHealth({ force }) : null;
   atlasState.modelHealth = answer?.ok ? answer.data : null;
+  applyModelSignals(atlasState.world);
+  if (atlasState.world !== null) {
+    renderAttention();
+    requestRender();
+  }
   if (!$("readinessPanel").classList.contains("hidden")) renderReadiness();
   atlasPaintModelNote();
 }
@@ -1620,13 +1712,15 @@ function renderReadiness() {
   }
 
   const operations = atlasState.operations;
-  const available = operations.filter((entry) => entry.status === "available").length;
+  const available = operations.filter(operationUsable).length;
   body.append(el("div", "section-title", tx("Desktop operations · {available} of {length}", { available, length: operations.length })));
   if (operations.length === 0) body.append(el("div", "empty", tx("Gateway not read — the operation status is unknown.")));
   for (const entry of operations) {
     const ok = entry.status === "available";
-    body.append(readinessRow(OPERATION_TITLES[entry.operationId] ?? entry.operationId, entry.operationId,
-      ok ? "ok" : "bad", ok ? tx("available") : (entry.reasonCode ?? entry.status)));
+    const byProvider = !ok && operationUsable(entry);
+    body.append(readinessRow(OPERATION_TITLES[entry.operationId] ?? entry.operationId,
+      byProvider ? `${entry.operationId} · ${tx("several providers: each is asked by name")}` : entry.operationId,
+      ok || byProvider ? "ok" : "bad", ok ? tx("available") : byProvider ? tx("by provider") : (entry.reasonCode ?? entry.status)));
   }
 
   body.append(el("div", "section-title", tx("Trusted actions")));
@@ -3148,6 +3242,7 @@ function noUndoReason(reason) {
     git_not_undone: tx("Not undone here: the git repository stays in the folder."),
     desk_source_not_undone: tx("Not undone here: the agent keeps taking controller tasks."),
     approval_without_write: tx("Nothing was written yet: the agent writes the approved document itself."),
+    task_not_undone: tx("A task goes forward only: cancel it on the agent's Plan tab."),
   };
   return words[reason] ?? tx("Not undone here.");
 }
@@ -3187,6 +3282,10 @@ function historyTitle(entry) {
     "project.file-save": () => tx("File saved · {name}", { name: project }),
     "object.rename": () => tx("Renamed · {name}", { name: entry.agentId !== null ? agent
       : entry.quarterId !== null ? quarter : project }),
+    "task.start": () => tx("Task given to {name}", { name: agent }),
+    "task.revise": () => tx("Plan sent back to {name}", { name: agent }),
+    "task.approve": () => tx("Plan of {name} approved", { name: agent }),
+    "task.cancel": () => tx("Task of {name} cancelled", { name: agent }),
   };
   const title = titles[entry.action]?.() ?? entry.action;
   return entry.undoes === null ? title : tx("Undo · {title}", { title });
@@ -4426,6 +4525,7 @@ async function refresh({ silent = false } = {}) {
       await loadExpected();
       const world = await window.atlas.world({});
       atlasState.world = world.ok ? world.data : null;
+      applyModelSignals(atlasState.world);
       // Task board (desk agents, the world lead's tasks) - in the background and no more often than the TTL:
       // from it the agent menu knows whether to offer “Take tasks”.
       loadTaskBoard().then(() => requestRender());
@@ -4495,7 +4595,15 @@ async function start() {
 
   await loadLayout();
   initScene();
+  // The saved view at once (the owner saw the map jump on the first open, 01.11): the world is
+  // drawn where the person left it, not first at the default zoom and moved there seconds later,
+  // after the model servers answered - which also threw back a map moved in the meantime.
+  const savedView = sceneGetLayout()?.view ?? null;
+  if (savedView !== null) sceneRestoreView(savedView);
   await refresh();
+  // Again with the world read: the same camera, its scope now found in the world.
+  if (savedView !== null) sceneRestoreView(savedView);
+  else goLevel(LEVEL.world);
   // Live view is on until the person turns it off. An automatic snapshot
   // of the window (--capture) works with its own rereads and without it.
   if (atlasState.ui.watch !== false && atlasState.info?.automated !== true) setWatch(true);
@@ -4506,9 +4614,6 @@ async function start() {
   await refreshModelHealth();
   setInterval(() => refreshModelHealth(), MODEL_HEALTH_EVERY_MS);
 
-  const layout = sceneGetLayout();
-  if (layout !== null && layout.view !== undefined && layout.view !== null) sceneRestoreView(layout.view);
-  else goLevel(LEVEL.world);
   atlasOnHistoryChanged();
   atlasOnHudChanged();
   // Startup is finished: the saved view is restored (--capture snapshots wait for this,

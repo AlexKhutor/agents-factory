@@ -127,6 +127,33 @@ async function entryOf(action, input, result, before, { store }) {
     case "init-project-git":
       return { action: "project.git-init", projectId: input.projectId,
         summary: `Started a git repository in the folder of ${input.projectId}`, noUndo: "git_not_undone" };
+    // Task mode (agent-tasks.mjs): each step of a task is the person's, and goes forward only (a task is cancelled, not undone).
+    case "start-task": case "revise-task": case "approve-task": case "cancel-task": {
+      const task = action === "cancel-task" ? result?.task : result;
+      if (typeof task?.taskId !== "string") return null;
+      const summary = {
+        "start-task": `Gave task ${task.taskId} to ${task.agentId}: a plan first`,
+        "revise-task": `Asked ${task.agentId} to change the plan of task ${task.taskId}`,
+        "approve-task": `Approved revision ${task.approved?.revision ?? "?"} of the plan of task ${task.taskId}`,
+        "cancel-task": `Cancelled task ${task.taskId} of ${task.agentId}`,
+      }[action];
+      return { action: `task.${action.slice(0, -"-task".length)}`, projectId: task.projectId, quarterId: task.quarterId,
+        agentId: task.agentId, summary, noUndo: "task_not_undone" };
+    }
+    // An agent's memory change the person approved: written as the person's, with the memory's undo.
+    case "approve-memory-change": {
+      if (result?.state !== "approved" || !Number.isSafeInteger(result.writtenRevision)) return null;
+      const scope = await store.readScope({ scopeId: result.target.scopeId });
+      return { ...memoryWrite(scope, { previousRevision: result.writtenRevision - 1, revision: result.writtenRevision }, PERSON),
+        agentId: result.target.agentId ?? result.agentId };
+    }
+    case "set-memory-autonomy": {
+      if (result?.changed !== true) return null;
+      const agent = await agentOf(store, input.agentId);
+      return agent === null ? null : { action: "agent.memory-autonomy", projectId: agent.projectId, quarterId: agent.quarterId,
+        agentId: agent.agentId, summary: input.allowed ? `${agent.agentId} changes its own memory without asking`
+          : `${agent.agentId} asks before changing its own memory`, noUndo: "setting_not_undone" };
+    }
     case "register-desk-source": {
       const agent = await agentOf(store, input.agentId);
       return agent === null ? null : { action: "agent.desk-source", projectId: agent.projectId,

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { lstat, readFile, realpath } from "node:fs/promises";
+import { lstat, mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 // Memory documents: an agent writes notes into a file of its project folder,
@@ -44,6 +44,65 @@ export async function readMemoryDocument(root, value) {
     contentSha256: createHash("sha256").update(bytes).digest("hex") };
 }
 
+// Stores no document is written into: the same the Gateway's reader keeps closed.
+const PRIVATE_SEGMENTS = new Set([".git", ".project-context", ".project-local", ".project-runtime", "node_modules"]);
+
+/**
+ * A memory as a document: a "# title" line, then each entry as "## title" and its text. A line of
+ * an entry's text that would read as a heading gets one space before it, which reading it back
+ * takes away: the document reads back into the same entries (entriesFromDocument).
+ */
+export function documentFromEntries(title, entries) {
+  const lines = [`# ${title}`, ""];
+  for (const entry of entries) {
+    lines.push(`## ${String(entry.title ?? "").replace(/\s+/gu, " ").trim() || "Entry"}`);
+    for (const line of String(entry.text ?? "").replace(/\r\n?/gu, "\n").split("\n")) {
+      lines.push(/^#/u.test(line) ? ` ${line}` : line);
+    }
+    lines.push("");
+  }
+  return `${lines.join("\n").trimEnd()}\n`;
+}
+
+/**
+ * Writes a memory document (a .md file) into the project folder for the person's text editor:
+ * never through a link, never out of the folder or into a private store. A file already there is
+ * kept unless it is the same text or `replace` is set (memory_document_exists). Returns
+ * { path, state: "written" | "same" | "replaced", contentSha256, bytes, filePath }.
+ */
+export async function writeMemoryDocument(root, value, text, { replace = false } = {}) {
+  const relative = normalizeDocumentPath(value);
+  const parts = relative.split("/");
+  if (!/\.md$/iu.test(relative) || parts.some((part) => PRIVATE_SEGMENTS.has(part.toLowerCase()))) {
+    fail("memory_document_path_invalid");
+  }
+  const bytes = Buffer.from(text, "utf8");
+  if (bytes.length > MEMORY_DOCUMENT_LIMITS.bytes) fail("memory_document_too_large");
+  const canonicalRoot = await realpath(root);
+  let current = canonicalRoot;
+  for (const part of parts.slice(0, -1)) {
+    current = path.join(current, part);
+    let info = null;
+    try { info = await lstat(current); } catch { /* made just below */ }
+    if (info === null) await mkdir(current);
+    else if (!info.isDirectory() || info.isSymbolicLink()) fail("memory_document_path_invalid");
+  }
+  const target = path.join(current, parts.at(-1));
+  let existing = null;
+  let info = null;
+  try { info = await lstat(target); } catch { /* a new file */ }
+  if (info !== null) {
+    if (!info.isFile() || info.isSymbolicLink()) fail("memory_document_not_a_file");
+    existing = await readFile(target);
+  }
+  const answer = (state) => ({ path: relative, state, contentSha256: createHash("sha256").update(bytes).digest("hex"),
+    bytes: bytes.length, filePath: target });
+  if (existing !== null && existing.equals(bytes)) return answer("same");
+  if (existing !== null && !replace) fail("memory_document_exists");
+  await writeFile(target, bytes);
+  return answer(existing === null ? "written" : "replaced");
+}
+
 /**
  * The document as memory entries: every "## heading" starts an entry with that
  * title; text before the first one is an entry titled after the file. A
@@ -64,7 +123,8 @@ export function entriesFromDocument(text, fallbackTitle) {
       title = heading[1];
       body = [];
     } else if (!/^#\s+/u.test(line)) {
-      body.push(line);
+      // " #..." is a line of text that would read as a heading (documentFromEntries).
+      body.push(line.replace(/^ (?=#)/u, ""));
     }
   }
   flush();

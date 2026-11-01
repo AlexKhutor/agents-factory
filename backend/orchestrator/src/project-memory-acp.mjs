@@ -89,6 +89,8 @@ export async function createProjectMemoryAcp({ host, controllerRoot, sourceId, p
   return {
     memoryDocuments: false,
     controllerTasks: false,
+    // Its answer comes in pieces (agent_message_chunk): a task's plan is their text joined as it came.
+    chunkedText: true,
     enforcesWriteZones: enforcesWriteZones === true && typeof policy === "function",
     // The agent keeps its whole conversation; memory is sent again only after it changed.
     async memoryDeliveryKey(agent) {
@@ -125,6 +127,8 @@ export async function createProjectMemoryAcp({ host, controllerRoot, sourceId, p
           clientUserMessageId: operation.operationId,
           ...(typeof displayText === "string" ? { displayText } : {}),
           ...(typeof policy === "function" ? { policy: policy({ agent, root: workspace.workspacePath, zone }) } : {}),
+          // A task's planning turn (agent-tasks.mjs): the host refuses every change in it.
+          ...(operation.task?.phase === "plan" ? { planning: true } : {}),
         });
         const turnId = result?.turn?.id;
         if (typeof turnId !== "string" || !turnId) fail("memory_invalid_observation");

@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -5,8 +6,9 @@ import path from "node:path";
 // Windows %LOCALAPPDATA%\AgentsFactory (not Documents: OneDrive may sync it and
 // damage SQLite), macOS ~/Library/Application Support/AgentsFactory, Linux
 // $XDG_DATA_HOME/agents-factory. The controller instance defaults to
-// AGENTS_FACTORY_HOME, else <data>/controller. AGENTS_FACTORY_DATA_DIR moves
-// the data folder itself (keys, SDK runtimes), for tests and portable setups.
+// AGENTS_FACTORY_HOME, else the instance the CLI is installed in, else
+// <data>/controller. AGENTS_FACTORY_DATA_DIR moves the data folder itself
+// (keys, SDK runtimes), for tests and portable setups.
 
 export const AGENTS_FACTORY_INSTANCE_ENV = "AGENTS_FACTORY_HOME";
 export const AGENTS_FACTORY_DATA_ENV = "AGENTS_FACTORY_DATA_DIR";
@@ -42,6 +44,23 @@ export function defaultInstanceDir(options = {}) {
   return api.join(agentsFactoryDataDir(options), "controller");
 }
 
+/**
+ * The instance a CLI is installed in: `<instance>/.orchestrator/runtime/agents-factory.mjs`
+ * with the instance's `instance.json` beside it - or null. A CLI run from an instance works
+ * on that instance, wherever it lies (the owner's of 01.11 lies on W:, not in the OS's data folder).
+ */
+export function instanceOfCli(cliPath, { platform = process.platform, exists = existsSync } = {}) {
+  if (typeof cliPath !== "string" || cliPath === "") return null;
+  const api = pathApi(platform);
+  const runtime = api.dirname(api.resolve(cliPath));
+  const orchestrator = api.dirname(runtime);
+  const same = (a, b) => (platform === "win32" ? a.toLowerCase() === b.toLowerCase() : a === b);
+  if (!same(api.basename(cliPath), "agents-factory.mjs") || !same(api.basename(runtime), "runtime")
+      || !same(api.basename(orchestrator), ".orchestrator")) return null;
+  const instance = api.dirname(orchestrator);
+  return exists(api.join(instance, "instance.json")) ? instance : null;
+}
+
 /** Every path the CLI reads or writes, from the data folder and the instance. */
 export function agentsFactoryLayout({ dataDir, instanceDir, platform = process.platform }) {
   const api = pathApi(platform);
@@ -73,12 +92,14 @@ export function agentsFactoryLayout({ dataDir, instanceDir, platform = process.p
   });
 }
 
-export function resolveLayout({ options = {}, env = process.env, platform = process.platform, homeDir = os.homedir() } = {}) {
+export function resolveLayout({ options = {}, env = process.env, platform = process.platform, homeDir = os.homedir(),
+  cliPath = null, exists = existsSync } = {}) {
   const api = pathApi(platform);
   const dataDir = options["data-dir"] ? api.resolve(options["data-dir"]) : agentsFactoryDataDir({ env, platform, homeDir });
   const instanceDir = options.instance
     ? api.resolve(options.instance)
     : (typeof env[AGENTS_FACTORY_INSTANCE_ENV] === "string" && env[AGENTS_FACTORY_INSTANCE_ENV].trim() !== ""
-      ? api.resolve(env[AGENTS_FACTORY_INSTANCE_ENV]) : api.join(dataDir, "controller"));
+      ? api.resolve(env[AGENTS_FACTORY_INSTANCE_ENV])
+      : instanceOfCli(cliPath, { platform, exists }) ?? api.join(dataDir, "controller"));
   return agentsFactoryLayout({ dataDir, instanceDir, platform });
 }

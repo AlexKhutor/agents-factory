@@ -28,6 +28,7 @@
     "test:layout": "node tools/test-layout.mjs",
     "test:layout-split": "node tools/test-layout-split.mjs",
     "test:scene": "node tools/test-scene.mjs",
+    "test:task-core": "node tools/test-task-core.mjs",
     "test:fixture": "node tools/test-fixture-shape.mjs",
     "test:world-view": "node tools/test-world-view.mjs",
     "test:feed": "node tools/test-feed.mjs",
@@ -45,7 +46,7 @@
     "test:i18n": "node tools/test-i18n.mjs",
     "test:model-health": "node tools/test-model-health.mjs",
     "test:object-ids": "node tools/test-object-ids.mjs",
-    "test": "node tools/verify-kit.mjs && node tools/test-i18n.mjs && node tools/test-object-ids.mjs && node tools/test-model-health.mjs && node tools/test-delivery.mjs && node tools/run-kit-conformance.mjs && node tools/test-trusted-actions.mjs && node tools/test-mutations.mjs && node tools/test-layout.mjs && node tools/test-layout-split.mjs && node tools/test-scene.mjs && node tools/test-fixture-shape.mjs && node tools/test-world-view.mjs && node tools/test-feed.mjs && node tools/test-evidence.mjs && node tools/test-contract.mjs && node tools/test-outcomes.mjs && node tools/test-provider-models.mjs && node tools/test-move-over.mjs && node tools/test-ui-state.mjs && node tools/test-claude-account-cache.mjs && node tools/test-turn-seen.mjs && node tools/test-agent-workspace.mjs && node tools/test-ui-status.mjs && node tools/test-gateway-control.mjs && node tools/test-paperclip-bridge.mjs && node tools/test-chat-view.mjs && node tools/test-direct-bridge.mjs && node tools/probe-connection.mjs --dev-fixture"
+    "test": "node tools/verify-kit.mjs && node tools/test-i18n.mjs && node tools/test-object-ids.mjs && node tools/test-task-core.mjs && node tools/test-model-health.mjs && node tools/test-delivery.mjs && node tools/run-kit-conformance.mjs && node tools/test-trusted-actions.mjs && node tools/test-mutations.mjs && node tools/test-layout.mjs && node tools/test-layout-split.mjs && node tools/test-scene.mjs && node tools/test-fixture-shape.mjs && node tools/test-world-view.mjs && node tools/test-feed.mjs && node tools/test-evidence.mjs && node tools/test-contract.mjs && node tools/test-outcomes.mjs && node tools/test-provider-models.mjs && node tools/test-move-over.mjs && node tools/test-ui-state.mjs && node tools/test-claude-account-cache.mjs && node tools/test-turn-seen.mjs && node tools/test-agent-workspace.mjs && node tools/test-project-images.mjs && node tools/test-ui-status.mjs && node tools/test-gateway-control.mjs && node tools/test-paperclip-bridge.mjs && node tools/test-chat-view.mjs && node tools/test-direct-bridge.mjs && node tools/probe-connection.mjs --dev-fixture"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.3.288"

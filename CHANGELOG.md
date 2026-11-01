@@ -62,6 +62,37 @@ Since then, in the same release:
   opens what needs attention, and History is a short list with details on click.
 - **Languages** - the code and the interface are English; the interface's
   texts are locale files (English and Russian), switched in Atlas.
+- **Task mode** - an agent's chat has "Question | Task". A task is planned
+  first and changes nothing: the agent answers with how it understood the
+  task, what is unclear and its steps, each a short name and what exactly.
+  The Plan tab shows the plan as one card - closed, a line of what the task is
+  about and its progress; opened, the whole plan. The person answers the
+  questions, asks for changes (each revision marks what changed) or approves,
+  and the card follows the work step by step. Earlier tasks and revisions open
+  from the same tab. A finished task lists its result files, and Atlas
+  registers them as the agent's artifacts, with their hash at that time.
+- **Agents keep their memory themselves** - the desk tools `read_memory` and
+  `change_memory` (Claude Code agents): a change by entry title waits for the
+  person's approval card in the chat; an agent may be allowed to change its
+  own memory without asking. A lead reaches the agents below it (a quarter
+  lead its quarter's, a project lead its project's, the world lead any agent's
+  but those of a project kept to some PCs).
+- **Memory in a text editor** - a memory opens as a Markdown file of the
+  project folder in your editor (each `##` heading is one entry); "Load back"
+  marks every entry added, changed, removed or the same before you approve.
+- **Attention on the map** - three kinds of badges (something does not work,
+  someone waits for you, an answer to read), a mark for free agents, a light
+  running along an agent at work and "working" / "free" counts on the plaques;
+  badges sit on agents, quarters or projects by the zoom, shrink when the map
+  is far, and the minimap always shows them.
+- **Files and artifacts** - pictures (PNG, JPEG, GIF, WebP, BMP) open in the
+  Files tab; a text file that starts with a UTF-8 byte-order mark opens and
+  saves; the artifact list is read again each time its tab opens.
+- **Smaller fixes** - agents' names keep one size across the map's levels and
+  stay seen close up; Atlas opens at the saved view without a jump; the model
+  picker switches back after a change; Readiness counts an operation served by
+  each provider as available; a CLI installed in an instance works on that
+  instance without `--instance`.
 
 ## v0.1.0 - 2026-10-20
 

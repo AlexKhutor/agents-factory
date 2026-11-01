@@ -121,13 +121,30 @@
       width: 2 * (halfWidth + half), height: 2 * (halfHeight + half) };
   }
 
+  /**
+   * The points an agent stands on in a quarter's grid (the owner's check of 01.11):
+   * the grid's own for its smallest agent; a bigger one is moved right and down by
+   * how much bigger it is, so its icon's top left corner lines up with the smallest
+   * one's. It fits in the corner cell as the smallest does and covers several cells
+   * from there - a little bigger agent no longer misses the first point and lands a
+   * whole step away. The grid of an empty quarter has no smallest agent to follow.
+   */
+  function latticeOf(spot, grid) {
+    if (grid === DEFAULT_GRID) return grid;
+    const own = agentExtent(spot);
+    const least = agentExtent(grid.smallest);
+    return { ...grid, x: grid.x + Math.max(0, Math.ceil(own.halfWidth - least.halfWidth)),
+      y: grid.y + Math.max(0, Math.ceil(own.halfHeight - least.halfHeight)) };
+  }
+
   /** Grid points where an agent of this size fits entirely inside a quarter of width `width`. */
   function pointRange(spot, width, grid = DEFAULT_GRID) {
     const { halfWidth, halfHeight } = agentExtent(spot);
     const inset = GEOMETRY.agentInset;
-    const left = onGrid(inset + halfWidth, Math.ceil, grid, "x");
-    const right = Math.max(left, onGrid(width - inset - halfWidth, Math.floor, grid, "x"));
-    const top = onGrid(inset + halfHeight, Math.ceil, grid, "y");
+    const own = latticeOf(spot, grid);
+    const left = onGrid(inset + halfWidth, Math.ceil, own, "x");
+    const right = Math.max(left, onGrid(width - inset - halfWidth, Math.floor, own, "x"));
+    const top = onGrid(inset + halfHeight, Math.ceil, own, "y");
     return { left, right, top };
   }
 
@@ -150,9 +167,10 @@
   function snapPoint(spot, width, x, y, others, grid = DEFAULT_GRID) {
     const { step } = grid;
     const range = pointRange(spot, width, grid);
+    const own = latticeOf(spot, grid);
     const free = (px, py) => !others.some((other) => intersects(agentBox(spot, px, py), agentBox(other)));
-    const cx = clamp(onGrid(x, Math.round, grid, "x"), range.left, range.right);
-    const cy = Math.max(range.top, onGrid(y, Math.round, grid, "y"));
+    const cx = clamp(onGrid(x, Math.round, own, "x"), range.left, range.right);
+    const cy = Math.max(range.top, onGrid(y, Math.round, own, "y"));
     for (let ring = 0; ring < 400; ring += 1) {
       let best = null;
       for (let dx = -ring; dx <= ring; dx += 1) {
@@ -985,30 +1003,53 @@
 
   // recovery and captured-pending are attention captured by the catalog (Kit v0.15.0).
   // refused - an action of the agent was refused (by the person or the desk's rules) in its last turn.
+  // model-down - the agent's model does not answer its check now, before any turn fails.
   const SEVERITY = Object.freeze({
-    interaction: 1, "captured-pending": 1, "turn-finished": 1, "asks-you": 1, state: 2, recovery: 2, refused: 2, problem: 3,
+    interaction: 1, "captured-pending": 1, "turn-finished": 1, "asks-you": 1, "task-plan": 1, state: 2, recovery: 2, refused: 2, problem: 3,
+    "model-down": 3,
   });
   // Signals that wait for the person's action pulse; an unread answer does not.
   const CALM = Object.freeze(new Set(["turn-finished"]));
+
+  // Three kinds of attention, each with its own badge (the owner's decision of 01.11): "broken" -
+  // something does not work (a red "!"); "waiting" - the person's action is needed (an orange
+  // "?"); "done" - a turn ended and its answer is unread, the agent is idle (a green check).
+  const ATTENTION_GROUPS = Object.freeze(["broken", "waiting", "done"]);
+
+  /** The kind of attention a signal is. */
+  function attentionGroupOf(item) {
+    switch (item?.kind) {
+      case "problem": case "state": case "recovery": case "model-down": return "broken";
+      case "turn-finished": return item.outcome === "failed" ? "broken" : "done";
+      case "task-plan": return item.stopped ? "broken" : "waiting";
+      default: return "waiting";
+    }
+  }
 
   function aggregateAttention(world) {
     const byAgent = new Map();
     const byQuarter = new Map();
     const byProject = new Map();
     if (world === null) return { byAgent, byQuarter, byProject, total: 0 };
-    const bump = (map, key, severity, urgent) => {
-      const current = map.get(key) ?? { count: 0, severity: 0, urgent: false };
+    // Each object's signals: all of them (count, the highest severity, whether any waits) and,
+    // per kind of attention, the same - each kind is its own badge.
+    const bump = (map, key, severity, urgent, group) => {
+      const current = map.get(key) ?? { count: 0, severity: 0, urgent: false, groups: {} };
+      const own = current.groups[group] ?? { count: 0, severity: 0, urgent: false };
       map.set(key, { count: current.count + 1, severity: Math.max(current.severity, severity),
-        urgent: current.urgent || urgent });
+        urgent: current.urgent || urgent,
+        groups: { ...current.groups, [group]: { count: own.count + 1, severity: Math.max(own.severity, severity),
+          urgent: own.urgent || urgent } } });
     };
     for (const item of world.attention ?? []) {
       // A turn that failed is not a calm "answer is ready": it waits for the person like a state problem.
       const failedTurn = item.kind === "turn-finished" && item.outcome === "failed";
       const severity = failedTurn ? SEVERITY.state : SEVERITY[item.kind] ?? 1;
       const urgent = failedTurn || !CALM.has(item.kind);
-      bump(byAgent, item.agentId, severity, urgent);
-      if (item.quarterId) bump(byQuarter, `${item.projectId}/${item.quarterId}`, severity, urgent);
-      if (item.projectId) bump(byProject, item.projectId, severity, urgent);
+      const group = attentionGroupOf(item);
+      bump(byAgent, item.agentId, severity, urgent, group);
+      if (item.quarterId) bump(byQuarter, `${item.projectId}/${item.quarterId}`, severity, urgent, group);
+      if (item.projectId) bump(byProject, item.projectId, severity, urgent, group);
     }
     return { byAgent, byQuarter, byProject, total: (world.attention ?? []).length };
   }
@@ -1107,6 +1148,8 @@
     inferScope,
     createHistory,
     aggregateAttention,
+    ATTENTION_GROUPS,
+    attentionGroupOf,
     boundsOf,
     centreOf,
     minimapTransform,

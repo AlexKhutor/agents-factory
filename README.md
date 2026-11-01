@@ -56,8 +56,10 @@ makes that visible and enforceable:
   world view down to a single agent.
 - **Give agents memory that survives sessions.** Project, quarter and per-agent
   memory is stored by the backend and delivered with each turn only when it
-  changed. Agents propose memory as documents; nothing enters memory without
-  the person approving the exact text (by its SHA-256).
+  changed. Agents change memory with their own tools, or propose a whole
+  document; nothing enters memory without the person approving it, unless the
+  person allowed an agent to keep its own memory. A memory also opens in your
+  text editor as a Markdown file.
 - **Keep agents in their lane.** Write zones per agent (`tools/solver/**`),
   project and quarter leads with matching rights, permission modes per agent
   (manual, accept edits, auto, bypass), and a pre-tool hook that refuses edits
@@ -186,9 +188,9 @@ Atlas's suites use fixture data and a fake Gateway.
 
 Agents Factory keeps evolving: it is developed together with the work it is
 used for, and improvements land here regularly ([CHANGELOG.md](CHANGELOG.md)).
-Next: **autonomy with the person in charge** (a task mode in which the agent
-plans first and works once the plan is approved; the world lead handing out
-tasks), **statistics and budgets**, a **task board** next to the map, hover
+Next: **autonomy with the person in charge** (the task mode, in which the agent
+plans first and works once the plan is approved, is in; next the world lead
+handing out tasks), **statistics and budgets**, a **task board** next to the map, hover
 cards on the map, bringing an existing Claude Code project in, routines, more
 providers (Codex next), and a **one-file installer** with a CLI and MCP
 ([plan](docs/distribution/README.md)). Later: unattended work only in a

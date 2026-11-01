@@ -23,6 +23,8 @@ const DEFAULTS = Object.freeze({
   // Projects not on this PC as grey frames on the map: all of them on or off, and the ones the
   // person hid one by one (block 3). A view of this PC only; the world is not told.
   awayFrames: true, awayHidden: [],
+  // The agents whose chat is in task mode (plan first, then work): the choice stays until switched back.
+  taskModeAgents: [],
   // The window's language (i18n.mjs); null follows the system's.
   language: null,
 });
@@ -39,7 +41,7 @@ function sanitize(value) {
   for (const key of Object.keys(DEFAULTS)) {
     if (key === "workspaceWidth") {
       if (Number.isInteger(value[key]) && value[key] >= 320 && value[key] <= 8000) result[key] = value[key];
-    } else if (key === "awayHidden") {
+    } else if (key === "awayHidden" || key === "taskModeAgents") {
       if (Array.isArray(value[key])) {
         result[key] = [...new Set(value[key].filter((item) => typeof item === "string" && PROJECT_ID.test(item)))].slice(0, 200);
       }

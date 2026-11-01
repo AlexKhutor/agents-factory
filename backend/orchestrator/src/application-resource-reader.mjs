@@ -99,7 +99,9 @@ function safeRelative(value) {
 function decodeText(bytes) {
   let text;
   try {
-    text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    // A byte-order mark stays in the text: the text is exactly its bytes (a file saved by Notepad
+    // begins with one, and a stripped mark left the read refused against its own byte range).
+    text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
   } catch {
     fail("access_denied", "resource is not valid UTF-8 text");
   }

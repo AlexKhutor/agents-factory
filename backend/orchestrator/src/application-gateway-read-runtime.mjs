@@ -216,6 +216,13 @@ export async function createApplicationGatewayReadRuntime({
   } : {};
   const artifacts = memoryService ? createAgentArtifactService({ service: memoryService, now,
     projectRead: projectResources["query.project-workspace.read"] }) : null;
+  // The files an agent lists as its task's results become its artifacts (project-memory-service.mjs taskResults).
+  if (memoryService) {
+    memoryService.artifactRegistry = {
+      read: (projectId, filePath) => projectResources["query.project-workspace.read"]({ input: { projectId, path: filePath } }),
+      register: (input) => artifacts.register(input),
+    };
+  }
   // The person's changes through Atlas go into the action journal (action-journal-gateway.mjs).
   const handlers = Object.freeze(journalGatewayHandlers({
     ...projectResources,

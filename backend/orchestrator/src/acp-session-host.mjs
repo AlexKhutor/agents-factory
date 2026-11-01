@@ -437,6 +437,8 @@ export class AcpSessionHost extends EventEmitter {
       ...(displayText === null ? {} : { displayText }),
       clientId: typeof options.clientUserMessageId === "string" ? options.clientUserMessageId : null, atUtc: startedAt };
     const run = this.#claim(threadId, turnId, options.policy);
+    // A task's planning turn (agent-tasks.mjs): nothing but reading is allowed in it.
+    run.planning = options.planning === true;
     let session;
     try {
       session = await this.#journal.appendTurn(threadId, { id: turnId, status: "inProgress", startedAt,
@@ -826,6 +828,10 @@ export class AcpSessionHost extends EventEmitter {
       return reject;
     }
     if (ACP_READ_TOOLS.has(tool.name) || (tool.name === "str_replace_editor" && tool.input?.command === "view")) return allow;
+    if (run.planning === true) {
+      await decided("deny", "desk");
+      return reject;
+    }
     let verdict = "ask";
     if (run.policy !== null) {
       try { verdict = await run.policy({ tool: tool.name, input: structuredClone(tool.input), cwd: session.cwd }); }

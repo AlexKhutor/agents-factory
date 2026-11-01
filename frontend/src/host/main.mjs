@@ -3,11 +3,12 @@
 // The window it creates has no Node integration, no filesystem and no network
 // path to the gateway. Everything it can do is the channel list in ipc.mjs.
 
+import { spawn } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { app, BrowserWindow, dialog, ipcMain, screen, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, nativeImage, screen, shell } from "electron";
 import { resolveMode } from "./config.mjs";
 import { createSession } from "./session.mjs";
 import { createInstanceLayoutStore } from "./layout-split.mjs";
@@ -15,6 +16,7 @@ import { createLayoutStore } from "./layout-store.mjs";
 import { createUiStateStore } from "./ui-state.mjs";
 import { createTurnSeenStore } from "./turn-seen.mjs";
 import { createChannels } from "./ipc.mjs";
+import { createProjectImages } from "./project-images.mjs";
 import { callPath } from "./read-journal.mjs";
 import { openConfirmWindow } from "./confirm-window.mjs";
 import { currentLocale } from "./i18n.mjs";
@@ -91,7 +93,7 @@ let mainWindow = null;
 // for the scenes named here. A live run always asks the person.
 const AUTO_CONFIRM_SCENES = Object.freeze(["ui-a17-editor-save-conflict", "ui-a18-copy-with-memory",
   "ui-a19-copy-target-choice", "ui-a26-permission-mode", "ui-a28-tabs-keep-memory-document",
-  "ui-a29-agent-commits", "ui-a31-gateway-panel", "ui-a33-world-lead-create", "ui-a34-desk-agent", "ui-a40-history"]);
+  "ui-a29-agent-commits", "ui-a31-gateway-panel", "ui-a33-world-lead-create", "ui-a34-desk-agent", "ui-a40-history", "ui-a46-memory-change"]);
 const autoConfirmed = [];
 function autoConfirmScene() {
   if (!process.argv.includes("--dev-fixture") || !process.argv.includes("--capture")) return false;
@@ -123,6 +125,23 @@ async function showDialog(kind, options) {
     return { canceled: true, filePaths: [], filePath: undefined };
   }
   return mainWindow === null ? dialog[kind](options) : dialog[kind](mainWindow, options);
+}
+
+/**
+ * Opens a memory document the host itself wrote (a .md file of a project folder) in the person's
+ * text editor: the program Windows opens .md files with, else Notepad. The fixture and the checks
+ * never open a program (a check never takes the screen): the call only answers that it would.
+ */
+async function openInEditor(filePath) {
+  if (typeof filePath !== "string" || !path.isAbsolute(filePath) || !/\.md$/iu.test(filePath)) {
+    return { ok: false, error: { code: "editor_path_invalid" } };
+  }
+  if (resolveMode(process.argv) === "dev-fixture" || CAPTURING) return { ok: true, recorded: true };
+  const failure = await shell.openPath(filePath);
+  if (failure === "") return { ok: true };
+  if (process.platform !== "win32") return { ok: false, error: { code: "editor_unavailable" } };
+  spawn("notepad.exe", [filePath], { detached: true, stdio: "ignore", windowsHide: false }).unref();
+  return { ok: true };
 }
 
 async function chooseDirectory(purpose = "workspace") {
@@ -1040,8 +1059,8 @@ const CAPTURE_SCENES = Object.freeze({
     await refresh();
     await pause(200);
     const kept = document.getElementById("a28-marker") !== null && body().scrollTop === before;
-    const section = [...document.querySelectorAll("#workspace .section-title")].some((node) => node.textContent === tx("Memory document"));
-    const show = [...document.querySelectorAll("#workspace button")].find((button) => button.textContent === tx("Show document"));
+    const section = [...document.querySelectorAll("#workspace .section-title")].some((node) => node.textContent === tx("Memory in a text editor"));
+    const show = [...document.querySelectorAll("#workspace button")].find((button) => button.textContent === tx("Load back"));
     const path = [...document.querySelectorAll("#workspace input.field")].find((input) => input.placeholder.startsWith("docs/memory/"));
     path.value = "docs/memory/project.md";
     show.click();
@@ -1050,11 +1069,34 @@ const CAPTURE_SCENES = Object.freeze({
     [...document.querySelectorAll("#workspace button")].find((button) => button.textContent === tx("Approve and write")).click();
     await until(() => /Written/.test(document.querySelector("#workspace").textContent), 8000);
     const written = /Written: .*revision 2/.test(document.querySelector("#workspace").textContent);
-    const ownMemory = [...document.querySelectorAll("#workspace button")].some((button) => button.textContent === tx("Open agent memory"));
+    const ownMemory = [...document.querySelectorAll("#workspace button")].some((button) => button.textContent === tx("Edit agent memory"));
     body().scrollTop = body().scrollHeight;
-    return { pass: kept && section && entries.includes(tx("Goal")) && entries.includes(tx("Rules")) && written
+    return { pass: kept && section && entries.some((title) => title.endsWith(tx("Goal"))) && entries.some((title) => title.endsWith(tx("Rules"))) && written
       && (typeof a.agentScopeId !== "string" || ownMemory),
     kept, before, section, entries, written, ownMemory, agentScopeId: a.agentScopeId ?? null };
+  })()`,
+  // A memory in a text editor (the owner's choice of 01.11): written as a file of the project folder
+  // and opened (the fixture only answers that it would open); loaded back, the preview says what changes.
+  "ui-a48-memory-editor": `(async () => {
+    const pause = (ms) => new Promise((done) => setTimeout(done, ms));
+    const until = async (test, ms) => { const end = Date.now() + ms; while (Date.now() < end) { if (test()) return true; await pause(60); } return false; };
+    const agents = atlasState.world.projection.projects.flatMap((p) => p.quarters.flatMap((q) => q.agents));
+    const a = agents.find((item) => item.state === "active") ?? agents[0];
+    atlasOpenWorkspace({ kind: "agent", projectId: a.projectId, quarterId: a.quarterId, agentId: a.agentId }, { tab: "context" });
+    const button = (label) => [...document.querySelectorAll("#workspace button")].find((node) => node.textContent === label);
+    await until(() => button(tx("Open in text editor")) !== undefined, 8000);
+    const path = [...document.querySelectorAll("#workspace input.field")].find((input) => input.placeholder.startsWith("docs/memory/"));
+    const defaultPath = path.value;
+    button(tx("Open in text editor")).click();
+    const said = () => document.querySelector("#workspace").textContent;
+    await until(() => said().includes(tx("It is open in your text editor: edit it, save it, then press “Load back”.")), 8000);
+    const written = said().includes(tx("Wrote “{path}” from the memory.", { path: defaultPath }));
+    button(tx("Load back")).click();
+    await until(() => document.querySelector("#workspace .memory-change-removed") !== null, 8000);
+    const marks = [...document.querySelectorAll("#workspace .entry[class*=memory-change-] .entry-title")].map((node) => node.textContent);
+    return { pass: defaultPath === "docs/memory/" + a.agentId + ".md" && written
+      && marks.length === 3 && marks[0] === "=Goal" && marks[1] === "~Rules" && marks[2] === "−Owners",
+    defaultPath, written, marks };
   })()`,
   // The agent's history in the Files tab: a folder not under git offers to become
   // a repository (confirmed by the scene); then the agent's commits are listed.
@@ -1528,7 +1570,8 @@ const CAPTURE_SCENES = Object.freeze({
     const rect = scene.canvas.getBoundingClientRect();
     const doubleClick = (badge) => scene.canvas.dispatchEvent(new MouseEvent("dblclick",
       { clientX: rect.left + badge.x, clientY: rect.top + badge.y, bubbles: true }));
-    const counted = scene.badges.find((item) => item.signal.count > 1);
+    // Badges are one kind of attention each: a red one (what does not work) opens the list.
+    const counted = scene.badges.find((item) => item.node.group === "broken");
     doubleClick(counted);
     await pause(500);
     const listOpened = atlasState.ui.attentionOpen === true && !isWorkspaceOpen();
@@ -1537,7 +1580,8 @@ const CAPTURE_SCENES = Object.freeze({
     commitClick(null);
     await pause(300);
     const closedByMap = atlasState.ui.attentionOpen === false;
-    const question = scene.badges.find((item) => item.signal.count === 1 && item.signal.severity === 1);
+    // An orange one with one agent's one question opens that agent's chat.
+    const question = scene.badges.find((item) => item.node.group === "waiting" && attentionItemsFor(item.node).length === 1);
     doubleClick(question);
     await pause(1500);
     const chatOpened = isWorkspaceOpen();
@@ -1561,6 +1605,124 @@ const CAPTURE_SCENES = Object.freeze({
   // The quarter grid follows its smallest agent: one agent made small, one big - the grid
   // gets the small one's step and starts at the quarter's edge (the small one's inset), the
   // big one keeps its place, and the picture shows both.
+  // Attention in three kinds (the owner's check of 01.11): an agent with a problem and a question
+  // has two badges, one under the other below its corner; an idle agent with an unread answer a
+  // green one, whose double-click opens its chat. Badges are on agents from 150%, on quarters
+  // from 85%, on projects below; a working agent's light runs.
+  "ui-a45-attention-kinds": `(async () => {
+    const pause = (ms) => new Promise((done) => setTimeout(done, ms));
+    const agents = atlasState.world.projection.projects.flatMap((p) => p.quarters.flatMap((q) => q.agents));
+    const quarterOf = (agent) => agents.filter((other) => other.projectId === agent.projectId && other.quarterId === agent.quarterId);
+    const a = agents.find((agent) => quarterOf(agent).length >= 2);
+    const b = quarterOf(a).find((agent) => agent !== a);
+    const where = (agent) => ({ agentId: agent.agentId, projectId: agent.projectId, quarterId: agent.quarterId });
+    // Only these signals, so each badge is known.
+    atlasState.world.attention = [
+      { kind: "problem", ...where(a), problemCode: "model_unreachable" },
+      { kind: "asks-you", ...where(a), question: "Which one?", operationId: "a45-ask" },
+      { kind: "turn-finished", ...where(b), operationId: "a45-done", outcome: "completed" },
+    ];
+    for (const agent of agents) agent.currentOperationId = null;
+    b.currentOperationId = "a45-working";
+    goQuarter(a.projectId, a.quarterId, { instant: true });
+    await pause(400);
+    // The badges as drawn at this zoom, read at once: a camera still flying (after a chat closed) redraws soon after.
+    const at = async (scale) => {
+      for (const end = Date.now() + 3000; scene.animating && Date.now() < end;) await pause(50);
+      scene.camera.scale = scale;
+      draw();
+      return scene.badges.map((badge) => ({ group: badge.node.group, scope: badge.node.scopeKind, agentId: badge.node.agentId,
+        x: Math.round(badge.x), y: Math.round(badge.y), r: badge.r }));
+    };
+    const close = await at(1.6);
+    const working = scene.working === true;
+    const mid = await at(1.0);
+    const far = await at(0.7);
+    const ofA = close.filter((badge) => badge.agentId === a.agentId);
+    const ofB = close.filter((badge) => badge.agentId === b.agentId);
+    await at(1.6);
+    const green = scene.badges.find((badge) => badge.node.agentId === b.agentId && badge.node.group === "done");
+    const rect = scene.canvas.getBoundingClientRect();
+    scene.canvas.dispatchEvent(new MouseEvent("dblclick", { clientX: rect.left + green.x, clientY: rect.top + green.y, bubbles: true }));
+    await pause(1200);
+    const chatOf = workspaceState.node?.agentId ?? null;
+    if (isWorkspaceOpen()) closeWorkspace();
+    // The answer read and the turn over: the agent is free, and its calm mark says so.
+    atlasState.world.attention = atlasState.world.attention.filter((item) => item.agentId !== b.agentId);
+    b.currentOperationId = null;
+    const free = (await at(1.6)).filter((badge) => badge.agentId === b.agentId).map((badge) => badge.group);
+    // ... and on its quarter and its project, at any zoom: how many of their agents are free.
+    const freeQuarter = (await at(1.0)).filter((badge) => badge.group === "idle" && badge.scope === "quarter").length;
+    const freeProject = (await at(0.7)).filter((badge) => badge.group === "idle" && badge.scope === "project").length;
+    // The minimap shows a project's attention however far the World HQ is (the owner's check of 01.11).
+    const hqPlace = scene.layout.projects[WORLD_PROJECT];
+    const hqX = hqPlace?.x;
+    if (hqPlace) hqPlace.x -= 40000;
+    draw();
+    const miniBadge = scene.minimapHits.find((hit) => hit.projectId === a.projectId)?.badge ?? null;
+    if (hqPlace) hqPlace.x = hqX;
+    // Down to 40% badges keep their size; at 20% they are half as big (the owner's check of 01.11).
+    const full = (await at(0.7)).filter((badge) => badge.scope === "project" && badge.group !== "idle").map((badge) => badge.r);
+    const small = (await at(0.2)).filter((badge) => badge.scope === "project" && badge.group !== "idle").map((badge) => badge.r);
+    return { pass: ofA.length === 2 && ofA[0].group === "broken" && ofA[1].group === "waiting" && ofA[0].x === ofA[1].x
+      && ofA[1].y > ofA[0].y && ofB.length === 1 && ofB[0].group === "done" && close.every((badge) => badge.scope === "agent")
+      && mid.some((badge) => badge.scope === "quarter") && !mid.some((badge) => badge.agentId === a.agentId || badge.agentId === b.agentId)
+      && far.some((badge) => badge.scope === "project")
+      && !far.some((badge) => badge.scope === "quarter" || badge.agentId === a.agentId || badge.agentId === b.agentId)
+      && working && chatOf === b.agentId && free.length === 1 && free[0] === "idle" && freeQuarter > 0 && freeProject > 0
+      && full.length > 0 && full.every((r) => r >= 15) && small.length > 0 && small.every((r) => r <= 8)
+      && miniBadge !== null && hqPlace !== undefined,
+    a: a.agentId, b: b.agentId, close, mid, far, working, chatOf, free, freeQuarter, freeProject, full, small, miniBadge };
+  })()`,
+  // The agent's own memory change (roadmap V-2a): the fixture's waiting change is in the
+  // attention list and a card in the agent's chat; approved, the card and the signal go and the
+  // History has the write. The Memory tab lets the agent change its own memory without asking.
+  "ui-a46-memory-change": `(async () => {
+    const pause = (ms) => new Promise((done) => setTimeout(done, ms));
+    const until = async (test, ms) => { const end = Date.now() + ms; while (Date.now() < end) { if (test()) return true; await pause(60); } return false; };
+    const agents = atlasState.world.projection.projects.flatMap((p) => p.quarters.flatMap((q) => q.agents));
+    const a = agents.find((agent) => agent.agentId === "core-scheduler-1");
+    const signals = () => atlasState.world.attention.filter((item) => item.kind === "memory-change" && item.agentId === a.agentId);
+    const readWorldUntil = async (test) => {
+      for (const end = Date.now() + 8000; Date.now() < end;) {
+        await refresh({ silent: true });
+        if (test()) return true;
+        await pause(250);
+      }
+      return false;
+    };
+    await readWorldUntil(() => signals().length > 0);
+    const waiting = signals().map((item) => attentionLine(item));
+    atlasOpenWorkspace({ kind: "agent", projectId: a.projectId, quarterId: a.quarterId, agentId: a.agentId });
+    await until(() => document.querySelector("#chatMemoryChanges .memory-change") !== null, 8000);
+    const cardOf = () => document.querySelector("#chatMemoryChanges .memory-change");
+    const card = { head: cardOf()?.querySelector(".chat-question-head")?.textContent ?? "",
+      reason: cardOf()?.querySelector(".memory-change-reason")?.textContent ?? "",
+      lines: [...(cardOf()?.querySelectorAll(".memory-change-line") ?? [])].map((line) => line.className.replace("memory-change-line ", "")
+        + ":" + line.querySelector(".memory-change-title").textContent) };
+    cardOf().querySelector("[data-action=approve-memory-change]").click();
+    await until(() => cardOf() === null, 8000);
+    const cardGone = cardOf() === null;
+    await readWorldUntil(() => signals().length === 0);
+    const signalGone = signals().length === 0;
+    const journal = await window.atlas.actionJournal({ projectId: a.projectId });
+    const written = journal.ok && journal.data.entries.some((entry) => entry.action === "memory.write" && entry.agentId === a.agentId);
+    // The Memory tab: the agent may change its own memory without asking (confirmed).
+    workspaceState.tab = "context";
+    renderWorkspace();
+    const tick = () => document.getElementById("memoryAutonomy");
+    await until(() => tick()?.disabled === false, 8000);
+    const before = tick().checked;
+    tick().click();
+    await until(() => tick()?.disabled === false && tick().checked === true, 8000);
+    const modes = await window.atlas.permissionModes();
+    const allowed = modes.ok && modes.data.agents.some((item) => item.agentId === a.agentId && item.ownMemoryWithoutAsking === true);
+    return { pass: waiting.length === 1 && waiting[0] === tx("asks to change a memory: {count} entries", { count: 2 })
+      && card.head === tx("Asks to change {memory}", { memory: tx("its own memory") }) && card.reason.length > 0
+      && card.lines.join() === "change-added:Build,change-changed:Style" && cardGone && signalGone && written
+      && before === false && tick().checked === true && allowed,
+    waiting, card, cardGone, signalGone, written, before, after: tick().checked, allowed };
+  })()`,
   "ui-a43-grid-small-agent": `(async () => {
     const pause = (ms) => new Promise((done) => setTimeout(done, ms));
     const project = atlasState.world.projection.projects.find((p) => p.quarters.some((q) => q.agents.length >= 2));
@@ -1582,6 +1744,252 @@ const CAPTURE_SCENES = Object.freeze({
     return { pass: before.step === 40 && after.step === 20 && xs.length > 1 && xs[1] - xs[0] === 20
       && xs[0] === 23 && ys[0] === 22 && big.x === bigPlace.x && big.y === bigPlace.y,
     before, after, firstPoints: { xs: xs.slice(0, 3), ys: ys.slice(0, 3) }, big: { x: big.x, y: big.y }, bigPlace };
+  })()`,
+  // Task mode (roadmap track V, items 1-2): the chat switched to Task gives the agent a task,
+  // the Plan tab is marked while the plan waits, the person answers a question and asks for
+  // changes (the next revision is marked against the one before), then approves it.
+  "ui-a44-task-mode": `(async () => {
+    const pause = (ms) => new Promise((done) => setTimeout(done, ms));
+    const until = async (test, ms) => { const end = Date.now() + ms; while (Date.now() < end) { if (test()) return true; await pause(60); } return false; };
+    const agents = atlasState.world.projection.projects.flatMap((p) => p.quarters.flatMap((q) => q.agents));
+    const a = agents.find((item) => item.state === "active" && item.currentOperationId === null) ?? agents[0];
+    // The fixture's turns never end on their own; a plan arrives when the planning turn has
+    // ended, so the window is shown the agent idle before each step, as it is then.
+    const turnEnded = () => { const agent = agentOf(); if (agent !== null) agent.currentOperationId = null; };
+    atlasOpenWorkspace({ kind: "agent", projectId: a.projectId, quarterId: a.quarterId, agentId: a.agentId });
+    await until(() => document.querySelector("#chatMode [data-mode=task]") !== null, 8000);
+    document.querySelector("#chatMode [data-mode=task]").click();
+    const taskOn = taskModeOf(a.agentId);
+    const text = document.querySelector(".chat-compose textarea");
+    text.value = "Add an export button to the report toolbar";
+    text.dispatchEvent(new Event("input"));
+    await until(() => document.getElementById("chatSend")?.disabled === false, 8000);
+    document.getElementById("chatSend").click();
+    await until(() => (document.querySelector(".chat-result")?.textContent ?? "").length > 0, 10000);
+    const given = document.querySelector(".chat-result")?.textContent ?? "";
+    const planTab = () => document.querySelector(".workspace-tabs [data-tab=plan]");
+    await until(() => planTab()?.classList.contains("waiting") === true, 8000);
+    const marked = planTab()?.classList.contains("waiting") === true;
+    // The plan waiting for approval is the person's attention on the map too (a refresh
+    // already running makes another one return at once: the world is read until it shows).
+    const taskSignals = () => atlasState.world.attention.filter((item) => item.kind === "task-plan" && item.agentId === a.agentId);
+    const readWorldUntil = async (test) => {
+      for (const end = Date.now() + 8000; Date.now() < end;) {
+        await refresh({ silent: true });
+        if (test()) return true;
+        await pause(250);
+      }
+      return false;
+    };
+    await readWorldUntil(() => taskSignals().length > 0);
+    const attention = taskSignals().map((item) => attentionLine(item));
+    planTab().click();
+    await until(() => document.getElementById("planApprove") !== null, 8000);
+    const first = { questions: document.querySelectorAll(".plan-question").length,
+      steps: document.querySelectorAll(".plan-step").length, stage: document.querySelector(".plan-stage")?.textContent ?? "" };
+    // The plan is one card, open while it waits for approval; its top line closes it to a line of
+    // what the task is about, and the answer being typed stays (the owner's check of 01.11).
+    const seen = (selector) => [...document.querySelectorAll(selector)].filter((node) => node.offsetParent !== null)
+      .map((node) => node.textContent);
+    document.querySelectorAll(".plan-answer")[1].value = "yes";
+    const openSteps = seen(".plan-step");
+    document.getElementById("planToggle").click();
+    const closedSteps = seen(".plan-step").length;
+    const summary = seen(".plan-summary")[0] ?? "";
+    const answerKept = document.querySelectorAll(".plan-answer")[1].value === "yes";
+    document.getElementById("planToggle").click();
+    const openAgain = seen(".plan-step").length === 4;
+    document.querySelectorAll(".plan-answer")[0].value = "CSV and JSON";
+    document.getElementById("planRevise").click();
+    document.querySelector(".plan-remarks textarea").value = "Export the filtered rows only";
+    turnEnded();
+    document.getElementById("planSendRemarks").click();
+    await until(() => document.querySelector(".plan-step.change-added") !== null, 10000);
+    const earlierRevisions = [...document.querySelectorAll(".plan-card.nested .section-title")].map((node) => node.textContent);
+    const revised = { added: [...document.querySelectorAll(".plan-step.change-added")].map((node) => node.textContent),
+      removed: [...document.querySelectorAll(".plan-step.change-removed")].map((node) => node.textContent),
+      title: document.querySelector(".plan-card .section-title")?.textContent ?? "" };
+    await until(() => document.getElementById("planApprove") !== null, 8000);
+    turnEnded();
+    document.getElementById("planApprove").click();
+    await until(() => document.querySelector(".plan-step.status-done") !== null, 10000);
+    const working = { stage: document.querySelector(".plan-stage")?.textContent ?? "",
+      done: document.querySelectorAll(".plan-step.status-done").length, marked: planTab()?.classList.contains("waiting") === true };
+    await readWorldUntil(() => taskSignals().length === 0);
+    const attentionAfter = taskSignals().length;
+    const read = await window.atlas.tasks({ projectId: a.projectId, agentId: a.agentId });
+    const task = read.ok ? read.data.tasks[0] : null;
+    const journal = await window.atlas.actionJournal({ projectId: task?.projectId ?? a.projectId });
+    const actions = journal.ok ? journal.data.entries.map((entry) => entry.action) : [];
+    // The fixture's later scenes chat as before.
+    setTaskMode(a.agentId, false);
+    return { pass: taskOn && given.includes(tx("The task is given: the agent answers with a plan first. Approve it on the Plan tab.")) && marked
+      && attention.length === 1 && attention[0] === tx("task {taskId}: the plan waits for your approval", { taskId: "task-0001" })
+      && attentionAfter === 0 && first.questions === 2 && first.steps === 4
+      && first.stage === tx("The plan is waiting for your approval")
+      && openSteps.length === 4 && openSteps[0].includes("Read the toolbar") && openSteps[0].includes("report-toolbar.js")
+      && closedSteps === 0 && summary.startsWith("Add an export button") && answerKept && openAgain
+      && earlierRevisions.length === 1 && earlierRevisions[0] === tx("Revision {revision}", { revision: 1 })
+      && revised.added.some((step) => step.includes("filtered rows")) && revised.removed.some((step) => step.includes("Export the rows"))
+      && revised.title === tx("Plan · revision {revision}", { revision: 2 })
+      && working.stage === tx("In progress: step {current} of {total}", { current: 2, total: 4 }) && working.done === 1 && !working.marked
+      && task !== null && task.stage === "in-progress" && task.approved?.revision === 2
+      && ["task.start", "task.revise", "task.approve"].every((action) => actions.includes(action)),
+    agent: a.agentId, taskOn, given, marked, attention, attentionAfter, first, openSteps, closedSteps, summary, answerKept, openAgain,
+    earlierRevisions, revised,
+    working, task: task && { stage: task.stage, approved: task.approved },
+    actions };
+  })()`,
+  // A finished task's results (the owner's choice of 01.11): the files the agent listed, each in its
+  // Artifacts or with why not; the plan is one card, closed to a line, opened by its top line; an
+  // earlier task opens to its plan.
+  "ui-a47-task-results": `(async () => {
+    const pause = (ms) => new Promise((done) => setTimeout(done, ms));
+    const until = async (test, ms) => { const end = Date.now() + ms; while (Date.now() < end) { if (test()) return true; await pause(60); } return false; };
+    const a = atlasState.world.projection.projects.flatMap((p) => p.quarters.flatMap((q) => q.agents))
+      .find((agent) => agent.agentId === "data-ingest-1");
+    atlasOpenWorkspace({ kind: "agent", projectId: a.projectId, quarterId: a.quarterId, agentId: a.agentId });
+    await until(() => document.querySelector(".workspace-tabs [data-tab=plan]") !== null, 8000);
+    document.querySelector(".workspace-tabs [data-tab=plan]").click();
+    await until(() => document.querySelector(".plan-results") !== null, 8000);
+    const seen = (selector) => [...document.querySelectorAll(selector)].filter((node) => node.offsetParent !== null)
+      .map((node) => node.textContent);
+    const stage = document.querySelector(".plan-stage")?.textContent ?? "";
+    const rows = [...document.querySelectorAll(".plan-result-row")].map((row) => ({
+      path: row.querySelector(".plan-result-path")?.textContent ?? "",
+      artifact: row.querySelector(".plan-result-artifact") !== null,
+      problem: row.querySelector(".plan-result-problem")?.textContent ?? "" }));
+    // A finished task's plan is closed: a line of what it was about; its top line opens the whole plan.
+    const head = document.getElementById("planToggle");
+    const card = head.parentElement;
+    const inCard = (selector) => [...card.querySelectorAll(selector)].filter((node) => node.offsetParent !== null)
+      .map((node) => node.textContent);
+    const short = inCard(".plan-summary");
+    const closedFirst = inCard(".plan-step").length === 0;
+    head.click();
+    const whole = inCard(".plan-step");
+    head.click();
+    const closed = inCard(".plan-step").length === 0;
+    // An earlier task opens to its own plan.
+    const earlier = document.querySelector(".plan-earlier-card");
+    const earlierClosed = earlier?.classList.contains("closed") === true;
+    earlier?.querySelector(".plan-card-head").click();
+    const earlierSteps = [...(earlier?.querySelectorAll(".plan-step") ?? [])].filter((node) => node.offsetParent !== null)
+      .map((node) => node.textContent);
+    document.querySelector(".plan-result-artifact").click();
+    await until(() => document.querySelectorAll(".workspace-body .entry").length > 0, 8000);
+    const tab = document.querySelector(".workspace-tabs .active")?.dataset.tab ?? null;
+    const record = [...document.querySelectorAll(".workspace-body .entry")]
+      .find((entry) => entry.querySelector(".entry-title")?.textContent === "reports/drain-analysis.md");
+    const fromTask = record?.querySelector(".muted")?.textContent ?? "";
+    return { pass: stage === tx("Done") && rows.length === 2 && rows[0].path === "reports/drain-analysis.md" && rows[0].artifact
+      && !rows[1].artifact && rows[1].problem === tx("Not in Artifacts: {why}.", { why: tx("it is not a text file, or it is a private one") })
+      && short.length === 1 && short[0].startsWith("Find why the ingest queue drains slowly.")
+      && short[0].includes(tx("steps done: {done} of {total}", { done: 2, total: 2 })) && closedFirst
+      && whole.length === 2 && whole[1].includes("reports/drain-analysis.md") && closed
+      && earlierClosed && earlierSteps.length === 1 && earlierSteps[0].includes("src/queue/lock.mjs")
+      && tab === "artifacts" && fromTask === tx("a result of task {taskId}", { taskId: "task-d0ne" }),
+    stage, rows, short, closedFirst, whole, closed, earlierClosed, earlierSteps, tab, fromTask };
+  })()`,
+  // Agents' names (the owner's check of 01.11): their size follows the zoom with no step between the
+  // world and the project levels, and close up the name of a unit reaching above the map stays seen.
+  "ui-a49-agent-names": `(async () => {
+    const pause = (ms) => new Promise((done) => setTimeout(done, ms));
+    const agents = atlasState.world.projection.projects.flatMap((p) => p.quarters.flatMap((q) => q.agents));
+    const a = agents.find((item) => item.agentId === "core-scheduler-1") ?? agents[0];
+    const p = scene.layout.projects[a.projectId];
+    const q = scene.layout.quarters[a.projectId][a.quarterId];
+    const spot = scene.layout.agents[a.agentId];
+    const x = p.x + q.x + spot.x;
+    const y = p.y + q.y + spot.y;
+    goQuarter(a.projectId, a.quarterId, { instant: true });
+    await pause(300);
+    const sizeAt = (scale, scope) => {
+      scene.scope = scope;
+      scene.reference = scope.projectId === null ? 0 : projectScaleOf(scope.projectId);
+      scene.camera = { x, y, scale };
+      draw();
+      return { level: currentLevel(), size: scene.agentLabels.find((item) => item.agentId === a.agentId)?.size ?? null };
+    };
+    // Just below and just above the project's world threshold: the level changes, the name does not jump;
+    // the same zoom seen from the world gives the same size.
+    const threshold = 0.62 * projectScaleOf(a.projectId);
+    const project = { projectId: a.projectId, quarterId: null };
+    const below = sizeAt(threshold * 0.98, project);
+    const above = sizeAt(threshold * 1.02, project);
+    const sameZoomOtherScope = sizeAt(threshold * 1.02, { projectId: null, quarterId: null });
+    // ... and up to a project's own zoom the name grows to 14 px.
+    const fitted = sizeAt(projectScaleOf(a.projectId) * 1.2, project);
+    // 520% with the unit's top above the map: the camera aims below the unit.
+    scene.scope = { projectId: a.projectId, quarterId: a.quarterId };
+    scene.reference = projectScaleOf(a.projectId);
+    scene.camera = { x, y: y + 60, scale: 5.2 };
+    draw();
+    const close = scene.agentLabels.find((item) => item.agentId === a.agentId) ?? null;
+    // Not under the map's tools either: the panel over its x ends above the name.
+    const canvas = scene.canvas.getBoundingClientRect();
+    const tools = document.getElementById("editToolbar").getBoundingClientRect();
+    const underTools = close !== null && close.x > tools.left - canvas.left && close.x < tools.right - canvas.left
+      && close.y - close.size < tools.bottom - canvas.top;
+    return { pass: below.level === LEVEL.world && above.level === LEVEL.project && below.size !== null && above.size !== null
+      && Math.abs(above.size - below.size) < 1 && above.size === sameZoomOtherScope.size && fitted.size === 14
+      && close !== null && close.y >= close.size && close.y <= scene.size.height && !underTools,
+    below, above, sameZoomOtherScope, fitted, close, underTools, height: scene.size.height };
+  })()`,
+  // The operations count (the owner asked about 27/28, 02.11): an operation one call cannot serve
+  // with several providers, but asked of each provider by name, is usable and counted so; a really
+  // missing one is not. Each operation has a title of its own.
+  "ui-a50-operations-by-provider": `(async () => {
+    const saved = atlasState.operations;
+    atlasState.operations = [
+      { operationId: "query.memory.scopes.list", status: "available", reasonCode: null },
+      { operationId: "query.provider.models.list", status: "unavailable", reasonCode: "multiple_selectable_providers" },
+      { operationId: "mutation.memory.agent.steer", status: "unavailable", reasonCode: "operation_not_advertised" },
+    ];
+    renderHeader();
+    const line = document.getElementById("operationsLine").textContent;
+    renderReadiness();
+    const rows = [...document.querySelectorAll("#readinessBody .ready-row")]
+      .filter((row) => (row.querySelector(".ready-detail")?.textContent ?? "").startsWith("query.provider.models.list")
+        || (row.querySelector(".ready-detail")?.textContent ?? "").startsWith("mutation.memory.agent.steer"))
+      .map((row) => ({ title: row.querySelector(".ready-title").textContent, chip: row.querySelector(".ready-chip").className,
+        label: row.querySelector(".ready-chip").textContent }));
+    atlasState.operations = saved;
+    renderHeader();
+    return { pass: line === tx("operations: {available}/{length}", { available: 2, length: 3 }) && rows.length === 2
+      && rows[0].title === tx("Models of the providers") && rows[0].chip.includes("ok") && rows[0].label === tx("by provider")
+      && rows[1].title === tx("A message into a running turn") && rows[1].chip.includes("bad"),
+    line, rows };
+  })()`,
+  // An agent's model switched and switched back by the input field (the owner's check of 02.11:
+  // after Haiku -> Fable the picker stayed locked and would not go back).
+  "ui-a51-model-switch-back": `(async () => {
+    const pause = (ms) => new Promise((done) => setTimeout(done, ms));
+    const until = async (test, ms) => { const end = Date.now() + ms; while (Date.now() < end) { if (test()) return true; await pause(60); } return false; };
+    const agents = atlasState.world.projection.projects.flatMap((p) => p.quarters.flatMap((q) => q.agents));
+    const a = agents.find((item) => item.agentId === "core-scheduler-1") ?? agents[0];
+    const first = a.profile.model;
+    // The fixture's Gateway lists no models: the list is the one a provider would give.
+    modelCatalog = { ok: true, data: { models: [
+      { id: first, name: "First model", provider: a.profile.provider, efforts: ["default", a.profile.reasoningEffort], defaultEffort: "default" },
+      { id: "fixture-other", name: "Other model", provider: a.profile.provider, efforts: ["default"], defaultEffort: "default" }] } };
+    atlasOpenWorkspace({ kind: "agent", projectId: a.projectId, quarterId: a.quarterId, agentId: a.agentId });
+    const picker = () => document.getElementById("chatModel");
+    await until(() => picker() !== null && !picker().disabled, 8000);
+    const choose = async (id) => {
+      picker().value = id;
+      picker().dispatchEvent(new Event("change"));
+      await until(() => !picker().disabled && picker().value === id
+        && agents.find((item) => item.agentId === a.agentId)?.profile?.model === id, 8000);
+      const now = atlasState.world.projection.projects.flatMap((p) => p.quarters.flatMap((q) => q.agents))
+        .find((item) => item.agentId === a.agentId);
+      return { picker: picker().value, enabled: !picker().disabled, profile: now?.profile?.model ?? null };
+    };
+    const there = await choose("fixture-other");
+    const back = await choose(first);
+    return { pass: there.picker === "fixture-other" && there.enabled && there.profile === "fixture-other"
+      && back.picker === first && back.enabled && back.profile === first,
+    first, there, back };
   })()`,
   "hq-lead": `(async () => {
     const project = atlasState.world.projection.projects[0];
@@ -1787,7 +2195,7 @@ lockDownNavigation();
 // event that cannot be emitted until the module finishes. All startup work
 // belongs inside this callback.
 app.whenReady().then(async () => {
-  const session = await createSession({ projectRoot: PROJECT_ROOT, mode, confirm, chooseDirectory });
+  const session = await createSession({ projectRoot: PROJECT_ROOT, mode, confirm, chooseDirectory, openInEditor });
   if (session.delivery?.status !== "verified") {
     // The window still opens, to say so; nothing in it can connect or change anything.
     process.stderr.write(`atlas: frontend kit delivery rejected (${session.delivery?.reasonCode ?? "unknown"})\n`);
@@ -1804,9 +2212,13 @@ app.whenReady().then(async () => {
   });
   const uiStateStore = createUiStateStore({ directory: userData });
   const turnSeenStore = createTurnSeenStore({ directory: userData, environment: session.environment });
+  // An image of a project's folder for the Files tab: through the trusted host's read of the folder.
+  const projectImages = createProjectImages({ nativeImage, readProjectFolder: (input) => (
+    typeof session.trusted?.readProjectFolder === "function"
+      ? session.trusted.readProjectFolder(input) : { ok: false, error: { code: "project_folder_unavailable" } }) });
   registerChannels(createChannels({
     session, appVersion: await appVersion(), saveText, openText, layoutStore, uiStateStore,
-    turnSeenStore, chooseEvidenceDirectory,
+    turnSeenStore, chooseEvidenceDirectory, readProjectImage: (input) => projectImages.readImage(input),
   }));
   const window = createWindow(mode);
 

@@ -149,7 +149,7 @@ export const PROJECT_FILES = Object.freeze({
 /** Registered artifacts: a link to a path with its hash at the time of registration. */
 export const ARTIFACTS = Object.freeze({
   "data-ingest-1": Object.freeze([
-    { artifactId: "drain-report", path: "reports/drain-analysis.md",
+    { artifactId: "task-d0ne.1", path: "reports/drain-analysis.md",
       sha256: sha256(Buffer.from(REPORT, "utf8")), sizeBytes: Buffer.byteLength(REPORT, "utf8"),
       registeredAtUtc: "2026-09-18T09:14:00.000Z" },
     // Registered before the edit: the file has changed since, and the hash no longer matches.

@@ -147,7 +147,7 @@ The data root holds the key (on Windows a DPAPI file) and the SDK
 
 | Variable | What it does |
 | --- | --- |
-| `AGENTS_FACTORY_HOME` | The instance folder (instead of the default one); `--instance` wins |
+| `AGENTS_FACTORY_HOME` | The instance folder (instead of the default one); `--instance` wins. Without it, a CLI installed in an instance (`<instance>\.orchestrator\runtime\agents-factory.mjs`) works on its own instance, else on the folder in the OS's data folder |
 | `AGENTS_FACTORY_DATA_DIR` | The data root; `--data-dir` wins |
 | `AGENTS_FACTORY_SQLITE` | `node` (default) or `python` - what opens memory, the conversation archive and the control queue; `control-cycle.json` may say the same with `sqliteBackend`; without `node:sqlite` everything falls back to Python |
 | `AGENTS_FACTORY_NPM_REGISTRY` | The npm registry for `claude install` (default `https://registry.npmjs.org`) |

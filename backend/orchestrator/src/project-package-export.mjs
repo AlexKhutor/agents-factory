@@ -4,6 +4,8 @@ import path from "node:path";
 
 import { journalKeyOf } from "./action-journal.mjs";
 import { namesKeyOf } from "./object-names.mjs";
+import { tasksKeyOf } from "./agent-tasks.mjs";
+import { changesKeyOf } from "./memory-changes.mjs";
 import { loadNodeSqlite } from "./sqlite-backend.mjs";
 import { openReadOnlyDatabase } from "./sqlite-node-connection.mjs";
 import { projectStoreFolder, resolveStoreLayout, WORLD_PROJECT_ID } from "./project-store-layout.mjs";
@@ -222,9 +224,14 @@ export function selectProjectRecords({ memory, archive, projectId }) {
   const knownProjects = new Set([...memory.scopes.map((row) => row.project_id),
     ...allAgents.map((agent) => agent?.projectId).filter((id) => typeof id === "string")]);
   const bindings = new Map([...knownProjects].map((id) => [`workspace-${sha256(id)}`, id]));
-  // A project's action journal and its names go with it (action-journal.mjs, object-names.mjs).
+  // A project's action journal, its names and its agents' tasks go with it (action-journal.mjs,
+  // object-names.mjs, agent-tasks.mjs).
   for (const id of knownProjects) {
-    try { owners.set(journalKeyOf(id), id); owners.set(namesKeyOf(id), id); } catch { /* an ID no journal can have */ }
+    try {
+      owners.set(journalKeyOf(id), id); owners.set(namesKeyOf(id), id); owners.set(tasksKeyOf(id), id);
+      owners.set(changesKeyOf(id), id);
+    }
+    catch { /* an ID no journal can have */ }
   }
   const exported = [];
   if (catalog) exported.push({ ...catalog, value: { ...catalog.value, agents } });

@@ -3,6 +3,8 @@ import path from "node:path";
 
 import { ACTION_JOURNAL_PREFIX, journalKeyOf } from "./action-journal.mjs";
 import { NAMES_PREFIX, namesKeyOf } from "./object-names.mjs";
+import { TASKS_PREFIX, tasksKeyOf } from "./agent-tasks.mjs";
+import { CHANGES_PREFIX, changesKeyOf } from "./memory-changes.mjs";
 import { NodeConversationArchiveBridge } from "./conversation-archive-store-node.mjs";
 import { NodeProjectMemoryBridge } from "./project-memory-store-node.mjs";
 import { artifactsKeyOf } from "./project-package-export.mjs";
@@ -174,8 +176,10 @@ export class SplitProjectMemoryBridge {
       for (const { projectId } of await mountedProjects(this.#root)) if (sha256(projectId) === hash) return projectId;
       return WORLD_PROJECT_ID;
     }
-    // A project's action journal (action-journal.mjs) and its names (object-names.mjs) live with the project.
-    for (const [prefix, keyOf] of [[ACTION_JOURNAL_PREFIX, journalKeyOf], [NAMES_PREFIX, namesKeyOf]]) {
+    // A project's action journal (action-journal.mjs), its names (object-names.mjs) and its agents'
+    // tasks (agent-tasks.mjs) live with the project.
+    for (const [prefix, keyOf] of [[ACTION_JOURNAL_PREFIX, journalKeyOf], [NAMES_PREFIX, namesKeyOf],
+      [TASKS_PREFIX, tasksKeyOf], [CHANGES_PREFIX, changesKeyOf]]) {
       if (!key.startsWith(prefix)) continue;
       for (const { projectId } of await mountedProjects(this.#root)) if (keyOf(projectId) === key) return projectId;
       return WORLD_PROJECT_ID;

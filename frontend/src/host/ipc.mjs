@@ -3,7 +3,8 @@
 // Every channel takes a validated payload, returns plain data, and can only
 // reach an allowlisted read operation. There is no generic "invoke operation"
 // channel, no filesystem channel and no shell channel - by construction, not by
-// convention.
+// convention. (atlas:project-image reads one image of a project's bound folder,
+// read-only and checked: project-images.mjs.)
 
 import os from "node:os";
 import { exportEvidence } from "./evidence-export.mjs";
@@ -36,8 +37,45 @@ const cursorOf = (value) => (typeof value === "string" && value !== "" ? value :
 export function createChannels({
   session, appVersion, saveText = null, openText = null,
   layoutStore = null, uiStateStore = null, turnSeenStore = null, chooseEvidenceDirectory = null,
+  readProjectImage = null,
 }) {
   const gateway = () => session.gateway;
+  // Tasks whose plan (or stopped turn) waits for the person, for the attention list: one read
+  // of every project, kept for a while - the world is read every few seconds, the CLI is slow.
+  let waitingTasks = { readAt: 0, items: [] };
+  const TASK_ATTENTION_TTL_MS = 15_000;
+  const taskAttention = async () => {
+    if (typeof session.trusted?.readTasksWaitingForPerson !== "function") return [];
+    if (Date.now() - waitingTasks.readAt >= TASK_ATTENTION_TTL_MS) {
+      const read = await session.trusted.readTasksWaitingForPerson();
+      waitingTasks = { readAt: Date.now(), items: read.ok ? read.data.tasks.map((task) => ({ kind: "task-plan",
+        projectId: task.projectId, quarterId: task.quarterId, agentId: task.agentId, taskId: task.taskId,
+        stage: task.stage, stopped: task.stopped })) : waitingTasks.items };
+    }
+    return waitingTasks.items;
+  };
+  // A task step changes what waits: the next world read asks again.
+  const taskChanged = (result) => {
+    waitingTasks = { readAt: 0, items: waitingTasks.items };
+    return result;
+  };
+  // An agent's memory change waiting for the person (memory-changes.mjs) is attention too: the same
+  // way, one read of every project, kept for a while, read again after a decision.
+  let waitingChanges = { readAt: 0, items: [] };
+  const memoryAttention = async () => {
+    if (typeof session.trusted?.readMemoryChanges !== "function") return [];
+    if (Date.now() - waitingChanges.readAt >= TASK_ATTENTION_TTL_MS) {
+      const read = await session.trusted.readMemoryChanges({ states: ["pending"], limit: 100 });
+      waitingChanges = { readAt: Date.now(), items: read.ok ? read.data.changes.map((change) => ({ kind: "memory-change",
+        projectId: change.projectId, quarterId: change.quarterId, agentId: change.agentId, changeId: change.changeId,
+        target: change.target.kind, count: change.diff.length })) : waitingChanges.items };
+    }
+    return waitingChanges.items;
+  };
+  const memoryChanged = (result) => {
+    waitingChanges = { readAt: 0, items: waitingChanges.items };
+    return result;
+  };
 
   // A read refused here never reached the gateway; the run's journal says so,
   // without keeping the rejected value.
@@ -165,6 +203,13 @@ export function createChannels({
         const asked = new Set(asking.map((item) => `${item.agentId}/${item.operationId}`));
         world.attention.push(...asking,
           ...unread.filter((item) => !asked.has(`${item.agentId}/${item.operationId}`)));
+      }
+      // A task whose plan waits for approval (agent-tasks.mjs) is the person's attention too.
+      if (world.status === "ready" && Array.isArray(world.attention)) {
+        const placed = new Set(world.projection.projects.flatMap((project) => project.quarters
+          .flatMap((quarter) => quarter.agents.map((agent) => agent.agentId))));
+        world.attention.push(...(await taskAttention()).filter((item) => placed.has(item.agentId)),
+          ...(await memoryAttention()).filter((item) => placed.has(item.agentId)));
       }
       return { ok: true, data: world };
     },
@@ -344,6 +389,15 @@ export function createChannels({
     "atlas:settle-send": async ({ agentId, operationId } = {}) => (typeof session.trusted.settleSend === "function"
       ? session.trusted.settleSend({ agentId, operationId })
       : { ok: false, error: { code: "unavailable", reasonCode: "settle_send_not_supported" } }),
+    // A memory written as a document of the project folder and opened in the text editor (trusted host).
+    "atlas:export-memory-document": async ({ agentId, projectId, path, target } = {}) => (
+      typeof session.trusted.exportMemoryDocument === "function"
+        ? session.trusted.exportMemoryDocument({ agentId, projectId, path, target })
+        : { ok: false, error: { code: "unavailable", reasonCode: "memory_export_not_supported" } }),
+    // An image of a project's folder, reduced, for the Files tab (project-images.mjs; read-only).
+    "atlas:project-image": async ({ projectId, path } = {}) => (readProjectImage === null
+      ? { ok: false, error: { code: "unavailable", reasonCode: "project_image_not_supported" } }
+      : readProjectImage({ projectId: identifier(projectId), path: typeof path === "string" ? path : null })),
     // The folder a project works in - for the person's own window (trusted host, read-only).
     "atlas:project-folder": async ({ projectId } = {}) => (typeof session.trusted.readProjectFolder === "function"
       ? session.trusted.readProjectFolder({ projectId })
@@ -373,6 +427,39 @@ export function createChannels({
     "atlas:rename": async ({ projectId, kind, objectId, name } = {}) => (typeof session.trusted.renameObject === "function"
       ? session.trusted.renameObject({ projectId, kind, objectId, name: name ?? null })
       : { ok: false, error: { code: "unavailable", reasonCode: "names_not_supported" } }),
+    // Task mode (the backend's agent-tasks.mjs): an agent's tasks, and the person's steps on one
+    // (trusted host). The same records feed the task board later.
+    "atlas:tasks": async ({ projectId, agentId, stages, waitingFor, limit } = {}) => (typeof session.trusted.readTasks === "function"
+      ? session.trusted.readTasks({ projectId, agentId: agentId ?? null, stages: stages ?? null,
+        waitingFor: waitingFor ?? null, limit: limit ?? 50 })
+      : { ok: false, error: { code: "unavailable", reasonCode: "tasks_not_supported" } }),
+    "atlas:start-task": async ({ agentId, text } = {}) => (typeof session.trusted.startTask === "function"
+      ? taskChanged(await session.trusted.startTask({ agentId, text }))
+      : { ok: false, error: { code: "unavailable", reasonCode: "tasks_not_supported" } }),
+    "atlas:revise-task": async ({ agentId, taskId, remarks, answers } = {}) => (typeof session.trusted.reviseTask === "function"
+      ? taskChanged(await session.trusted.reviseTask({ agentId, taskId, remarks, answers }))
+      : { ok: false, error: { code: "unavailable", reasonCode: "tasks_not_supported" } }),
+    "atlas:approve-task": async ({ agentId, taskId, revision, answers } = {}) => (typeof session.trusted.approveTask === "function"
+      ? taskChanged(await session.trusted.approveTask({ agentId, taskId, revision, answers }))
+      : { ok: false, error: { code: "unavailable", reasonCode: "tasks_not_supported" } }),
+    // The agents' own memory changes (memory-changes.mjs): read them, the person's decision on one, and
+    // whether an agent changes its own memory without asking (trusted host).
+    "atlas:memory-changes": async ({ projectId, agentId, states, limit } = {}) => (typeof session.trusted.readMemoryChanges === "function"
+      ? session.trusted.readMemoryChanges({ projectId: projectId ?? null, agentId: agentId ?? null, states: states ?? null,
+        limit: limit ?? 50 })
+      : { ok: false, error: { code: "unavailable", reasonCode: "memory_changes_not_supported" } }),
+    "atlas:approve-memory-change": async ({ projectId, changeId } = {}) => (typeof session.trusted.approveMemoryChange === "function"
+      ? memoryChanged(await session.trusted.approveMemoryChange({ projectId, changeId }))
+      : { ok: false, error: { code: "unavailable", reasonCode: "memory_changes_not_supported" } }),
+    "atlas:reject-memory-change": async ({ projectId, changeId } = {}) => (typeof session.trusted.rejectMemoryChange === "function"
+      ? memoryChanged(await session.trusted.rejectMemoryChange({ projectId, changeId }))
+      : { ok: false, error: { code: "unavailable", reasonCode: "memory_changes_not_supported" } }),
+    "atlas:set-memory-autonomy": async ({ agentId, allowed } = {}) => (typeof session.trusted.setMemoryAutonomy === "function"
+      ? session.trusted.setMemoryAutonomy({ agentId, allowed })
+      : { ok: false, error: { code: "unavailable", reasonCode: "memory_changes_not_supported" } }),
+    "atlas:cancel-task": async ({ agentId, taskId } = {}) => (typeof session.trusted.cancelTask === "function"
+      ? taskChanged(await session.trusted.cancelTask({ agentId, taskId }))
+      : { ok: false, error: { code: "unavailable", reasonCode: "tasks_not_supported" } }),
     // Projects not on this PC (a split instance): the list, taking one off into
     // its package folder and bringing it back (trusted host, confirmed).
     "atlas:away-projects": async () => (typeof session.trusted.listAwayProjects === "function"
@@ -591,7 +678,9 @@ export const CHANNEL_NAMES = Object.freeze([
   "atlas:interactions", "atlas:trusted", "atlas:choose-workspace",
   "atlas:bind-workspace", "atlas:save-memory", "atlas:archive-project", "atlas:restore-project",
   "atlas:archived-projects", "atlas:action-journal", "atlas:undo-action", "atlas:names", "atlas:rename",
-  "atlas:project-folder", "atlas:rebind-workspace", "atlas:settle-send", "atlas:set-permission-mode",
+  "atlas:tasks", "atlas:start-task", "atlas:revise-task", "atlas:approve-task", "atlas:cancel-task",
+  "atlas:memory-changes", "atlas:approve-memory-change", "atlas:reject-memory-change", "atlas:set-memory-autonomy",
+  "atlas:project-folder", "atlas:project-image", "atlas:export-memory-document", "atlas:rebind-workspace", "atlas:settle-send", "atlas:set-permission-mode",
   "atlas:away-projects", "atlas:unmount-project", "atlas:mount-project", "atlas:set-project-policy",
   "atlas:sync-status", "atlas:sync-take", "atlas:sync-release",
   "atlas:permission-modes", "atlas:archive-quarter", "atlas:restore-quarter", "atlas:create-scope",

@@ -59,6 +59,8 @@ const PALETTE = Object.freeze({
   green: "#9fbb88",
   amber: "#e2b76b",
   red: "#df927a",
+  // Quiet things, like a free agent's mark: the window's --slate, lighter so it reads on the map.
+  slate: "#a3b0b8",
 });
 
 const emptyLayout = () => ({
@@ -621,6 +623,8 @@ function draw() {
 
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, width, height);
+  // Whether an agent on the screen is working now (drawAgent): its light runs while it does.
+  scene.working = false;
   ctx.save();
   ctx.translate(width / 2, height / 2);
   ctx.scale(scene.camera.scale, scene.camera.scale);
@@ -1001,6 +1005,11 @@ function agentColour(agent) {
   return PALETTE.green;
 }
 
+// One run of the working light along a unit, in milliseconds.
+const WORKING_PERIOD_MS = 1200;
+/** Whether an agent's turn runs now (the catalog's current operation), as its context line says. */
+const agentWorking = (agent) => typeof agent.currentOperationId === "string" && agent.currentOperationId !== "";
+
 function drawAgent(agent, x, y, ratio, attention, level, size = 1) {
   const scale = scene.camera.scale;
   // From afar a unit would turn into a one-pixel dot: it gets a minimum
@@ -1020,6 +1029,20 @@ function drawAgent(agent, x, y, ratio, attention, level, size = 1) {
     // The state bar is the only thing whose colour tells the state of the agent.
     rect(x - 10 * k, y + h / 2 - 4 * k, 20 * k, 2 * k, agentColour(agent));
   }
+  // While its turn runs, a light runs along the bottom of the unit (the owner's check of 01.11:
+  // the map did not show who works); without motion, the bottom is simply lit.
+  if (agentWorking(agent)) {
+    const track = w - 4 * k;
+    const light = Math.max(track / 4, 3 / scale);
+    const band = Math.max(2, 2 / scale);
+    if (scene.reducedMotion) {
+      rect(x - track / 2, y + h / 2 - band, track, band, PALETTE.gold);
+    } else {
+      const phase = (performance.now() % WORKING_PERIOD_MS) / WORKING_PERIOD_MS;
+      rect(x - track / 2 + phase * (track - light), y + h / 2 - band, light, band, PALETTE.gold);
+      scene.working = true;
+    }
+  }
   // A problem is shown by the attention brackets and badge below (and said in the tooltip):
   // the small amber square that once marked it too said the same thing without words.
 
@@ -1028,13 +1051,14 @@ function drawAgent(agent, x, y, ratio, attention, level, size = 1) {
   // marks about the same thing must not be on the screen.
   const signal = attentionLevelOf(level) === "agent"
     ? attention.byAgent.get(agent.agentId) : undefined;
-  if (signal !== undefined) {
+  // An unread answer alone needs no brackets: its green badge says it calmly.
+  const bracket = signal?.groups?.broken ? PALETTE.red : signal?.groups?.waiting ? PALETTE.amber : null;
+  if (bracket !== null) {
     // Attention brackets keep a constant screen size: close up they must not
     // swell around the unit.
     const pad = 5 / scene.camera.scale;
-    const colour = signal.severity >= 3 ? PALETTE.red : PALETTE.amber;
     cornerBrackets(x - w / 2 - pad, y - h / 2 - pad, w + pad * 2, h + pad * 2,
-      colour, 1.6, 7 / scene.camera.scale);
+      bracket, 1.6, 7 / scene.camera.scale);
   }
 
   const node = { kind: "agent", agentId: agent.agentId, projectId: agent.projectId, quarterId: agent.quarterId };
@@ -1131,16 +1155,22 @@ function drawLabels(level, ratio, attention) {
         : agentContextLine(agent, questions);
   };
 
+  // Text sizes follow the zoom itself, by the standard project's scale (the owner's check of 01.11):
+  // the level's ratio is counted from the project in the centre and changes when the camera settles
+  // on another one or another level, and the names jumped in size with it.
+  const zoom = ratioFor(scene.camera, scene.size, 0);
+  scene.agentLabels = [];
+  const covers = mapCovers();
   for (const project of projection.projects) {
     const box = scene.layout.projects[project.projectId];
-    if (box !== undefined) drawHeadquartersLabel(project, box, ratio, level, contextOf);
+    if (box !== undefined) drawHeadquartersLabel(project, box, zoom, level, contextOf);
   }
-  drawWorldHeadquartersLabel(ratio, contextOf);
+  drawWorldHeadquartersLabel(zoom, contextOf);
 
   // The project plaque is above its top-left corner, outside the frame, at any
   // level: in the overview the name does not lie on the buildings. From afar, where
   // projects come closer, the plaque shrinks with them.
-  const projectPlaqueScale = Math.min(1, Math.max(0.6, ratio / 0.3));
+  const projectPlaqueScale = Math.min(1, Math.max(0.6, zoom / 0.3));
   for (const project of projection.projects) {
     const box = scene.layout.projects[project.projectId];
     if (box === undefined) continue;
@@ -1149,8 +1179,13 @@ function drawLabels(level, ratio, attention) {
     if (corner.y < -40 || corner.y > scene.size.height + 80) continue;
     const node = { kind: "project", projectId: project.projectId, quarterId: null, agentId: null };
     const agents = project.quarters.reduce((sum, quarter) => sum + quarter.agents.length, 0);
+    const working = project.quarters.reduce((sum, quarter) => sum + quarter.agents.filter(agentWorking).length, 0);
+    const free = project.quarters.reduce((sum, quarter) => sum
+      + quarter.agents.filter((agent) => agentIdle(agent, attention)).length, 0);
     drawPlaque(corner.x, corner.y - 4, sceneName("project", project.projectId, project.projectId),
-      `${countWords(project.quarters.length, QUARTER_FORMS)} · ${countWords(agents, AGENT_FORMS)}`,
+      `${countWords(project.quarters.length, QUARTER_FORMS)} · ${countWords(agents, AGENT_FORMS)}`
+        + (working > 0 ? ` · ${tx("working: {count}", { count: working })}` : "")
+        + (free > 0 ? ` · ${tx("free: {count}", { count: free })}` : ""),
       16 * projectPlaqueScale, sameNode(scene.selection, node), node);
   }
   // The quarter plaque is outside, at its top-left corner, close to the edge
@@ -1158,7 +1193,7 @@ function drawLabels(level, ratio, attention) {
   // memory is delivered. Agents' names - at any level: from the overview you also see
   // who is where; there they shrink with the quarter. The state frame under an agent - at the levels
   // quarter and agent levels.
-  const quarterPlaqueScale = Math.min(1, ratio);
+  const quarterPlaqueScale = Math.min(1, zoom);
   for (const project of projection.projects) {
     const projectBox = scene.layout.projects[project.projectId];
     if (projectBox === undefined) continue;
@@ -1181,7 +1216,11 @@ function drawLabels(level, ratio, attention) {
           : level === LEVEL.project && quarter.agents.length > 0 && roomy
             ? tx("{value} · memory {delivered}/{length}", { value: countWords(quarter.agents.length, AGENT_FORMS), delivered, length: quarter.agents.length })
             : countWords(quarter.agents.length, AGENT_FORMS);
-        drawPlaque(corner.x, corner.y - 3, sceneName("quarter", project.projectId, quarter.quarterId), detail,
+        const working = quarter.agents.filter(agentWorking).length;
+        const free = quarter.agents.filter((agent) => agentIdle(agent, attention)).length;
+        drawPlaque(corner.x, corner.y - 3, sceneName("quarter", project.projectId, quarter.quarterId),
+          detail + (working > 0 ? ` · ${tx("working: {count}", { count: working })}` : "")
+            + (free > 0 ? ` · ${tx("free: {count}", { count: free })}` : ""),
           14 * quarterPlaqueScale, sameNode(scene.selection, node), node);
       }
       for (const agent of quarter.agents) {
@@ -1189,23 +1228,32 @@ function drawLabels(level, ratio, attention) {
         if (placement === undefined) continue;
         const point = worldToScreen(scene.camera, scene.size,
           projectBox.x + box.x + placement.x, projectBox.y + box.y + placement.y);
+        // Name above the unit, state below it. Labels move away from the unit
+        // in proportion to its size on screen, otherwise close up they lie on it.
+        const extent = agentExtent(placement);
+        const half = Math.max(extent.halfHeight * scene.camera.scale, 3);
         if (point.x < -80 || point.x > scene.size.width + 80) continue;
-        if (point.y < -60 || point.y > scene.size.height + 60) continue;
+        // Close up a unit may be seen while its centre is off the screen: it is skipped only when all of it is.
+        if (point.y + half < -60 || point.y - half > scene.size.height + 60) continue;
         const selectedAgent = scene.selection !== null && scene.selection.kind === "agent"
           && scene.selection.agentId === agent.agentId;
         // A name is no wider than the step at which the map places agents (but no shorter than 56 px), otherwise
         // the names of neighbours overlap; the selected one is shown in full.
         const room = Math.max(56, GEOMETRY.agentAutoStep * scene.camera.scale - 6);
-        // In the overview the name shrinks with the quarter (not smaller than 9 px); closer - 14 px.
-        const nameSize = level >= LEVEL.world ? Math.max(9, Math.round(14 * quarterPlaqueScale)) : 14;
+        // The name shrinks with the zoom, from 14 px at a project's own zoom and closer down to 9 px,
+        // with no step between levels (the owner's check of 01.11).
+        const nameSize = clamp(14 * zoom, 9, 14);
         const shown = sceneName("agent", agent.projectId, agent.agentId);
         const label = selectedAgent ? shown : fitText(shown, room, nameSize, 600);
-        // Name above the unit, state below it. Labels move away from the unit
-        // in proportion to its size on screen, otherwise close up they lie on it.
-        const extent = agentExtent(placement);
-        const half = Math.max(extent.halfHeight * scene.camera.scale, 3);
-        screenText(label, point.x, point.y - half - Math.round(nameSize * 0.55), nameSize,
-          selectedAgent ? PALETTE.gold : "#dfe7cc", "center", 600);
+        // Close up a big unit reaches above the map's top edge or under the panels over it, and its name
+        // with it (the owner's check of 01.11, at 520%): then the name stays seen, lower, inside the
+        // unit's top, while the unit is.
+        const width = textWidth(label, nameSize, 600);
+        const clear = coverBottom(covers, point.x - width / 2, point.x + width / 2) + nameSize + 2;
+        const above = point.y - half - nameSize * 0.55;
+        const nameY = above >= clear ? above : Math.min(Math.max(clear, point.y - half + nameSize + 4), point.y + half - 4);
+        screenText(label, point.x, nameY, nameSize, selectedAgent ? PALETTE.gold : "#dfe7cc", "center", 600);
+        scene.agentLabels.push({ agentId: agent.agentId, size: nameSize, x: point.x, y: nameY, text: label });
         if (level >= LEVEL.project) continue;
         // Short context under the unit, in a frame sized to the text: what the agent
         // is doing and how its last turn ended, only from what the catalog reports.
@@ -1229,6 +1277,35 @@ function drawLabels(level, ratio, attention) {
 }
 
 /** Text shortened with an ellipsis to `width` px in this font (screen pixels). */
+/**
+ * The panels lying over the top of the map (the level card, the map tools, attention and the
+ * buttons), in the canvas's own pixels: a name close up is kept out from under them.
+ */
+function mapCovers() {
+  if (scene.canvas === null) return [];
+  const canvas = scene.canvas.getBoundingClientRect();
+  return ["scopeHud", "editToolbar", "stateHud"].map((id) => document.getElementById(id))
+    .filter((node) => node !== null && node.offsetParent !== null && !node.classList.contains("hidden"))
+    .map((node) => node.getBoundingClientRect())
+    .filter((box) => box.width > 0 && box.height > 0)
+    .map((box) => ({ left: box.left - canvas.left, right: box.right - canvas.left, bottom: box.bottom - canvas.top }));
+}
+
+/** The lowest bottom of the panels over the map between `left` and `right` (0 where there are none). */
+function coverBottom(covers, left, right) {
+  return covers.filter((box) => box.left < right && box.right > left)
+    .reduce((lowest, box) => Math.max(lowest, box.bottom), 0);
+}
+
+function textWidth(text, size, weight) {
+  const ctx = scene.ctx;
+  ctx.save();
+  ctx.font = `${weight} ${size}px "Segoe UI", Inter, Arial, sans-serif`;
+  const width = ctx.measureText(text).width;
+  ctx.restore();
+  return width;
+}
+
 function fitText(text, width, size, weight) {
   const ctx = scene.ctx;
   ctx.save();
@@ -1345,39 +1422,103 @@ function pulseOpacity() {
   return 0.725 + 0.275 * Math.cos(phase * Math.PI * 2);
 }
 
-function drawBadge(x, y, signal, opacity = 1, node = null) {
+// The three kinds of attention (scene-core.js attentionGroupOf), each with its own badge: a red "!"
+// for what does not work, an orange "?" for what waits for the person, a green check for a turn
+// that ended with an unread answer. The colours are the map's own.
+const ATTENTION_LOOKS = Object.freeze({
+  broken: { colour: PALETTE.red, fill: "#3a2622", sign: "!" },
+  waiting: { colour: PALETTE.amber, fill: "#3a3322", sign: "?" },
+  done: { colour: PALETTE.green, fill: "#243020", sign: "✓" },
+  // Not attention: an agent that is free - no turn runs, nothing waits - shows it calmly, like an
+  // idle worker in a strategy game (the owner's check of 01.11: after the green check was read,
+  // nothing said the agent waits for its next task).
+  idle: { colour: PALETTE.slate, fill: "#262c27", sign: "z" },
+});
+
+/** Whether an agent is free: active, no turn running, and no attention of any kind. */
+const agentIdle = (agent, attention) => agent.state === "active" && !agentWorking(agent)
+  && attention.byAgent.get(agent.agentId) === undefined;
+
+/** An object with no attention: only its free agents may show. */
+const NO_SIGNAL = Object.freeze({ count: 0, severity: 0, urgent: false, groups: {} });
+
+/**
+ * The badges of one object, from (x, y) - its top right corner - downwards: one badge per
+ * kind of attention it has, a little below the corner (the owner's check of 01.11), a sign
+ * for one signal and a number for several; then, calm, how many of its agents are free.
+ */
+// Badges keep their size down to this zoom of the map (40%); further away they shrink with it,
+// not below BADGE_SMALLEST of their size - otherwise they would cover what they are about (the
+// owner's check of 01.11). Too small for a sign, a badge is its coloured dot.
+const BADGE_FULL_ZOOM = 0.4;
+const BADGE_SMALLEST = 0.3;
+const badgeSize = () => Math.min(1, Math.max(BADGE_SMALLEST, scene.camera.scale / BADGE_FULL_ZOOM));
+
+/** A badge's radius on screen, by its kind and count, at this zoom. */
+const badgeRadius = (group, count, size) => size * (group === "idle" ? (count > 9 ? 11 : 10) : count > 9 ? 13 : 12);
+
+function drawBadge(x, y, signal, opacity = 1, node = null, free = 0) {
   if (opacity < 0.04) return;
+  const size = badgeSize();
+  const groups = ATTENTION_GROUPS.filter((group) => (signal.groups?.[group]?.count ?? 0) > 0);
+  let top = y + 4 * size;
+  for (const group of groups) {
+    const own = signal.groups[group];
+    const radius = badgeRadius(group, own.count, size);
+    drawGroupBadge(x, top + radius, group, own, opacity, node, size);
+    top += 2 * radius + 4 * size;
+  }
+  if (free > 0) {
+    drawGroupBadge(x, top + badgeRadius("idle", free, size), "idle", { count: free, urgent: false }, opacity, node, size);
+  }
+}
+
+function drawGroupBadge(x, y, group, signal, opacity, node, size = 1) {
   const ctx = scene.ctx;
   const dpr = scene.dpr ?? 1;
-  const radius = signal.count > 9 ? 17 : 15;
-  const colour = signal.severity >= 3 ? PALETTE.red : PALETTE.amber;
-  const pulsing = signal.urgent === true && !scene.reducedMotion;
+  const look = ATTENTION_LOOKS[group];
+  const radius = badgeRadius(group, signal.count, size);
+  // What waits for the person pulses; an unread answer is calm.
+  const pulsing = group !== "done" && group !== "idle" && signal.urgent === true && !scene.reducedMotion;
   if (pulsing) scene.pulsing = true;
   ctx.save();
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.globalAlpha = opacity * (pulsing ? pulseOpacity() : 1);
   ctx.beginPath();
   ctx.arc(x, y, radius, 0, Math.PI * 2);
-  ctx.fillStyle = signal.severity >= 3 ? "#3a2622" : "#3a3322";
+  ctx.fillStyle = look.fill;
   ctx.fill();
-  ctx.strokeStyle = colour;
-  ctx.lineWidth = 2;
+  ctx.strokeStyle = look.colour;
+  ctx.lineWidth = Math.max(1, 2 * size);
   ctx.stroke();
-  ctx.fillStyle = colour;
-  ctx.font = "bold 17px Consolas, monospace";
-  ctx.textAlign = "center";
-  // A single signal is shown as a sign: a question to the person is “?”, everything else is “!”.
-  ctx.fillText(signal.count === 1 ? (signal.severity === 1 ? "?" : "!") : String(signal.count),
-    x, y + 6);
+  ctx.fillStyle = look.colour;
+  if (radius >= 7) {
+    ctx.font = `bold ${Math.round(14 * size)}px Consolas, monospace`;
+    ctx.textAlign = "center";
+    ctx.fillText(signal.count === 1 ? look.sign : String(signal.count), x, y + 5 * size);
+  } else {
+    ctx.beginPath();
+    ctx.arc(x, y, Math.max(1.5, radius / 2), 0, Math.PI * 2);
+    ctx.fill();
+  }
   ctx.restore();
   // Only a badge that is visible almost in full at this distance catches the
   // cursor: otherwise the targets of three levels would overlap each other.
-  if (opacity > 0.5 && node !== null) scene.badges.push({ x, y, r: radius + 4, node, signal });
+  if (opacity > 0.5 && node !== null) {
+    scene.badges.push({ x, y, r: radius + 3 * size, node: { ...node, group }, signal });
+  }
 }
 
-/** Whose attention badge this level shows. There is no intermediate state. */
-const attentionLevelOf = (level) => (level >= LEVEL.world ? "project"
-  : level === LEVEL.project ? "quarter" : "agent");
+// Whose attention badge the map shows, by its zoom as the window names it (the camera's
+// scale, "150%"; the owner's numbers of 01.11): from 150% the agents themselves - they are
+// clearly seen by then - from 85% their quarters, below that their projects.
+const ATTENTION_ZOOM = Object.freeze({ agent: 1.5, quarter: 0.85 });
+
+/** Whose attention badge this level and zoom show. There is no intermediate state. */
+const attentionLevelOf = (level) => (level <= LEVEL.workspace ? "agent"
+  : level >= LEVEL.world ? "project"
+    : scene.camera.scale >= ATTENTION_ZOOM.agent ? "agent"
+      : scene.camera.scale >= ATTENTION_ZOOM.quarter ? "quarter" : "project");
 
 /**
  * Attention badges belong to the level, not to the distance: the world shows them on
@@ -1393,7 +1534,7 @@ function drawAttentionBadges(level, ratio, attention) {
   // second) - the canvas only: not through the camera's frame, which on stopping
   // refreshes the panels (they would be rebuilt and flicker under the cursor).
   try { drawAttentionBadgesNow(level, ratio, attention); } finally {
-    if (scene.pulsing && !scene.pulseTimer) {
+    if ((scene.pulsing || scene.working) && !scene.pulseTimer) {
       scene.pulseTimer = setTimeout(() => {
         scene.pulseTimer = null;
         requestAnimationFrame(() => { if (!scene.animating) draw(); });
@@ -1404,9 +1545,13 @@ function drawAttentionBadges(level, ratio, attention) {
 
 function drawAttentionBadgesNow(level, ratio, attention) {
   const world = worldOf();
-  if (world === null || scene.layout === null || attention.total === 0) return;
+  if (world === null || scene.layout === null) return;
   const showing = attentionLevelOf(level);
   const screen = (x, y) => worldToScreen(scene.camera, scene.size, x, y);
+  // Free agents show at every zoom (the owner's check of 01.11): on an agent its "z", on a
+  // quarter or a project how many of its agents are free; a lead at its HQ building.
+  const freeOf = (agents) => agents.filter((agent) => agentIdle(agent, attention)).length;
+  const leadFree = (lead, signal) => (lead !== null && signal === undefined && agentIdle(lead, attention) ? 1 : 0);
   // A badge sits with its centre exactly on the top right corner of what it is about:
   // the corner is taken in map coordinates, with no offset in them - otherwise
   // the offset grows with the zoom and the badge drifts away from the corner.
@@ -1415,17 +1560,17 @@ function drawAttentionBadgesNow(level, ratio, attention) {
   // at the World HQ building, at any level (the World HQ is a world-level object).
   const worldLead = worldLeadOf();
   const worldSignal = worldLead === null ? undefined : attention.byAgent.get(worldLead.agentId);
+  const worldFree = leadFree(worldLead, worldSignal);
   const hq = worldHqBox();
-  if (worldSignal !== undefined && hq !== null && boxInView(hq, 160)) {
+  if ((worldSignal !== undefined || worldFree > 0) && hq !== null && boxInView(hq, 160)) {
     const point = screen(hq.x + hq.width, hq.y);
-    drawBadge(point.x, point.y, worldSignal, 1, {
+    drawBadge(point.x, point.y, worldSignal ?? NO_SIGNAL, 1, {
       kind: "attention", scopeKind: "agent",
       projectId: worldLead.projectId, quarterId: worldLead.quarterId, agentId: worldLead.agentId,
-    });
+    }, worldFree);
   }
 
   for (const project of world.projection.projects) {
-    if (attention.byProject.get(project.projectId) === undefined) continue;
     const box = scene.layout.projects[project.projectId];
     if (box === undefined) continue;
     // The whole territory is culled, not the badge point: close up the project corner
@@ -1433,53 +1578,60 @@ function drawAttentionBadgesNow(level, ratio, attention) {
     if (!boxInView(box, 160)) continue;
 
     if (showing === "project") {
+      const signal = attention.byProject.get(project.projectId);
+      const free = freeOf(project.quarters.flatMap((quarter) => quarter.agents));
+      if (signal === undefined && free === 0) continue;
       const point = screen(box.x + box.width, box.y);
-      drawBadge(point.x, point.y, attention.byProject.get(project.projectId), 1, {
+      drawBadge(point.x, point.y, signal ?? NO_SIGNAL, 1, {
         kind: "attention", scopeKind: "project",
         projectId: project.projectId, quarterId: null, agentId: null,
-      });
+      }, free);
       continue;
     }
 
     // The project lead is in the HQ quarter, which is not on the map: its badge is at the HQ building.
     const lead = leadOf(project.projectId);
     const leadSignal = lead === null ? undefined : attention.byAgent.get(lead.agentId);
-    if (leadSignal !== undefined) {
+    const leadIsFree = leadFree(lead, leadSignal);
+    if (leadSignal !== undefined || leadIsFree > 0) {
       const hq = headquartersBox(box);
       const point = screen(box.x + hq.x + hq.width, box.y + hq.y);
-      drawBadge(point.x, point.y, leadSignal, 1, {
+      drawBadge(point.x, point.y, leadSignal ?? NO_SIGNAL, 1, {
         kind: "attention", scopeKind: "agent",
         projectId: project.projectId, quarterId: lead.quarterId, agentId: lead.agentId,
-      });
+      }, leadIsFree);
     }
 
     for (const quarter of project.quarters) {
       const quarterSignal = attention.byQuarter.get(`${project.projectId}/${quarter.quarterId}`);
-      if (quarterSignal === undefined) continue;
       const quarterBox = scene.layout.quarters[project.projectId]?.[quarter.quarterId];
       if (quarterBox === undefined) continue;
 
       if (showing === "quarter") {
+        const free = freeOf(quarter.agents);
+        if (quarterSignal === undefined && free === 0) continue;
         const point = screen(box.x + quarterBox.x + quarterBox.width, box.y + quarterBox.y);
-        drawBadge(point.x, point.y, quarterSignal, 1, {
+        drawBadge(point.x, point.y, quarterSignal ?? NO_SIGNAL, 1, {
           kind: "attention", scopeKind: "quarter",
           projectId: project.projectId, quarterId: quarter.quarterId, agentId: null,
-        });
+        }, free);
         continue;
       }
 
       for (const agent of quarter.agents) {
         const agentSignal = attention.byAgent.get(agent.agentId);
-        if (agentSignal === undefined) continue;
+        // A free agent: its calm mark where the badges hang; a double-click opens its chat for the next task.
+        const free = agentSignal === undefined && agentIdle(agent, attention) ? 1 : 0;
+        if (agentSignal === undefined && free === 0) continue;
         const placement = scene.layout.agents[agent.agentId];
         if (placement === undefined) continue;
         const extent = agentExtent(placement);
         const point = screen(box.x + quarterBox.x + placement.x + extent.halfWidth,
           box.y + quarterBox.y + placement.y - extent.halfHeight);
-        drawBadge(point.x, point.y, agentSignal, 1, {
+        drawBadge(point.x, point.y, agentSignal ?? NO_SIGNAL, 1, {
           kind: "attention", scopeKind: "agent",
           projectId: project.projectId, quarterId: quarter.quarterId, agentId: agent.agentId,
-        });
+        }, free);
       }
     }
   }
@@ -1504,6 +1656,22 @@ function drawMinimap(attention) {
     let title = text.length > 20 ? `${text.slice(0, 19)}…` : text;
     while (title.length > 3 && ctx.measureText(title).width > Math.max(26, width - 4)) title = `${title.slice(0, -2)}…`;
     return title;
+  };
+  // The minimap always shows attention (the owner's check of 01.11): however far apart the World
+  // HQ and the projects are, a project's badge stays, on its corner and within the minimap. Its
+  // colour is the most pressing kind: red what does not work, amber what waits, green an answer.
+  const badgeAt = (right, top, signal, hit) => {
+    const x = clamp(right - 6, 9, size.width - 9);
+    const y = clamp(top + 7, 9, size.height - 9);
+    hit.badge = { x, y, r: 10 };
+    ctx.beginPath();
+    ctx.arc(x, y, 8, 0, Math.PI * 2);
+    ctx.fillStyle = signal.groups?.broken ? "#b45a46" : signal.groups?.waiting ? "#b99254" : "#7f9a68";
+    ctx.fill();
+    ctx.fillStyle = "#172110";
+    ctx.textAlign = "center";
+    ctx.font = "bold 11px Consolas, monospace";
+    ctx.fillText(String(signal.count), x, y + 4);
   };
   // Projects not on this PC - grey dashed frames, as on the map and when on the map
   // (the "Not on this PC" ticks). A click on them moves the view, as on an empty place.
@@ -1535,13 +1703,17 @@ function drawMinimap(attention) {
     ctx.lineWidth = 1.5;
     ctx.strokeRect(corner.x, corner.y, width, height);
     scene.minimapHits.push({ x: corner.x, y: corner.y, width, height, projectId: WORLD_PROJECT, world: true });
+    // The world lead's attention is the World HQ's.
+    const worldSignal = attention.byProject.get(WORLD_PROJECT);
+    if (worldSignal !== undefined) badgeAt(corner.x + width, corner.y, worldSignal, scene.minimapHits.at(-1));
   }
   for (const project of projection.projects) {
     const box = scene.layout.projects[project.projectId];
     if (box === undefined) continue;
     const topLeft = transform.toMap(box.x, box.y);
-    const width = box.width * transform.scale;
-    const height = box.height * transform.scale;
+    // Never smaller than a mark: far from the World HQ a project is still seen, as the HQ is.
+    const width = Math.max(6, box.width * transform.scale);
+    const height = Math.max(6, box.height * transform.scale);
     const active = project.projectId === scene.scope.projectId;
     scene.minimapHits.push({
       x: topLeft.x, y: topLeft.y, width, height, projectId: project.projectId,
@@ -1560,17 +1732,7 @@ function drawMinimap(attention) {
     ctx.fillText(fit(project.projectId, width), topLeft.x + width / 2, topLeft.y + height / 2 + 3);
 
     const signal = attention.byProject.get(project.projectId);
-    if (signal !== undefined && width > 26) {
-      const badge = scene.minimapHits[scene.minimapHits.length - 1];
-      badge.badge = { x: topLeft.x + width - 6, y: topLeft.y + 7, r: 10 };
-      ctx.beginPath();
-      ctx.arc(topLeft.x + width - 6, topLeft.y + 7, 8, 0, Math.PI * 2);
-      ctx.fillStyle = signal.severity >= 3 ? "#b45a46" : "#b99254";
-      ctx.fill();
-      ctx.fillStyle = "#172110";
-      ctx.font = "bold 11px Consolas, monospace";
-      ctx.fillText(String(signal.count), topLeft.x + width - 6, topLeft.y + 11);
-    }
+    if (signal !== undefined) badgeAt(topLeft.x + width, topLeft.y, signal, scene.minimapHits.at(-1));
   }
 
   const label = document.getElementById("scaleLabel");
