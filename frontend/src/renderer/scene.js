@@ -920,8 +920,10 @@ function drawQuarter(project, quarter, projectBox, box, level, ratio, attention)
   // 14 px), they are not drawn.
   const dragging = scene.drag?.kind === "node" && scene.drag.moved && scene.drag.node.kind === "agent"
     && scene.drag.node.projectId === project.projectId && scene.drag.node.quarterId === quarter.quarterId;
-  if (dragging || GEOMETRY.agentGridStep * scene.camera.scale >= 14) {
-    const { xs, ys } = gridPoints(box.width, box.height);
+  // The grid follows the quarter's smallest agent (quarterGrid).
+  const grid = quarterGrid(quarter.agents.map((agent) => scene.layout.agents[agent.agentId]).filter(Boolean));
+  if (dragging || grid.step * scene.camera.scale >= 14) {
+    const { xs, ys } = gridPoints(box.width, box.height, grid);
     const arm = 3.5 / scene.camera.scale;
     ctx.beginPath();
     for (const gx of xs) {
@@ -943,7 +945,7 @@ function drawQuarter(project, quarter, projectBox, box, level, ratio, attention)
     const others = quarter.agents.map((agent) => scene.layout.agents[agent.agentId])
       .filter((other) => other !== undefined && other !== spot && other.auto !== true);
     if (spot !== undefined) {
-      const target = snapPoint(spot, box.width, spot.x, spot.y, others);
+      const target = snapPoint(spot, box.width, spot.x, spot.y, others, grid);
       const { halfWidth, halfHeight } = agentExtent(spot);
       ctx.save();
       ctx.setLineDash([4 / scene.camera.scale, 3 / scene.camera.scale]);
@@ -1000,7 +1002,6 @@ function agentColour(agent) {
 }
 
 function drawAgent(agent, x, y, ratio, attention, level, size = 1) {
-  const detail = smooth(1.4, 2.5, ratio);
   const scale = scene.camera.scale;
   // From afar a unit would turn into a one-pixel dot: it gets a minimum
   // screen size, otherwise the map looks deserted in the overview. `size` is
@@ -1019,9 +1020,8 @@ function drawAgent(agent, x, y, ratio, attention, level, size = 1) {
     // The state bar is the only thing whose colour tells the state of the agent.
     rect(x - 10 * k, y + h / 2 - 4 * k, 20 * k, 2 * k, agentColour(agent));
   }
-  if (!plain && detail > 0.55 && (agent.problemCode !== null || agent.deliveryState === "uncertain")) {
-    rect(x - w / 2 - 1, y - h / 2 - 5, 5, 5, PALETTE.amber);
-  }
+  // A problem is shown by the attention brackets and badge below (and said in the tooltip):
+  // the small amber square that once marked it too said the same thing without words.
 
   // An alarm on the unit itself is shown only where attention is counted
   // per agent at all. From afar the quarter or project badge stands for it: two
@@ -1743,6 +1743,9 @@ function handleAt(event) {
   const rectangle = scene.canvas.getBoundingClientRect();
   const x = event.clientX - rectangle.left;
   const y = event.clientY - rectangle.top;
+  // An attention badge sits on the corner of what it is about - where a resize
+  // handle is: the badge comes first, it neither resizes nor shows the resize cursor.
+  if (badgeAt(x, y) !== null) return null;
   for (const handle of resizeHandles()) {
     const point = worldToScreen(scene.camera, scene.size, handle.x, handle.y);
     const centre = worldToScreen(scene.camera, scene.size, handle.cx, handle.cy);
@@ -1826,8 +1829,9 @@ function onPointerMove(event) {
   };
   const drag = scene.drag;
   if (drag === null) {
-    // Over a resize handle, a resize cursor.
-    scene.canvas.style.cursor = handleCursor(handleAt(event));
+    // Over an attention badge, a pointer (it opens with a double-click); over a resize handle, a resize cursor.
+    scene.canvas.style.cursor = badgeAt(scene.pointer.x, scene.pointer.y) !== null ? "pointer"
+      : handleCursor(handleAt(event));
     const node = nodeAt(event);
     // A tooltip only when the cursor has stopped: while the mouse moves, there is none,
     // and any movement removes it and restarts the countdown.
@@ -1937,6 +1941,10 @@ function onPointerUp(event) {
   if (drag.kind === "resize") {
     // A click on a handle without movement changes nothing: the selection stays.
     if (drag.moved) {
+      // A resized agent goes to the nearest free point of the grid: its new size may
+      // have changed the grid. The others stay where they are; the same undo step.
+      const { handle } = drag;
+      if (handle.kind === "agent") settleAgent(handle.projectId, handle.quarterId, handle.agentId);
       commitGesture();
       atlasOnHudChanged();
     }
@@ -1947,18 +1955,8 @@ function onPointerUp(event) {
     // A quarter does not enter the HQ zone (placeQuarter); the check at the end of the gesture is
     // a safeguard, and it goes into the same undo step.
     if (drag.node.kind === "quarter") clearHeadquarters(scene.layout, drag.node.projectId);
-    if (drag.node.kind === "agent") {
-      // A released agent goes to the nearest free cell of the grid, in the same undo step.
-      const { projectId, quarterId, agentId } = drag.node;
-      const box = scene.layout.quarters[projectId]?.[quarterId];
-      const quarter = worldOf()?.projection.projects.find((item) => item.projectId === projectId)
-        ?.quarters.find((item) => item.quarterId === quarterId) ?? null;
-      const spot = scene.layout.agents[agentId];
-      if (box !== undefined && quarter !== null && spot !== undefined) {
-        snapAgent(box, quarter.agents.map((agent) => scene.layout.agents[agent.agentId]).filter(Boolean), spot);
-        fitProjectToChildren(scene.layout, projectId);
-      }
-    }
+    // A released agent goes to the nearest free cell of the grid, in the same undo step.
+    if (drag.node.kind === "agent") settleAgent(drag.node.projectId, drag.node.quarterId, drag.node.agentId);
     commitGesture();
     requestRender();
     return;
@@ -1966,14 +1964,26 @@ function onPointerUp(event) {
   commitClick(nodeAt(event));
 }
 
+/** An agent the person let go of (dragged or resized) goes to the nearest free point of its quarter's grid. */
+function settleAgent(projectId, quarterId, agentId) {
+  const box = scene.layout.quarters[projectId]?.[quarterId];
+  const quarter = worldOf()?.projection.projects.find((item) => item.projectId === projectId)
+    ?.quarters.find((item) => item.quarterId === quarterId) ?? null;
+  const spot = scene.layout.agents[agentId];
+  if (box === undefined || quarter === null || spot === undefined) return;
+  snapAgent(box, quarter.agents.map((agent) => scene.layout.agents[agent.agentId]).filter(Boolean), spot);
+  fitProjectToChildren(scene.layout, projectId);
+}
+
 /** A click: an HQ opens its sheet, anything else is selected; an attention badge - only with a double-click. */
 function commitClick(node) {
   // A single click on an attention badge does nothing: it touches neither what is under it nor
   // the open windows. A badge opens with a double-click.
   if (node?.kind === "attention") return;
-  // A click on the map removes the open sheet (HQ, creation, archive): the person
-  // has come back to the map. A click on the HQ opens its sheet again at once.
+  // A click on the map removes the open sheet (HQ, creation, archive) and the attention
+  // list: the person has come back to the map. A click on the HQ opens its sheet again at once.
   if (!document.getElementById("sheet").classList.contains("hidden")) closeSheet();
+  if (typeof setPanel === "function" && atlasState.ui.attentionOpen) setPanel("attentionOpen", false);
   // An agent window is open: any click outside this agent closes it (and
   // selects what was clicked), and the map is the main thing again.
   const open = typeof isWorkspaceOpen === "function" && isWorkspaceOpen() ? workspaceState.node : null;

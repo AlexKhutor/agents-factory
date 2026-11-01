@@ -56,6 +56,10 @@ Since then, in the same release:
 - **Names and IDs** - projects, quarters and agents have a fixed readable ID
   made from the first name (`billing-7f3k`) and a name that can be changed at
   any time; agents refer to each other by ID.
+- **The map** - a quarter's grid follows its smallest agent and starts at its
+  edge, so small agents stand closer and an agent resized by its corner snaps
+  to it; an agent stays where it was put; a double-click on an attention badge
+  opens what needs attention, and History is a short list with details on click.
 - **Languages** - the code and the interface are English; the interface's
   texts are locale files (English and Russian), switched in Atlas.
 

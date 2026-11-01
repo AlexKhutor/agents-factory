@@ -531,8 +531,9 @@ const overlap = (a, b) => a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.
 }
 
 {
-  // An agent placed by the person stays on its crossing: the quarter is not narrower
-  // or lower than its icon with a margin; when the top left corner is dragged, the agents move with it.
+  // An agent placed by the person stays where it stands (it fits and touches no one): the
+  // quarter is not narrower or lower than its icon with a margin; when the top left corner
+  // is dragged, the agents move with it.
   const { resizeQuarter } = core;
   const { layout, start } = resizeWorld({ manual: { x: 200, y: 150 } });
   const placed = { ...layout.agents.a3 };
@@ -543,12 +544,12 @@ const overlap = (a, b) => a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.
   resizeQuarter(second, "p", "q", secondStart(), "nw", 20, 10);
   const moved = second.quarters.p.q;
   check("person-placed-agent-keeps-its-place",
-    placed.x === 190 && placed.y === 160
-      && shrunk.width === 190 + 17 + 16 && shrunk.height === 160 + 14 + 16
-      && layout.agents.a3.x === 190 && layout.agents.a3.y === 160
+    placed.x === 200 && placed.y === 150
+      && shrunk.width === 200 + 17 + 16 && shrunk.height === 150 + 14 + 16
+      && layout.agents.a3.x === 200 && layout.agents.a3.y === 150
       && moved.x === from.x + 20 && moved.y === from.y + 10
-      && second.agents.a3.x === 190 && second.agents.a3.y === 160,
-    { placed, shrunk, moved, a3: layout.agents.a3 });
+      && second.agents.a3.x === 200 && second.agents.a3.y === 150,
+    { placed, shrunk, moved, a3: layout.agents.a3, second: second.agents.a3 });
 }
 
 {
@@ -592,7 +593,9 @@ const overlap = (a, b) => a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.
 {
   // An agent is dragged freely (within the quarter); once released, it stands on
   // the nearest crossing; on a taken one - on the nearest one where the icons do not touch, and
-  // the one standing there stays. Map agents go around it.
+  // the one standing there stays. Map agents go around it. The grid follows the quarter's
+  // smallest agent: ordinary agents (34 wide, gap 6) - every 40 from 33 across and 30 down
+  // (16 from the corner), so the two stand side by side.
   const { moveAgent, snapAgent, agentBox, GEOMETRY } = core;
   const { layout, ids } = resizeWorld();
   const box = layout.quarters.p.q;
@@ -608,10 +611,10 @@ const overlap = (a, b) => a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.
   const apart = !overlap(agentBox(second.a1), agentBox(second.a2));
   check("agent-snaps-to-crossing",
     dragged.x === box.width - GEOMETRY.agentInset && dragged.y === box.height - GEOMETRY.agentInset
-      && first.a1.x === 160 && first.a1.y === 100 && first.a1.auto === undefined
+      && first.a1.x === 153 && first.a1.y === 110 && first.a1.auto === undefined
       && first.a2.x === 40 && first.a2.y === 40
-      && second.a1.x === 160 && second.a1.y === 100 && apart && second.a2.auto === undefined
-      && second.a2.x === 220 && second.a2.y === 100,
+      && second.a1.x === 153 && second.a1.y === 110 && apart && second.a2.auto === undefined
+      && second.a2.x === 193 && second.a2.y === 110,
     { dragged, first, second });
 }
 
@@ -631,31 +634,45 @@ const overlap = (a, b) => a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.
 }
 
 {
-  // A small agent takes little room: two small ones stand on neighbouring
-  // crossings (30), ordinary ones on every other one (60).
-  const { snapAgent, agentBox } = core;
+  // The grid follows the quarter's smallest agent (the owner's decisions of 01.11): its
+  // width with the gap, never finer than 12, and its first point is where that agent
+  // stands 16 from the quarter's corner - no strip of a whole step above the first row.
+  // Two small agents stand one small step apart, ordinary ones one ordinary step apart;
+  // a big one beside a small one takes several cells.
+  const { snapAgent, agentBox, quarterGrid, pointRange, GEOMETRY } = core;
   const box = { x: 0, y: 0, width: 300, height: 210 };
-  const small = [{ x: 100, y: 100, scale: 0.5 }, { x: 105, y: 100, scale: 0.5 }];
+  const grid = (spots) => { const { step, x, y } = quarterGrid(spots); return { step, x, y }; };
+  const grids = { small: grid([{ scale: 0.5 }]), normal: grid([{}]), big: grid([{ scale: 1.5 }]),
+    mixed: grid([{ scale: 1.5 }, { scale: 0.5 }]), smallest: grid([{ scale: 0.4 }]), empty: grid([]) };
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const small = [{ x: 94, y: 92, scale: 0.5 }, { x: 99, y: 92, scale: 0.5 }];
   snapAgent(box, small, small[1]);
-  const normal = [{ x: 100, y: 100 }, { x: 105, y: 100 }];
+  const normal = [{ x: 73, y: 70 }, { x: 78, y: 70 }];
   snapAgent(box, normal, normal[1]);
   const gap = (pair) => Math.hypot(pair[1].x - pair[0].x, pair[1].y - pair[0].y);
-  check("small-agent-takes-little-room",
-    !overlap(agentBox(small[0]), agentBox(small[1])) && !overlap(agentBox(normal[0]), agentBox(normal[1]))
-      && gap(small) === 30 && gap(normal) === 60 && small[0].x === 100 && small[0].y === 100,
-    { small, normal, smallGap: gap(small), normalGap: gap(normal) });
+  // Big agents: the first row's icons are 16 from the top, not a whole step lower.
+  const bigRange = pointRange({ scale: 1.5 }, 300, quarterGrid([{ scale: 1.5 }]));
+  check("grid-follows-the-smallest-agent",
+    same(grids.small, { step: 23, x: 25, y: 23 }) && same(grids.normal, { step: 40, x: 33, y: 30 })
+      && same(grids.big, { step: 57, x: 42, y: 37 }) && same(grids.mixed, grids.small)
+      && same(grids.smallest, { step: 20, x: 23, y: 22 })
+      && same(grids.empty, { step: GEOMETRY.agentGridStep, x: GEOMETRY.agentGridOrigin, y: GEOMETRY.agentGridOrigin })
+      && !overlap(agentBox(small[0]), agentBox(small[1])) && !overlap(agentBox(normal[0]), agentBox(normal[1]))
+      && gap(small) === 23 && gap(normal) === 40 && small[0].x === 94 && small[0].y === 92
+      && bigRange.top - 21 === 16,
+    { grids, small, normal, smallGap: gap(small), normalGap: gap(normal), bigRange });
 }
 
 {
-  // A layout from before the grid: the person's agents at arbitrary spots stand on
-  // the nearest crossings; two on one - the second one next to it, not touching.
+  // The person's agents stay where they stand when they fit and touch no one - a grid
+  // that changed with the smallest agent moves no one; two on one spot - the second one
+  // goes to the nearest free crossing, not touching.
   const { arrangeAgents, agentBox } = core;
   const box = { x: 0, y: 0, width: 300, height: 210 };
   const spots = [{ x: 47, y: 43 }, { x: 52, y: 45 }, { x: 250, y: 190, auto: true }];
   const changed = arrangeAgents(box, spots);
-  check("old-layout-snaps-to-crossings",
-    changed && spots[0].x === 40 && spots[0].y === 40
-      && spots.every((spot) => (spot.x - 10) % 30 === 0 && (spot.y - 10) % 30 === 0)
+  check("placed-agents-stay-overlaps-separate",
+    changed && spots[0].x === 47 && spots[0].y === 43 && (spots[1].x !== 52 || spots[1].y !== 45)
       && !overlap(agentBox(spots[0]), agentBox(spots[1])) && !overlap(agentBox(spots[1]), agentBox(spots[2]))
       && spots[2].auto === true,
     { spots });

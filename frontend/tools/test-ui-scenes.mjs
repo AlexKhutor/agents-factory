@@ -76,6 +76,7 @@ const SCENES = Object.freeze([
   ["ui-a38-away-frames", "Grey frames of projects not on this PC: in their place or, without one, in a column on the right; the \"Not on this PC\" ticks (small, with the label beside) hide all frames or one, \"Show hidden frames\" brings them back, a setting of this PC; the frames shown are within the world's bounds (minimap); the buttons at the top right on one line, the sheet below them"],
   ["ui-a39-model-health", "Readiness names each model server and whether it answers (the office one off, this PC's on) with \"Check now\"; a model list marks the one that does not answer"],
   ["ui-a41-names", "Names: an agent renamed in its sheet is shown by its name with the ID beside it in the tooltip; a create form proposes an ID made from the name; an empty name brings the ID back"],
+  ["ui-a43-grid-small-agent", "The quarter grid follows its smallest agent: one made small, one big - the grid gets the small one's step and the big one keeps its place"],
   ["ui-a42-badge-double-click", "Double-click on an attention badge: a number opens the list of what is behind it (even for one agent), a question mark opens that agent's chat"],
   ["ui-a40-history", "History of changes: an archived and restored project shows both; \"Undo\" on the restore (confirmed) archives it again by a new entry, and the restore says it is undone"],
 ]);
@@ -168,8 +169,11 @@ if (await atlasWindowOpen()) {
       report = await runScene(root, name, outDir, options);
       if (report !== null && report.capture === "written") break;
     }
+    // A scene runs out of the person's way: its window never comes onto a display and
+    // never takes the focus (main.mjs, CAPTURING), whatever the scene itself checks.
     const passed = report !== null && (report.ready === true || options.needsWorld === false) && report.error === null
-      && report.capture === "written" && report.result?.pass === true;
+      && report.capture === "written" && report.result?.pass === true
+      && report.window?.onScreen === false && report.window?.focused === false;
     cases.push({ caseId: name, title, status: passed ? "passed" : "failed", ...(passed ? {} : { detail: report }) });
     run?.result(name, passed ? "passed" : "failed");
   }

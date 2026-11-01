@@ -77,17 +77,41 @@
 
   // --- quarter grid -------------------------------------------------------------
   //
-  // In a quarter, grid points go every GEOMETRY.agentGridStep; an agent stands
+  // In a quarter, grid points go every step of its grid (quarterGrid); an agent stands
   // centred on a grid point. It takes room by its icon: a small one takes
   // little and can stand on the next grid point. An agent is dragged freely, and
   // when released it snaps to the nearest grid point where its icon does not touch
   // its neighbours (GEOMETRY.agentGap between icons) and is no closer than
   // GEOMETRY.agentInset to the edge.
 
-  const gridStep = () => GEOMETRY.agentGridStep;
-  const gridOrigin = () => GEOMETRY.agentGridOrigin;
-  /** Nearest grid point along one axis: down, up or to the nearer one. */
-  const onGrid = (value, round = Math.round) => gridOrigin() + round((value - gridOrigin()) / gridStep()) * gridStep();
+  /** The grid of an empty quarter: points every agentGridStep from agentGridOrigin. */
+  const DEFAULT_GRID = Object.freeze({ step: GEOMETRY.agentGridStep, x: GEOMETRY.agentGridOrigin,
+    y: GEOMETRY.agentGridOrigin, smallest: Object.freeze({ scale: AGENT_SCALE.minimum }) });
+  /** Nearest grid point along one axis ("x" or "y"): down, up or to the nearer one. */
+  const onGrid = (value, round, grid, axis) => grid[axis] + round((value - grid[axis]) / grid.step) * grid.step;
+
+  // The grid of a quarter follows its smallest agent (the owner's decisions of
+  // 01.11): its step is that agent's width with the gap around it, so a small
+  // agent is not lost in a cell made for a big one, and a big one simply covers
+  // several cells; its first point is where that agent stands agentInset from the
+  // quarter's corner, so agents of one size line up from the very edge, with no
+  // strip of a whole step above them. Never finer than MIN_GRID_STEP, so a tiny
+  // agent does not turn the grid into a ripple. The quarter's size is the person's:
+  // it does not change.
+  const MIN_GRID_STEP = 12;
+  /** The grid of a quarter whose agents stand at `spots`: `{ step, x, y, smallest }`. */
+  function quarterGrid(spots) {
+    const present = (spots ?? []).filter(Boolean);
+    if (present.length === 0) return DEFAULT_GRID;
+    const scale = Math.min(...present.map(agentScaleOf));
+    const { halfWidth, halfHeight } = agentExtent({ scale });
+    return {
+      step: Math.max(MIN_GRID_STEP, Math.round(2 * halfWidth + GEOMETRY.agentGap)),
+      x: Math.ceil(GEOMETRY.agentInset + halfWidth),
+      y: Math.ceil(GEOMETRY.agentInset + halfHeight),
+      smallest: { scale },
+    };
+  }
 
   /** Agent icon at point (x, y) of the quarter with half the gap around it, so neighbours do not touch. */
   function agentBox(spot, x = spot.x, y = spot.y) {
@@ -98,24 +122,24 @@
   }
 
   /** Grid points where an agent of this size fits entirely inside a quarter of width `width`. */
-  function pointRange(spot, width) {
+  function pointRange(spot, width, grid = DEFAULT_GRID) {
     const { halfWidth, halfHeight } = agentExtent(spot);
     const inset = GEOMETRY.agentInset;
-    const left = onGrid(inset + halfWidth, Math.ceil);
-    const right = Math.max(left, onGrid(width - inset - halfWidth, Math.floor));
-    const top = onGrid(inset + halfHeight, Math.ceil);
+    const left = onGrid(inset + halfWidth, Math.ceil, grid, "x");
+    const right = Math.max(left, onGrid(width - inset - halfWidth, Math.floor, grid, "x"));
+    const top = onGrid(inset + halfHeight, Math.ceil, grid, "y");
     return { left, right, top };
   }
 
-  /** Quarter grid points where at least the smallest agent fits: the map draws them. */
-  function gridPoints(width, height) {
-    const smallest = { scale: AGENT_SCALE.minimum };
-    const range = pointRange(smallest, width);
-    const bottom = onGrid(height - GEOMETRY.agentInset - agentExtent(smallest).halfHeight, Math.floor);
+  /** Quarter grid points where the grid's smallest agent fits: the map draws them. */
+  function gridPoints(width, height, grid = DEFAULT_GRID) {
+    const { smallest } = grid;
+    const range = pointRange(smallest, width, grid);
+    const bottom = onGrid(height - GEOMETRY.agentInset - agentExtent(smallest).halfHeight, Math.floor, grid, "y");
     const xs = [];
     const ys = [];
-    for (let x = range.left; x <= range.right; x += gridStep()) xs.push(x);
-    for (let y = range.top; y <= bottom; y += gridStep()) ys.push(y);
+    for (let x = range.left; x <= range.right; x += grid.step) xs.push(x);
+    for (let y = range.top; y <= bottom; y += grid.step) ys.push(y);
     return { xs, ys };
   }
 
@@ -123,12 +147,12 @@
    * The intersection nearest to (x, y) where agent `spot` fits and does not touch
    * `others`. Below the quarter is allowed too: the quarter then grows.
    */
-  function snapPoint(spot, width, x, y, others) {
-    const step = gridStep();
-    const range = pointRange(spot, width);
+  function snapPoint(spot, width, x, y, others, grid = DEFAULT_GRID) {
+    const { step } = grid;
+    const range = pointRange(spot, width, grid);
     const free = (px, py) => !others.some((other) => intersects(agentBox(spot, px, py), agentBox(other)));
-    const cx = clamp(onGrid(x), range.left, range.right);
-    const cy = Math.max(range.top, onGrid(y));
+    const cx = clamp(onGrid(x, Math.round, grid, "x"), range.left, range.right);
+    const cy = Math.max(range.top, onGrid(y, Math.round, grid, "y"));
     for (let ring = 0; ring < 400; ring += 1) {
       let best = null;
       for (let dx = -ring; dx <= ring; dx += 1) {
@@ -177,14 +201,27 @@
   function arrangeAgents(box, spots) {
     const placed = [];
     let changed = false;
+    const grid = quarterGrid(spots);
     const put = (spot, point) => {
       if (spot.x !== point.x || spot.y !== point.y) changed = true;
       spot.x = point.x;
       spot.y = point.y;
       placed.push(spot);
     };
+    // An agent the person placed stays exactly where it is while it is inside the
+    // quarter and touches no one: the grid moves with the smallest agent, the
+    // agents placed before do not. Only one that does not fit goes to the nearest free point.
+    const fits = (spot) => {
+      const { halfWidth, halfHeight } = agentExtent(spot);
+      return Number.isFinite(spot.x) && Number.isFinite(spot.y)
+        && spot.x - halfWidth >= GEOMETRY.agentInset - 0.5
+        && spot.x + halfWidth <= box.width - GEOMETRY.agentInset + 0.5
+        && spot.y - halfHeight >= GEOMETRY.agentInset - 0.5
+        && !placed.some((other) => intersects(agentBox(spot), agentBox(other)));
+    };
     for (const spot of spots) {
-      if (spot.auto !== true) put(spot, snapPoint(spot, box.width, spot.x, spot.y, placed));
+      if (spot.auto === true) continue;
+      put(spot, fits(spot) ? { x: spot.x, y: spot.y } : snapPoint(spot, box.width, spot.x, spot.y, placed, grid));
     }
     let slot = 0;
     for (const spot of spots) {
@@ -206,11 +243,12 @@
   /**
    * A released agent goes to the free intersection nearest to it: the others
    * placed by the person stay where they were, and the map agents move around it.
+   * An agent resized by its corner goes the same way: its size may have changed the grid.
    * `spots` are the places of the quarter agents in catalog order, `spot` is the released one.
    */
   function snapAgent(box, spots, spot) {
     const others = spots.filter((other) => other !== spot && other.auto !== true);
-    Object.assign(spot, snapPoint(spot, box.width, spot.x, spot.y, others));
+    Object.assign(spot, snapPoint(spot, box.width, spot.x, spot.y, others, quarterGrid(spots)));
     delete spot.auto;
     arrangeAgents(box, spots);
   }
@@ -1027,6 +1065,7 @@
     pointRange,
     gridPoints,
     snapPoint,
+    quarterGrid,
     agentsExtent,
     arrangeAgents,
     snapAgent,

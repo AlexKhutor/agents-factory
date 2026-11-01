@@ -7,7 +7,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, screen, shell } from "electron";
 import { resolveMode } from "./config.mjs";
 import { createSession } from "./session.mjs";
 import { createInstanceLayoutStore } from "./layout-split.mjs";
@@ -28,6 +28,17 @@ const CONFIRM_PRELOAD = path.join(PROJECT_ROOT, "src", "preload", "confirm.cjs")
 const CONFIRM_PAGE = path.join(PROJECT_ROOT, "src", "renderer", "confirm.html");
 const LOCALES = path.join(PROJECT_ROOT, "locales");
 const USER_DATA = path.join(PROJECT_ROOT, "user-data");
+// An unattended capture (--capture, the UI scenes) runs beside the person's work: its window
+// never comes onto the person's screen, never takes the focus, and it opens no dialog or
+// confirmation window.
+const CAPTURING = process.argv.includes("--capture");
+/** Whether a window's bounds touch any display: a capture's window must not. */
+const onAnyDisplay = (bounds) => screen.getAllDisplays().some(({ bounds: display }) =>
+  bounds.x < display.x + display.width && bounds.x + bounds.width > display.x
+  && bounds.y < display.y + display.height && bounds.y + bounds.height > display.y);
+// What such a capture refused to open (a confirmation its scene does not answer itself, a
+// native dialog): it counts as cancelled, and the scene's report lists it.
+const refusedWindows = [];
 
 // The window's language, asked by its preload before any script runs (i18n.mjs). Read each time, so a
 // language the person chose applies when the window reloads.
@@ -93,12 +104,25 @@ async function confirm({ title, message, detail, confirmLabel }) {
     autoConfirmed.push(title);
     return true;
   }
+  if (CAPTURING) {
+    refusedWindows.push(title);
+    return false;
+  }
   // Atlas's own confirmation window (confirm-window.mjs): the main window's page
   // cannot reach it, as it could not reach the system dialog it replaces.
   return openConfirmWindow({
     parent: mainWindow, page: CONFIRM_PAGE, preload: CONFIRM_PRELOAD,
     request: { title, message, detail, confirmLabel },
   });
+}
+
+/** A native dialog over the main window ("showOpenDialog" | "showSaveDialog"); a capture opens none. */
+async function showDialog(kind, options) {
+  if (CAPTURING) {
+    refusedWindows.push(options.title);
+    return { canceled: true, filePaths: [], filePath: undefined };
+  }
+  return mainWindow === null ? dialog[kind](options) : dialog[kind](mainWindow, options);
 }
 
 async function chooseDirectory(purpose = "workspace") {
@@ -108,9 +132,7 @@ async function chooseDirectory(purpose = "workspace") {
     properties: ["openDirectory"],
     buttonLabel: "Use this folder",
   };
-  const { canceled, filePaths } = mainWindow === null
-    ? await dialog.showOpenDialog(options)
-    : await dialog.showOpenDialog(mainWindow, options);
+  const { canceled, filePaths } = await showDialog("showOpenDialog", options);
   return canceled || filePaths.length === 0 ? null : filePaths[0];
 }
 
@@ -133,9 +155,7 @@ async function chooseEvidenceDirectory() {
     properties: ["openDirectory", "createDirectory"],
     buttonLabel: "Write evidence here",
   };
-  const { canceled, filePaths } = mainWindow === null
-    ? await dialog.showOpenDialog(options)
-    : await dialog.showOpenDialog(mainWindow, options);
+  const { canceled, filePaths } = await showDialog("showOpenDialog", options);
   return canceled || filePaths.length === 0
     ? { ok: true, data: { cancelled: true } }
     : { ok: true, data: { path: filePaths[0] } };
@@ -152,9 +172,7 @@ async function saveText(text, defaultName = null) {
       ? [{ name: "JSON", extensions: ["json"] }]
       : [{ name: "Text", extensions: ["txt"] }],
   };
-  const { canceled, filePath } = mainWindow === null
-    ? await dialog.showSaveDialog(options)
-    : await dialog.showSaveDialog(mainWindow, options);
+  const { canceled, filePath } = await showDialog("showSaveDialog", options);
   if (canceled || !filePath) return { ok: true, data: { saved: false } };
   await writeFile(filePath, text, "utf8");
   // The window learns that it was saved and under what name, not where.
@@ -168,9 +186,7 @@ async function openText() {
     properties: ["openFile"],
     filters: [{ name: "JSON", extensions: ["json"] }],
   };
-  const { canceled, filePaths } = mainWindow === null
-    ? await dialog.showOpenDialog(options)
-    : await dialog.showOpenDialog(mainWindow, options);
+  const { canceled, filePaths } = await showDialog("showOpenDialog", options);
   if (canceled || filePaths.length === 0) return { ok: true, data: { opened: false } };
   const text = await readFile(filePaths[0], "utf8");
   if (text.length > 1_048_576) {
@@ -186,6 +202,14 @@ function createWindow(mode) {
     minWidth: 1024,
     minHeight: 640,
     backgroundColor: "#181c19",
+    // A capture's window opens past the right edge of all displays, without the focus and
+    // without a taskbar button (showInactive below): it does not come up over the person's
+    // windows. It is shown rather than hidden: a window never shown drew its first frame
+    // only, so the screenshot was the loading screen (and incrementCapturerCount stopped the
+    // page from loading at all).
+    show: !CAPTURING,
+    skipTaskbar: CAPTURING,
+    ...(CAPTURING ? { x: Math.max(...screen.getAllDisplays().map(({ bounds }) => bounds.x + bounds.width)) + 200, y: 0 } : {}),
     title: mode === "dev-fixture" ? "Agents Factory Atlas - FIXTURE DATA" : mode === "paperclip" ? "Agents Factory Atlas - Paperclip" : mode === "direct" ? "Agents Factory Atlas - Claude Code" : "Agents Factory Atlas",
     webPreferences: {
       preload: PRELOAD,
@@ -196,10 +220,11 @@ function createWindow(mode) {
       webviewTag: false,
       spellcheck: false,
       // A capture keeps its animation frames even when covered (see --capture below).
-      backgroundThrottling: !process.argv.includes("--capture"),
+      backgroundThrottling: !CAPTURING,
     },
   });
   window.removeMenu();
+  if (CAPTURING) window.showInactive();
   window.loadFile(RENDERER);
   mainWindow = window;
   // Closing the window (its X) must also write what is pending - the layout and
@@ -721,22 +746,28 @@ const CAPTURE_SCENES = Object.freeze({
     }
     const agentScale = scene.layout.agents[agentId].scale ?? 1;
     await steady();
+    // Resized, it stands on a point of the quarter's grid (its new size changed the grid).
+    const quarterGridNow = () => quarterGrid(q.agents.map((agent) => scene.layout.agents[agent.agentId]).filter(Boolean));
+    const resized = { ...scene.layout.agents[agentId] };
+    const resizedGrid = quarterGridNow();
+    const onTheGrid = (resized.x - resizedGrid.x) % resizedGrid.step === 0 && (resized.y - resizedGrid.y) % resizedGrid.step === 0;
     {
       const at = agentAt(); const project = projectBox(); const box = quarterBox();
       await drag(client(at.x, at.y), client(project.x + box.x - 60, project.y + box.y - 60));
     }
     const atEdge = { ...scene.layout.agents[agentId] };
-    // Dropped at the corner, it snaps onto the first grid intersection its icon fits at.
-    const range = pointRange({ scale: agentScale }, quarterBox().width);
+    // Dropped at the corner, it snaps onto the first grid intersection its icon fits at
+    // (the quarter's grid follows its smallest agent: quarterGrid).
+    const range = pointRange({ scale: agentScale }, quarterBox().width, quarterGridNow());
     const edge = { x: range.left, y: range.top };
     selectNode({ kind: "agent", projectId: p.projectId, quarterId: q.quarterId, agentId });
     goProject(p.projectId);
     await settle();
     return { pass: shrunk.width < before.width && shrunk.height < before.height && agentsInside
       && undone.width === before.width && undone.height === before.height && hqScale >= 0.55 && hqScale < 0.7
-      && agentScale >= 0.45 && agentScale <= 0.55
+      && agentScale >= 0.45 && agentScale <= 0.55 && onTheGrid
       && Math.abs(atEdge.x - edge.x) < 0.01 && Math.abs(atEdge.y - edge.y) < 0.01,
-    before, shrunk, agentsInside, undone, hqScale, agentScale, atEdge, edge };
+    before, shrunk, agentsInside, undone, hqScale, agentScale, resized, resizedGrid, onTheGrid, atEdge, edge };
   })()`,
   // The agent window (level 1) closes on any click on the map that is not that
   // agent, and the level buttons below close it and go to their level.
@@ -1502,16 +1533,55 @@ const CAPTURE_SCENES = Object.freeze({
     await pause(500);
     const listOpened = atlasState.ui.attentionOpen === true && !isWorkspaceOpen();
     const listScope = atlasState.attentionScope;
-    setPanel("attentionOpen", false);
+    // A click on the empty map closes the list, as it closes a sheet.
+    commitClick(null);
     await pause(300);
+    const closedByMap = atlasState.ui.attentionOpen === false;
     const question = scene.badges.find((item) => item.signal.count === 1 && item.signal.severity === 1);
     doubleClick(question);
     await pause(1500);
     const chatOpened = isWorkspaceOpen();
     const chatAgent = workspaceState.node?.agentId ?? null;
     if (chatOpened) closeWorkspace();
-    return { pass: listOpened && listScope?.projectId === counted.node.projectId && chatOpened,
-      counted: counted.signal.count, listOpened, listScope, question: question?.node ?? null, chatOpened, chatAgent };
+    // A badge on the corner of a selected agent is not its resize handle.
+    const agentSignal = (atlasState.world.attention ?? []).find((item) => typeof item.agentId === "string")?.agentId;
+    const marked = atlasState.world.projection.projects.flatMap((p) => p.quarters.flatMap((q) => q.agents))
+      .find((agent) => agent.agentId === agentSignal);
+    goQuarter(marked.projectId, marked.quarterId, { instant: true });
+    selectNode({ kind: "agent", projectId: marked.projectId, quarterId: marked.quarterId, agentId: marked.agentId });
+    await pause(900);
+    const onAgent = scene.badges.find((item) => item.node.agentId === marked.agentId);
+    const box = scene.canvas.getBoundingClientRect();
+    const handleUnderBadge = onAgent ? handleAt({ clientX: box.left + onAgent.x, clientY: box.top + onAgent.y }) : "no badge";
+    return { pass: listOpened && listScope?.projectId === counted.node.projectId && closedByMap && chatOpened
+      && handleUnderBadge === null,
+    counted: counted.signal.count, listOpened, listScope, closedByMap, question: question?.node ?? null, chatOpened, chatAgent,
+    handleUnderBadge };
+  })()`,
+  // The quarter grid follows its smallest agent: one agent made small, one big - the grid
+  // gets the small one's step and starts at the quarter's edge (the small one's inset), the
+  // big one keeps its place, and the picture shows both.
+  "ui-a43-grid-small-agent": `(async () => {
+    const pause = (ms) => new Promise((done) => setTimeout(done, ms));
+    const project = atlasState.world.projection.projects.find((p) => p.quarters.some((q) => q.agents.length >= 2));
+    const quarter = project.quarters.find((q) => q.agents.length >= 2);
+    const [smallAgent, bigAgent] = quarter.agents;
+    const spots = () => quarter.agents.map((agent) => scene.layout.agents[agent.agentId]).filter(Boolean);
+    const before = quarterGrid(spots());
+    scene.layout.agents[smallAgent.agentId].scale = 0.4;
+    scene.layout.agents[bigAgent.agentId].scale = 1.5;
+    const bigPlace = { x: scene.layout.agents[bigAgent.agentId].x, y: scene.layout.agents[bigAgent.agentId].y };
+    goQuarter(project.projectId, quarter.quarterId, { instant: true });
+    requestRender();
+    await pause(900);
+    const after = quarterGrid(spots());
+    const box = scene.layout.quarters[project.projectId][quarter.quarterId];
+    const { xs, ys } = gridPoints(box.width, box.height, after);
+    const big = scene.layout.agents[bigAgent.agentId];
+    // The small one (0.4: 13.6 x 11.2) stands 16 from the edge on the first point.
+    return { pass: before.step === 40 && after.step === 20 && xs.length > 1 && xs[1] - xs[0] === 20
+      && xs[0] === 23 && ys[0] === 22 && big.x === bigPlace.x && big.y === bigPlace.y,
+    before, after, firstPoints: { xs: xs.slice(0, 3), ys: ys.slice(0, 3) }, big: { x: big.x, y: big.y }, bigPlace };
   })()`,
   "hq-lead": `(async () => {
     const project = atlasState.world.projection.projects[0];
@@ -1698,7 +1768,7 @@ const CAPTURE_SCENES = Object.freeze({
 // shutting down - both made the GPU process fail and the camera stop. Each
 // capture gets its own profile under the system temp folder. Map layouts are
 // not in this profile; they live in the application's own user-data.
-if (process.argv.includes("--capture")) {
+if (CAPTURING) {
   app.setPath("userData", path.join(os.tmpdir(), `atlas-capture-${process.pid}`));
   // A capture window covered by another window counted as hidden on Windows
   // (native occlusion), and a hidden page gets no animation frames: the camera
@@ -1756,6 +1826,11 @@ app.whenReady().then(async () => {
       ? null : path.resolve(process.argv[resultIndex + 1]);
     // Whatever happens inside the page, an unattended capture ends.
     const watchdog = setTimeout(() => app.exit(3), 60_000);
+    // The capture must stay out of the person's way: whether its window ever came
+    // onto a display or took the focus goes into the report, and the pack fails such a scene.
+    const windowFacts = { onScreen: onAnyDisplay(window.getBounds()), focused: window.isFocused() };
+    window.on("move", () => { if (onAnyDisplay(window.getBounds())) windowFacts.onScreen = true; });
+    window.on("focus", () => { windowFacts.focused = true; });
     window.webContents.once("did-finish-load", async () => {
       const report = { scene: sceneName, ready: false, result: null, error: null, capture: "not-attempted" };
       // Wait until the world has been read - not a fixed delay - but not forever.
@@ -1792,6 +1867,9 @@ app.whenReady().then(async () => {
         process.stderr.write(`capture failed: ${String(error?.message ?? error).slice(0, 200)}\n`);
       }
       report.autoConfirmed = autoConfirmed.slice();
+      report.refusedWindows = refusedWindows.slice();
+      report.window = { onScreen: windowFacts.onScreen || onAnyDisplay(window.getBounds()),
+        focused: windowFacts.focused || window.isFocused() };
       if (resultPath !== null) {
         await writeFile(resultPath, `${JSON.stringify(report, null, 2)}\n`).catch(() => {});
       }
