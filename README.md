@@ -7,8 +7,9 @@ whole team on a strategy-game map - **World → Project → Quarter → Agent** 
 with live chats, attention badges and per-turn git history.
 
 It is not tied to one model vendor: today the agents run on Claude through the
-[Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk/overview);
-OpenAI Codex CLI agents and local agent harnesses are next on the
+[Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk/overview), and on
+local or self-hosted models (a local Qwen, a DeepSeek-based harness) through the
+Agent Client Protocol (ACP); Codex and more agents are next on the
 [roadmap](ROADMAP.md). The system has three parts: an Application Gateway that
 hosts the agent sessions, a controller that hands out tasks with verifiable,
 hash-bound contracts, and **Atlas**, an Electron desktop app to watch, steer
@@ -185,12 +186,14 @@ Atlas's suites use fixture data and a fake Gateway.
 
 Agents Factory keeps evolving: it is developed together with the work it is
 used for, and improvements land here regularly ([CHANGELOG.md](CHANGELOG.md)).
-Next: a **one-file installer** for Windows, macOS and Linux with a CLI and MCP
-([plan](docs/distribution/README.md)), **Codex CLI agents** next to Claude
-ones, **local agents and harnesses** (DeepSeek-based harnesses, Hermes, Qoder
-and other local solutions). Later: a
-**VR cockpit** - the agent map and chats in a headset, with a PlayStation VR2
-and SteamVR prototype from earlier research. The full list is in
+Next: **autonomy with the person in charge** (a task mode in which the agent
+plans first and works once the plan is approved; the world lead handing out
+tasks), **statistics and budgets**, a **task board** next to the map, hover
+cards on the map, bringing an existing Claude Code project in, routines, more
+providers (Codex next), and a **one-file installer** with a CLI and MCP
+([plan](docs/distribution/README.md)). Later: unattended work only in a
+sandbox, themes, and a **VR cockpit** - the agent map and chats in a headset,
+with a PlayStation VR2 and SteamVR prototype from earlier research. The full list is in
 [ROADMAP.md](ROADMAP.md); ideas and bug reports are welcome in
 [Issues](https://github.com/AlexKhutor/agents-factory/issues).
 

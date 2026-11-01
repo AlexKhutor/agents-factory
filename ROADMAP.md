@@ -7,20 +7,58 @@ with every day, and it keeps growing with that work. Shipped changes are in
 
 ## Next
 
-- **Codex CLI agents.** Run OpenAI Codex CLI agents next to Claude ones,
-  on the same map, with the same memory, write zones, permission modes and
-  per-turn commits.
-- **Local agents and harnesses.** Connect local and self-hosted agents -
-  DeepSeek-based harnesses, Hermes, Qoder and other local solutions - through
-  one provider interface, so a team can mix cloud and local agents.
-- **One-file installer, CLI and MCP.** One installer per OS (Windows first,
-  then macOS and Linux) on top of the `agents-factory` CLI (its first
-  version shipped in v0.2.0, together with API key setup in Atlas and the world
-  lead), MCP servers for the agents, and Agents Factory itself as an MCP
-  server for Claude Code, Claude Desktop, Codex CLI and Cursor. The plan:
+- **Autonomy with the person in charge.** A "task" mode in an agent's chat:
+  the agent first changes nothing and answers with how it understood the
+  task, what is unclear and the steps it plans. A Plan card shows that; the
+  person answers the questions, asks for changes (each new revision shows
+  what changed) or approves, and the card then follows the work step by step.
+  The world lead hands tasks out to the agents with the person's approval; an
+  agent stops on someone else's failure instead of building on it; the
+  attention list ranks what matters most.
+- **Statistics and budgets.** Turns (done and failed), working time, tokens
+  (input, cache, output) and their price at API rates, by model - per agent,
+  quarter, project and the whole world, for a day, a week or all time - in an
+  Atlas panel and as CSV. The same numbers drive budgets per agent and per
+  project and a guard against running out of quota.
+- **A task board.** A kanban page next to the map (switch "Map | Board"): the
+  same tasks in columns along their chain - handed out, accepted, planned, in
+  progress, reported, accepted or rejected - with plan approval and report
+  review right on the board. Later, each project's own pipeline of columns and
+  rules, as in Jira.
+- **A clearer map.** Hover cards for an agent, a quarter or a project: what it
+  is doing now, its plan and step, whether it waits for you, its last turn and
+  what it spent. A simple mode for newcomers: just projects and their agents.
+- **Bring your work in.** Move a project you already run in Claude Code into
+  Agents Factory without starting over: the agent writes a hand-over package
+  (memory, folders, tools, open tasks), and Atlas creates the project, its
+  agent and the memory documents for you to approve; optionally the chat
+  itself continues.
+- **Routines.** The agents' scheduled work in one list - Claude Code routines
+  and the skills they run, and Agents Factory's own schedules: details, run
+  now, pause, a new schedule, run history and spend. A routine is created step
+  by step, each step confirmed.
+- **More providers.** A local Qwen and DeepSeek-based harnesses already run
+  next to Claude through the Agent Client Protocol (ACP). Next: Codex (through
+  `codex-acp`), Hermes, Qoder and other local and self-hosted agents, under the
+  same write zones, memory and permission rules.
+- **One-file installer, CLI and MCP.** One installer per OS (Windows and Linux
+  first, then macOS) on top of the `agents-factory` CLI, MCP servers for the
+  agents, and Agents Factory itself as an MCP server for Claude Code, Claude
+  Desktop, Codex CLI and Cursor. The plan:
   [docs/distribution](docs/distribution/README.md).
 - **First run in minutes.** Fewer manual steps between download and the first
   agent turn, and a step-by-step guide with a demo video.
+
+## Later: unattended work, in a sandbox
+
+Agents that work with no person at hand do so only inside a sandbox: a
+separate user account or a container with one project folder and limited
+network access.
+
+## Later: themes
+
+The look only - colours, icons, the map's style; functions and layout stay
+the same, and today's theme remains the default.
 
 ## Later: VR cockpit
 
@@ -68,5 +106,4 @@ loopback-only today.
 
 ## Under consideration
 
-- macOS and Linux support for the PowerShell tools.
-- More languages for Atlas's interface.
+- More languages for Atlas's interface (English and Russian today).
